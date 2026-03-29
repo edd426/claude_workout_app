@@ -1,0 +1,38 @@
+# Xcode
+/build/
+DerivedData/
+*.xcuserdata
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+xcuserdata/
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Claude Code (local settings only — agents/rules/skills are committed)
+.claude/settings.local.json
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# MCP server (Phase 3)
+workout-mcp/node_modules/
+workout-mcp/dist/
+
+# Azure (Phase 2)
+.azure/
+local.settings.json

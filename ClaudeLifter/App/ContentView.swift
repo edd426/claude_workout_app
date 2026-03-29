@@ -16,8 +16,16 @@ struct ContentView: View {
             ExerciseLibraryView()
                 .tabItem { Label("Exercises", systemImage: "dumbbell") }
 
-            Text("Coach")
-                .tabItem { Label("Coach", systemImage: "bubble.left.and.bubble.right") }
+            NavigationStack {
+                ChatView(viewModel: ChatViewModel(
+                    anthropicService: AnthropicService(apiKey: SettingsManager().apiKey),
+                    exerciseRepository: SwiftDataExerciseRepository(context: modelContext),
+                    workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
+                    templateRepository: SwiftDataTemplateRepository(context: modelContext),
+                    preferenceRepository: SwiftDataTrainingPreferenceRepository(context: modelContext)
+                ))
+            }
+            .tabItem { Label("Coach", systemImage: "bubble.left.and.bubble.right") }
 
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gear") }

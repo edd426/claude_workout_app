@@ -96,8 +96,9 @@ struct AnthropicServiceTests {
     @Test("ChatMessage identity is stable across equal content")
     func chatMessageIdentity() {
         let id = UUID()
-        let m1 = ChatMessage(id: id, role: .user, content: "hello")
-        let m2 = ChatMessage(id: id, role: .user, content: "hello")
+        let ts = Date()
+        let m1 = ChatMessage(id: id, role: .user, content: "hello", timestamp: ts)
+        let m2 = ChatMessage(id: id, role: .user, content: "hello", timestamp: ts)
         #expect(m1 == m2)
     }
 

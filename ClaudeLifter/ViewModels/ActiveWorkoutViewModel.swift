@@ -1,0 +1,114 @@
+import Foundation
+import Observation
+import UIKit
+
+@Observable
+@MainActor
+final class ActiveWorkoutViewModel {
+    var workout: Workout? = nil
+    var isFinished = false
+    var errorMessage: String? = nil
+    var lastCompletedSet: WorkoutSet? = nil
+
+    private let template: WorkoutTemplate
+    private let workoutRepository: any WorkoutRepository
+    private let autoFillService: any AutoFillServiceProtocol
+
+    var totalSetsCompleted: Int {
+        workout?.exercises.flatMap(\.sets).filter(\.isCompleted).count ?? 0
+    }
+
+    var totalSets: Int {
+        workout?.exercises.flatMap(\.sets).count ?? 0
+    }
+
+    init(
+        template: WorkoutTemplate,
+        workoutRepository: any WorkoutRepository,
+        autoFillService: any AutoFillServiceProtocol
+    ) {
+        self.template = template
+        self.workoutRepository = workoutRepository
+        self.autoFillService = autoFillService
+    }
+
+    func startWorkout() async {
+        let newWorkout = Workout(
+            name: template.name,
+            startedAt: .now,
+            templateId: template.id
+        )
+        for templateExercise in template.exercises.sorted(by: { $0.order < $1.order }) {
+            guard let exercise = templateExercise.exercise else { continue }
+            let we = WorkoutExercise(
+                order: templateExercise.order,
+                exercise: exercise,
+                restSeconds: templateExercise.defaultRestSeconds
+            )
+            let autoFill = try? await autoFillService.lastPerformed(exerciseId: exercise.id)
+            for i in 0..<templateExercise.defaultSets {
+                let set = WorkoutSet(
+                    order: i,
+                    weight: autoFill?.weight ?? templateExercise.defaultWeight,
+                    weightUnit: autoFill?.weightUnit ?? .kg,
+                    reps: autoFill?.reps ?? templateExercise.defaultReps
+                )
+                we.sets.append(set)
+            }
+            newWorkout.exercises.append(we)
+        }
+        do {
+            try await saveWorkout(newWorkout)
+            workout = newWorkout
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func completeSet(_ set: WorkoutSet) {
+        set.isCompleted = true
+        set.completedAt = .now
+        lastCompletedSet = set
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    func addExercise(_ exercise: Exercise) {
+        guard let workout else { return }
+        let order = workout.exercises.count
+        let we = WorkoutExercise(order: order, exercise: exercise)
+        workout.exercises.append(we)
+        for i in 0..<3 {
+            we.sets.append(WorkoutSet(order: i))
+        }
+    }
+
+    func removeExercise(_ workoutExercise: WorkoutExercise) {
+        workout?.exercises.removeAll { $0.id == workoutExercise.id }
+    }
+
+    func finishWorkout() async {
+        guard let workout else { return }
+        workout.completedAt = .now
+        workout.lastModified = .now
+        do {
+            try await saveWorkout(workout)
+            isFinished = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // Bridge @MainActor-isolated model to Sendable async repository
+    private func saveWorkout(_ w: Workout) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            Task { @MainActor in
+                do {
+                    try await self.workoutRepository.save(w)
+                    cont.resume()
+                } catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
+    }
+}

@@ -1,7 +1,8 @@
 import Foundation
 @testable import ClaudeLifter
 
-final class MockTemplateRepository: TemplateRepository, @unchecked Sendable {
+@MainActor
+final class MockTemplateRepository: TemplateRepository {
     var templates: [WorkoutTemplate] = []
     var savedTemplates: [WorkoutTemplate] = []
     var deletedTemplates: [WorkoutTemplate] = []

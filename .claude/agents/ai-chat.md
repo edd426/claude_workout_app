@@ -44,7 +44,7 @@ You depend on `data-models` agent for:
 The app uses [SwiftAnthropic](https://github.com/jamesrochabrun/SwiftAnthropic) (Swift Package Manager):
 ```swift
 // Package dependency
-.package(url: "https://github.com/jamesrochabrun/SwiftAnthropic", from: "1.0.0")
+.package(url: "https://github.com/jamesrochabrun/SwiftAnthropic", from: "2.0.0")
 ```
 
 ## Implementation Priorities

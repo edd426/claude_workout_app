@@ -7,10 +7,12 @@ struct AutoFillResult: Sendable {
     let date: Date
 }
 
-protocol AutoFillServiceProtocol: Sendable {
+@MainActor
+protocol AutoFillServiceProtocol {
     func lastPerformed(exerciseId: UUID) async throws -> AutoFillResult?
 }
 
+@MainActor
 final class AutoFillService: AutoFillServiceProtocol {
     private let workoutRepository: any WorkoutRepository
 

@@ -1,13 +1,15 @@
 import Foundation
 import SwiftData
 
-protocol TrainingPreferenceRepository: Sendable {
+@MainActor
+protocol TrainingPreferenceRepository {
     func fetchAll() async throws -> [TrainingPreference]
     func upsert(key: String, value: String, source: String?) async throws
     func delete(key: String) async throws
 }
 
-final class SwiftDataTrainingPreferenceRepository: TrainingPreferenceRepository, @unchecked Sendable {
+@MainActor
+final class SwiftDataTrainingPreferenceRepository: TrainingPreferenceRepository {
     private let context: ModelContext
 
     init(context: ModelContext) {

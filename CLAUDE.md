@@ -87,11 +87,11 @@ See `.claude/rules/` for detailed guidance on each area.
 ```bash
 # Build
 xcodebuild -scheme ClaudeLifter \
-  -destination 'platform=iOS Simulator,name=iPhone 16' build
+  -destination 'platform=iOS Simulator,name=iPhone 16e' build
 
 # Test
 xcodebuild -scheme ClaudeLifter \
-  -destination 'platform=iOS Simulator,name=iPhone 16' test
+  -destination 'platform=iOS Simulator,name=iPhone 16e' test
 
 # Skills (when available)
 /build    # Build the project

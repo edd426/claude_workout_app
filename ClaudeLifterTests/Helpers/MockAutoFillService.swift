@@ -1,7 +1,8 @@
 import Foundation
 @testable import ClaudeLifter
 
-final class MockAutoFillService: AutoFillServiceProtocol, @unchecked Sendable {
+@MainActor
+final class MockAutoFillService: AutoFillServiceProtocol {
     var resultByExerciseId: [UUID: AutoFillResult] = [:]
     var callCount = 0
     var errorToThrow: Error? = nil

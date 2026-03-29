@@ -1,14 +1,16 @@
 import Foundation
 import SwiftData
 
-protocol TemplateRepository: Sendable {
+@MainActor
+protocol TemplateRepository {
     func fetchAll() async throws -> [WorkoutTemplate]
     func fetch(id: UUID) async throws -> WorkoutTemplate?
     func save(_ template: WorkoutTemplate) async throws
     func delete(_ template: WorkoutTemplate) async throws
 }
 
-final class SwiftDataTemplateRepository: TemplateRepository, @unchecked Sendable {
+@MainActor
+final class SwiftDataTemplateRepository: TemplateRepository {
     private let context: ModelContext
 
     init(context: ModelContext) {

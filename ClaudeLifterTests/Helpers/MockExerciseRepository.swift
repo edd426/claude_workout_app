@@ -1,7 +1,8 @@
 import Foundation
 @testable import ClaudeLifter
 
-final class MockExerciseRepository: ExerciseRepository, @unchecked Sendable {
+@MainActor
+final class MockExerciseRepository: ExerciseRepository {
     var exercises: [Exercise] = []
     var searchResults: [Exercise] = []
     var filterResults: [Exercise] = []

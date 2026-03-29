@@ -504,7 +504,7 @@ common_debug = {
     'SDKROOT': 'iphoneos',
     'SWIFT_ACTIVE_COMPILATION_CONDITIONS': '"$(inherited) DEBUG"',
     'SWIFT_OPTIMIZATION_LEVEL': '"-Onone"',
-    'SWIFT_STRICT_CONCURRENCY': 'targeted',
+    'SWIFT_STRICT_CONCURRENCY': 'minimal',
 }
 
 common_release = dict(common_debug)

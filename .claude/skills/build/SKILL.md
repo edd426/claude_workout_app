@@ -13,7 +13,7 @@ Build the ClaudeLifter Xcode project.
    ```bash
    xcodebuild \
      -scheme ClaudeLifter \
-     -destination 'platform=iOS Simulator,name=iPhone 16' \
+     -destination 'platform=iOS Simulator,name=iPhone 16e' \
      build 2>&1 | tail -30
    ```
 

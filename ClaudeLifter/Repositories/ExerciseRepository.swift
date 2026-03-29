@@ -1,7 +1,8 @@
 import Foundation
 import SwiftData
 
-protocol ExerciseRepository: Sendable {
+@MainActor
+protocol ExerciseRepository {
     func fetchAll() async throws -> [Exercise]
     func fetch(id: UUID) async throws -> Exercise?
     func fetchByExternalId(_ externalId: String) async throws -> Exercise?
@@ -11,7 +12,8 @@ protocol ExerciseRepository: Sendable {
     func delete(_ exercise: Exercise) async throws
 }
 
-final class SwiftDataExerciseRepository: ExerciseRepository, @unchecked Sendable {
+@MainActor
+final class SwiftDataExerciseRepository: ExerciseRepository {
     private let context: ModelContext
 
     init(context: ModelContext) {

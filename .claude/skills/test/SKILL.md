@@ -16,7 +16,7 @@ If `$ARGUMENTS` is provided, use it to filter which tests to run (e.g., "ModelTe
    ```bash
    xcodebuild test \
      -scheme ClaudeLifter \
-     -destination 'platform=iOS Simulator,name=iPhone 16' \
+     -destination 'platform=iOS Simulator,name=iPhone 16e' \
      -only-testing:"ClaudeLifterTests/$ARGUMENTS" \
      2>&1 | tail -50
    ```
@@ -25,7 +25,7 @@ If `$ARGUMENTS` is provided, use it to filter which tests to run (e.g., "ModelTe
    ```bash
    xcodebuild test \
      -scheme ClaudeLifter \
-     -destination 'platform=iOS Simulator,name=iPhone 16' \
+     -destination 'platform=iOS Simulator,name=iPhone 16e' \
      2>&1 | tail -50
    ```
 

@@ -1,13 +1,15 @@
 import Foundation
 import SwiftData
 
-protocol ChatMessageRepository: Sendable {
+@MainActor
+protocol ChatMessageRepository {
     func save(_ message: AIChatMessage) async throws
     func fetch(workoutId: UUID?) async throws -> [AIChatMessage]
     func deleteAll(workoutId: UUID?) async throws
 }
 
-final class SwiftDataChatMessageRepository: ChatMessageRepository, @unchecked Sendable {
+@MainActor
+final class SwiftDataChatMessageRepository: ChatMessageRepository {
     private let context: ModelContext
 
     init(context: ModelContext) {

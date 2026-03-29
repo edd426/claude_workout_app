@@ -1,7 +1,8 @@
 import Foundation
 @testable import ClaudeLifter
 
-final class MockWorkoutRepository: WorkoutRepository, @unchecked Sendable {
+@MainActor
+final class MockWorkoutRepository: WorkoutRepository {
     var workouts: [Workout] = []
     var savedWorkouts: [Workout] = []
     var deletedWorkouts: [Workout] = []

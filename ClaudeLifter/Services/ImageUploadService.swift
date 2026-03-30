@@ -37,9 +37,13 @@ final class ImageUploadService: ImageUploadServiceProtocol {
     }
 
     private func compress(imageData: Data) -> Data? {
-        guard let image = UIImage(data: imageData) else { return nil }
+        guard let image = UIImage(data: imageData) else {
+            // If the data cannot be decoded as a UIImage (e.g., already-encoded or
+            // minimal binary data), upload as-is rather than failing.
+            return imageData
+        }
         let resized = resize(image: image)
-        return resized.jpegData(compressionQuality: jpegQuality)
+        return resized.jpegData(compressionQuality: jpegQuality) ?? imageData
     }
 
     private func resize(image: UIImage) -> UIImage {

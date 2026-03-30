@@ -15,15 +15,20 @@ struct CalendarViewModelTests {
         return (vm, repo)
     }
 
-    private func makeWorkoutWithSets(startedAt: Date, setCount: Int) -> Workout {
+    private func makeWorkoutWithSets(startedAt: Date, setCount: Int, context: ModelContext? = nil) -> Workout {
         let workout = Workout(
             name: "Test Workout",
             startedAt: startedAt,
             completedAt: startedAt.addingTimeInterval(3600)
         )
+        context?.insert(workout)
         for i in 0..<setCount {
+            let exercise = TestFixtures.makeExercise()
+            context?.insert(exercise)
             let set = WorkoutSet(order: i, isCompleted: true, completedAt: startedAt)
-            let we = WorkoutExercise(order: 0, exercise: TestFixtures.makeExercise())
+            context?.insert(set)
+            let we = WorkoutExercise(order: 0, exercise: exercise)
+            context?.insert(we)
             we.sets.append(set)
             workout.exercises.append(we)
         }
@@ -84,15 +89,16 @@ struct CalendarViewModelTests {
         let (vm, repo) = makeVM()
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: .now)
+        // Use calendar arithmetic to avoid DST-related off-by-one-hour bugs
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
 
         let lightWorkout = makeWorkoutWithSets(startedAt: today, setCount: 5)
-        let heavyWorkout = makeWorkoutWithSets(startedAt: today.addingTimeInterval(-86400), setCount: 25)
+        let heavyWorkout = makeWorkoutWithSets(startedAt: yesterday, setCount: 25)
         repo.workouts = [lightWorkout, heavyWorkout]
 
         await vm.loadMonth()
 
         #expect(vm.workoutDays[today] == .light)
-        let yesterday = today.addingTimeInterval(-86400)
         #expect(vm.workoutDays[yesterday] == .heavy)
     }
 

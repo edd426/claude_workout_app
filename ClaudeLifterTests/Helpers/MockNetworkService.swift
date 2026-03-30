@@ -4,6 +4,9 @@ import Foundation
 final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
     var postCallCount = 0
     var lastPostEndpoint: String?
+    var lastQueryItems: [URLQueryItem]?
+    var uploadBlobCallCount = 0
+    var downloadBlobResult: Data = Data()
     var errorToThrow: Error? = nil
 
     // Generic response to return — keyed by endpoint
@@ -24,6 +27,7 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
     }
 
     func get<R: Decodable & Sendable>(endpoint: String, queryItems: [URLQueryItem]) async throws -> R {
+        lastQueryItems = queryItems
         if let error = errorToThrow { throw error }
         guard let value = responses[endpoint] as? R else {
             throw SyncError.serverError(500)
@@ -31,18 +35,36 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
         return value
     }
 
+    // SSE chunks to emit from streamPost, keyed by endpoint
+    var streamChunks: [String: [Data]] = [:]
+    var streamError: Error?
+    var streamCallCount = 0
+    var lastStreamEndpoint: String?
+
     func streamPost(endpoint: String, body: some Encodable & Sendable) -> AsyncThrowingStream<Data, Error> {
-        AsyncThrowingStream { continuation in
+        streamCallCount += 1
+        lastStreamEndpoint = endpoint
+        let chunks = streamChunks[endpoint] ?? []
+        let error = streamError
+        return AsyncThrowingStream { continuation in
+            if let error {
+                continuation.finish(throwing: error)
+                return
+            }
+            for chunk in chunks {
+                continuation.yield(chunk)
+            }
             continuation.finish()
         }
     }
 
     func uploadBlob(url: URL, data: Data, contentType: String) async throws {
+        uploadBlobCallCount += 1
         if let error = errorToThrow { throw error }
     }
 
     func downloadBlob(url: URL) async throws -> Data {
         if let error = errorToThrow { throw error }
-        return Data()
+        return downloadBlobResult
     }
 }

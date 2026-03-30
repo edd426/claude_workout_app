@@ -2,9 +2,15 @@ import SwiftUI
 
 struct ExerciseDetailView: View {
     let exercise: Exercise
+    var uploadService: (any ImageUploadServiceProtocol)?
+
+    @State private var photoURL: String?
 
     var body: some View {
         List {
+            if let uploadService {
+                photoSection(uploadService: uploadService)
+            }
             musclesSection
             if !exercise.instructions.isEmpty {
                 instructionsSection
@@ -13,6 +19,20 @@ struct ExerciseDetailView: View {
         }
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.large)
+        .onAppear { photoURL = exercise.photoURL }
+    }
+
+    private func photoSection(uploadService: any ImageUploadServiceProtocol) -> some View {
+        Section {
+            PhotoCaptureView(
+                exercise: exercise,
+                uploadService: uploadService
+            ) { newURL in
+                photoURL = newURL
+                exercise.photoURL = newURL
+            }
+            .listRowInsets(EdgeInsets())
+        }
     }
 
     private var musclesSection: some View {

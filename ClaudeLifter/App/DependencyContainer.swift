@@ -11,6 +11,8 @@ final class DependencyContainer {
     let insightRepository: any InsightRepository
     let autoFillService: any AutoFillServiceProtocol
     let networkService: any NetworkServiceProtocol
+    let imageUploadService: any ImageUploadServiceProtocol
+    let anthropicService: any AnthropicServiceProtocol
     let syncManager: SyncManager
 
     init(modelContext: ModelContext) {
@@ -31,6 +33,15 @@ final class DependencyContainer {
         self.insightRepository = insightRepo
         self.autoFillService = AutoFillService(workoutRepository: SwiftDataWorkoutRepository(context: modelContext))
         self.networkService = network
+        self.imageUploadService = ImageUploadService(networkService: network)
+
+        // Use proxy when serverURL is configured (Phase 2), fall back to direct API key (Phase 1)
+        if !settings.serverURL.isEmpty {
+            self.anthropicService = ProxiedAnthropicService(networkService: network)
+        } else {
+            self.anthropicService = AnthropicService(apiKey: settings.apiKey)
+        }
+
         self.syncManager = SyncManager(
             workoutRepository: workoutRepo,
             templateRepository: templateRepo,

@@ -47,9 +47,23 @@ struct SettingsView: View {
         }
     }
 
+    // @needs:ui-viewmodels — serverURL field added for Phase 2 proxy support
+    @ViewBuilder
     private var apiKeySection: some View {
-        Section("Anthropic API Key") {
-            SecureField("sk-ant-...", text: $vm.apiKey)
+        Section {
+            TextField("https://func-workout-prod.azurewebsites.net", text: $vm.serverURL)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+        } header: {
+            Text("Server URL")
+        } footer: {
+            Text("When set, chat is routed through your Azure Function. Leave empty to use the API key below (Phase 1 mode).")
+                .font(.caption)
+        }
+
+        Section("Server API Key") {
+            SecureField("sk-ant-... or Azure function key", text: $vm.apiKey)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
         }

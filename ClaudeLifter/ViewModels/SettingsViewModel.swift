@@ -13,6 +13,10 @@ final class SettingsViewModel {
     var apiKey: String {
         didSet { settingsManager.apiKey = apiKey }
     }
+    // @needs:ui-viewmodels — serverURL added here to support Phase 2 proxy selection
+    var serverURL: String {
+        didSet { settingsManager.serverURL = serverURL }
+    }
 
     let availableModels = AIModel.allCases
 
@@ -23,5 +27,6 @@ final class SettingsViewModel {
         self.weightUnit = settingsManager.weightUnit
         self.aiModel = settingsManager.aiModel
         self.apiKey = settingsManager.apiKey
+        self.serverURL = settingsManager.serverURL
     }
 }

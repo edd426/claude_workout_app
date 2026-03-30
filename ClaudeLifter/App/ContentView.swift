@@ -5,6 +5,8 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
+    let dependencies: DependencyContainer
+
     var body: some View {
         TabView {
             HomeView()
@@ -13,12 +15,12 @@ struct ContentView: View {
             HistoryListView()
                 .tabItem { Label("History", systemImage: "calendar") }
 
-            ExerciseLibraryView()
+            ExerciseLibraryView(uploadService: dependencies.imageUploadService)
                 .tabItem { Label("Exercises", systemImage: "dumbbell") }
 
             NavigationStack {
                 ChatView(viewModel: ChatViewModel(
-                    anthropicService: AnthropicService(apiKey: SettingsManager().apiKey),
+                    anthropicService: dependencies.anthropicService,
                     exerciseRepository: SwiftDataExerciseRepository(context: modelContext),
                     workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
                     templateRepository: SwiftDataTemplateRepository(context: modelContext),

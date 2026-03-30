@@ -6,16 +6,20 @@ import BackgroundTasks
 struct ClaudeLifterApp: App {
     let modelContainer: ModelContainer
     let appState = AppState()
+    // Stored as a property so services (sync, anthropic) persist for the app lifetime
+    let dependencies: DependencyContainer
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         do {
-            modelContainer = try ModelContainer(
+            let container = try ModelContainer(
                 for: Exercise.self, ExerciseTag.self, WorkoutSet.self,
                 WorkoutExercise.self, TemplateExercise.self, Workout.self,
                 WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
                 TrainingPreference.self
             )
+            modelContainer = container
+            dependencies = DependencyContainer(modelContext: container.mainContext)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -28,16 +32,15 @@ struct ClaudeLifterApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(dependencies: dependencies)
                 .modelContainer(modelContainer)
                 .environment(appState)
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task { @MainActor in
-                    let container = DependencyContainer(modelContext: modelContainer.mainContext)
-                    container.syncManager.startMonitoring()
-                    await container.syncManager.syncIfNeeded()
+                    dependencies.syncManager.startMonitoring()
+                    await dependencies.syncManager.syncIfNeeded()
                 }
             }
         }

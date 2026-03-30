@@ -31,6 +31,11 @@ final class MockTemplateRepository: TemplateRepository {
         }
     }
 
+    func fetchPending() async throws -> [WorkoutTemplate] {
+        if let error = errorToThrow { throw error }
+        return templates.filter { $0.syncStatus == .pending }
+    }
+
     func delete(_ template: WorkoutTemplate) async throws {
         deleteCallCount += 1
         if let error = errorToThrow { throw error }

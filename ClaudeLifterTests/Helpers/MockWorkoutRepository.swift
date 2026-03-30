@@ -47,6 +47,16 @@ final class MockWorkoutRepository: WorkoutRepository {
         }
     }
 
+    func fetchPending() async throws -> [Workout] {
+        if let error = errorToThrow { throw error }
+        return workouts.filter { $0.syncStatus == .pending }
+    }
+
+    func fetchByDateRange(from: Date, to: Date) async throws -> [Workout] {
+        if let error = errorToThrow { throw error }
+        return workouts.filter { $0.startedAt >= from && $0.startedAt <= to }
+    }
+
     func delete(_ workout: Workout) async throws {
         if let error = errorToThrow { throw error }
         deletedWorkouts.append(workout)

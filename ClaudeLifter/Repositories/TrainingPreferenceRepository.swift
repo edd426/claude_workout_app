@@ -6,6 +6,7 @@ protocol TrainingPreferenceRepository {
     func fetchAll() async throws -> [TrainingPreference]
     func upsert(key: String, value: String, source: String?) async throws
     func delete(key: String) async throws
+    func fetchPending() async throws -> [TrainingPreference]
 }
 
 @MainActor
@@ -47,5 +48,10 @@ final class SwiftDataTrainingPreferenceRepository: TrainingPreferenceRepository 
             context.delete(pref)
         }
         try context.save()
+    }
+
+    func fetchPending() async throws -> [TrainingPreference] {
+        let all = try context.fetch(FetchDescriptor<TrainingPreference>())
+        return all.filter { $0.syncStatus == .pending }
     }
 }

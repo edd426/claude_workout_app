@@ -11,6 +11,9 @@ final class WorkoutTemplate {
     var lastPerformedAt: Date?
     var timesPerformed: Int
 
+    var syncStatus: SyncStatus = SyncStatus.pending
+    var lastModified: Date = Date.now
+
     @Relationship(deleteRule: .cascade)
     var exercises: [TemplateExercise]
 
@@ -21,7 +24,9 @@ final class WorkoutTemplate {
         createdAt: Date = .now,
         updatedAt: Date = .now,
         lastPerformedAt: Date? = nil,
-        timesPerformed: Int = 0
+        timesPerformed: Int = 0,
+        syncStatus: SyncStatus = .pending,
+        lastModified: Date = .now
     ) {
         self.id = id
         self.name = name
@@ -30,6 +35,8 @@ final class WorkoutTemplate {
         self.updatedAt = updatedAt
         self.lastPerformedAt = lastPerformedAt
         self.timesPerformed = timesPerformed
+        self.syncStatus = syncStatus
+        self.lastModified = lastModified
         self.exercises = []
     }
 }

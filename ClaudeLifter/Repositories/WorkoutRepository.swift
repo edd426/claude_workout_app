@@ -11,6 +11,8 @@ protocol WorkoutRepository {
     func recentSets(for exerciseId: UUID, limit: Int) async throws -> [WorkoutSet]
     /// Returns completed sets from the single most recent workout containing the exercise.
     func lastSessionSets(for exerciseId: UUID) async throws -> [WorkoutSet]
+    func fetchPending() async throws -> [Workout]
+    func fetchByDateRange(from: Date, to: Date) async throws -> [Workout]
     func save(_ workout: Workout) async throws
     func delete(_ workout: Workout) async throws
 }
@@ -78,6 +80,19 @@ final class SwiftDataWorkoutRepository: WorkoutRepository {
             }
         }
         return []
+    }
+
+    func fetchPending() async throws -> [Workout] {
+        let all = try context.fetch(FetchDescriptor<Workout>())
+        return all.filter { $0.syncStatus == .pending }
+    }
+
+    func fetchByDateRange(from: Date, to: Date) async throws -> [Workout] {
+        let descriptor = FetchDescriptor<Workout>(
+            predicate: #Predicate { $0.startedAt >= from && $0.startedAt <= to },
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+        )
+        return try context.fetch(descriptor)
     }
 
     func save(_ workout: Workout) async throws {

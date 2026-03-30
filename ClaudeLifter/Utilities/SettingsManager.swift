@@ -29,6 +29,8 @@ final class SettingsManager {
         static let weightUnit = "weightUnit"
         static let aiModel = "aiModel"
         static let apiKey = "apiKey"
+        static let serverURL = "serverURL"
+        static let lastSyncTimestamp = "lastSyncTimestamp"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -56,5 +58,15 @@ final class SettingsManager {
     var apiKey: String {
         get { defaults.string(forKey: Key.apiKey) ?? "" }
         set { defaults.set(newValue, forKey: Key.apiKey) }
+    }
+
+    var serverURL: String {
+        get { defaults.string(forKey: Key.serverURL) ?? "" }
+        set { defaults.set(newValue, forKey: Key.serverURL) }
+    }
+
+    var lastSyncTimestamp: Date? {
+        get { defaults.object(forKey: Key.lastSyncTimestamp) as? Date }
+        set { defaults.set(newValue, forKey: Key.lastSyncTimestamp) }
     }
 }

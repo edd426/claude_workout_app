@@ -9,6 +9,8 @@ final class TrainingPreference {
     var createdAt: Date
     var updatedAt: Date
     var source: String?
+    var syncStatus: SyncStatus = SyncStatus.pending
+    var lastModified: Date = Date.now
 
     init(
         id: UUID = UUID(),
@@ -16,7 +18,9 @@ final class TrainingPreference {
         value: String,
         createdAt: Date = .now,
         updatedAt: Date = .now,
-        source: String? = nil
+        source: String? = nil,
+        syncStatus: SyncStatus = .pending,
+        lastModified: Date = .now
     ) {
         self.id = id
         self.key = key
@@ -24,5 +28,7 @@ final class TrainingPreference {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.source = source
+        self.syncStatus = syncStatus
+        self.lastModified = lastModified
     }
 }

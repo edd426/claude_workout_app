@@ -6,6 +6,7 @@ protocol ChatMessageRepository {
     func save(_ message: AIChatMessage) async throws
     func fetch(workoutId: UUID?) async throws -> [AIChatMessage]
     func deleteAll(workoutId: UUID?) async throws
+    func fetchPending() async throws -> [AIChatMessage]
 }
 
 @MainActor
@@ -38,5 +39,10 @@ final class SwiftDataChatMessageRepository: ChatMessageRepository {
             context.delete(message)
         }
         try context.save()
+    }
+
+    func fetchPending() async throws -> [AIChatMessage] {
+        let all = try context.fetch(FetchDescriptor<AIChatMessage>())
+        return all.filter { $0.syncStatus == .pending }
     }
 }

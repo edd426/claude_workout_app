@@ -47,24 +47,21 @@ Full specification: @SPEC.md
 
 ## Current Phase
 
-**Phase 1 — MVP: Local App + Claude Chat**
+**Phase 2 — Cloud Sync + Images** (Phase 1 complete: 166/166 tests passing)
 
-- [ ] Xcode project setup (targets, test targets, SPM dependencies)
-- [ ] SwiftData models (all entities from SPEC.md §3)
-- [ ] Exercise library import (free-exercise-db JSON → SwiftData)
-- [ ] Repository protocols + SwiftData implementations
-- [ ] AutoFill service (last-session weight/reps lookup)
-- [ ] Template CRUD (create, edit, delete workout templates)
-- [ ] Workout logging (start from template, log sets, mark complete)
-- [ ] Rest timer (in-app countdown, chime, haptics)
-- [ ] Exercise library browser (search, filter by tags)
-- [ ] Anthropic service + chat ViewModel
-- [ ] Chat tab UI (streaming responses, tool action cards)
-- [ ] Claude tools (get_exercise_history, suggest_weight, add/remove exercise)
-- [ ] Basic history list (past workouts, per-exercise history)
-- [ ] Settings (weight unit, model picker)
+- [ ] Azure Bicep infrastructure (Cosmos DB, Storage, Function App)
+- [ ] Azure Functions API (sync/pull, sync/push, images/sas, chat proxy, insights, health)
+- [ ] Model updates (syncStatus/lastModified on WorkoutTemplate, ProactiveInsight, TrainingPreference)
+- [ ] Sync DTOs + SyncMapper (Codable model ↔ JSON conversion)
+- [ ] NetworkService (URLSession wrapper with auth)
+- [ ] SyncManager (NWPathMonitor, pull/push, BGAppRefreshTask, last-write-wins)
+- [ ] API key proxy (Anthropic key moves from device to Azure Function)
+- [ ] Calendar heatmap (monthly view with workout intensity shading)
+- [ ] Photo capture (PhotosPicker + Azure Blob upload via SAS tokens)
+- [ ] InsightRepository (ProactiveInsight CRUD)
+- [ ] Settings updates (server URL, sync status indicator)
 
-See SPEC.md §11 for Phase 2 (Cloud + Images) and Phase 3 (MCP + Advanced AI).
+See SPEC.md §7 for Azure Backend details, §11 for Phase 2 scope.
 
 ## Development Methodology
 
@@ -104,11 +101,11 @@ xcodebuild -scheme ClaudeLifter \
 
 | Agent | Owns | Tests |
 |-------|------|-------|
-| `data-models` | Models/, Repositories/, Services/AutoFill*, Services/ExerciseImport*, Resources/ | ModelTests/, RepositoryTests/, ServiceTests/AutoFill*, ServiceTests/ExerciseImport* |
-| `ui-viewmodels` | Views/, ViewModels/ (except Chat*), App/ | ViewModelTests/ (except Chat*) |
-| `ai-chat` | Services/Anthropic*, Services/ChatTools/, ViewModels/Chat*, Views/Chat/ | ServiceTests/Anthropic*, ViewModelTests/Chat* |
+| `data-models` | Models/, Repositories/, Services/AutoFill*, Services/ExerciseImport*, Services/Sync/, Services/ImageUpload*, Resources/ | ModelTests/, RepositoryTests/, ServiceTests/AutoFill*, ServiceTests/ExerciseImport*, ServiceTests/Sync*, ServiceTests/ImageUpload* |
+| `ui-viewmodels` | Views/, ViewModels/ (except Chat*), App/, Services/RestTimerService | ViewModelTests/ (except Chat*) |
+| `ai-chat` | Services/Anthropic*, Services/Proxied*, Services/ChatTools/, ViewModels/Chat*, Views/Chat/ | ServiceTests/Anthropic*, ServiceTests/Proxied*, ViewModelTests/Chat* |
 | `reviewer` | Read-only review, no code changes | — |
-| `infra` (Phase 2+) | infra/, workout-mcp/, Azure Functions | — |
+| `infra` | infra/ (Bicep IaC + Azure Functions TypeScript) | infra/functions/tests/ |
 
 Dependency order: `data-models` first → `ui-viewmodels` + `ai-chat` in parallel → `reviewer` last.
 See `.claude/AGENT_COORDINATION.md` for coordination rules.

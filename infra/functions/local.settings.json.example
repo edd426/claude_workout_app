@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "COSMOS_CONNECTION_STRING": "<your-cosmos-connection-string>",
+    "STORAGE_CONNECTION_STRING": "<your-storage-connection-string>",
+    "ANTHROPIC_API_KEY": "<your-anthropic-api-key>",
+    "API_KEY": "<your-shared-api-key>",
+    "ANTHROPIC_MODEL_DEFAULT": "claude-haiku-4-5-20251001"
+  }
+}

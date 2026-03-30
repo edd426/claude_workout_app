@@ -16,26 +16,25 @@ The owning agent picks up `@needs:` tags and implements them.
 ## Dependency Order
 
 ```
-Phase 1 execution:
+Phase 2 execution:
 
-  data-models (first — no dependencies)
-       │
-       ├── Produces: @Model classes, repository protocols, test helpers
-       │
-       ▼
-  ui-viewmodels ─────────── ai-chat
-  (parallel)                (parallel)
-       │                        │
-       ├── Produces: Views,     ├── Produces: Anthropic service,
-       │   ViewModels, timer    │   chat UI, tool definitions
+  infra (WP-1: Bicep) ──── data-models (WP-3: Models/DTOs/Repos)
        │                        │
        ▼                        ▼
+  infra (WP-2: Functions) ─ data-models (WP-4: Sync layer)
+       │                        │
+       ▼                        ├──────────────────┐
+  ┌────┴───────────┐            │                  │
+  │                │            ▼                  ▼
+  ai-chat (WP-5)  │    ui-viewmodels (WP-6)  ui-viewmodels (WP-7)
+  Anthropic proxy  │    Calendar heatmap      Photo capture
+  │                │            │                  │
+  ▼                ▼            ▼                  ▼
               reviewer (last)
-              Read-only review
 ```
 
-1. `data-models` runs first — it defines all model types and repository protocols that others depend on
-2. `ui-viewmodels` and `ai-chat` run in parallel — they depend on data-models but not on each other
+1. `infra` and `data-models` start in parallel (Sprint 1-2)
+2. `ai-chat`, `ui-viewmodels` run in parallel after data-models completes (Sprint 3)
 3. `reviewer` runs last — reviews all committed code
 
 ## Commit Convention

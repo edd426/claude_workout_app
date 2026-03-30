@@ -1,0 +1,26 @@
+{
+  "name": "claudelifter-functions",
+  "version": "2.0.0",
+  "description": "Azure Functions API for ClaudeLifter workout app",
+  "main": "dist/src/functions/*.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "clean": "rm -rf dist",
+    "prestart": "npm run build",
+    "start": "func start"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@azure/cosmos": "^4.2.0",
+    "@azure/functions": "^4.6.0",
+    "@azure/storage-blob": "^12.26.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "~5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -36,3 +36,6 @@ workout-mcp/dist/
 # Azure (Phase 2)
 .azure/
 local.settings.json
+infra/functions/node_modules/
+infra/functions/dist/
+infra/functions/.funcignore

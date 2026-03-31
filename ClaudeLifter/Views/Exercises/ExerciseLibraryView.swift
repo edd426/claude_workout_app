@@ -6,6 +6,7 @@ struct ExerciseLibraryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: ExerciseLibraryViewModel?
     @State private var searchTask: Task<Void, Never>? = nil
+    @State private var showCreateExercise = false
 
     var selectionMode: Bool = false
     var onSelect: ((Exercise) -> Void)? = nil
@@ -27,6 +28,19 @@ struct ExerciseLibraryView: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
                     }
+                } else {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            showCreateExercise = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showCreateExercise) {
+                CreateExerciseView {
+                    Task { await vm?.loadExercises() }
                 }
             }
         }
@@ -44,14 +58,17 @@ struct ExerciseLibraryView: View {
         VStack(spacing: 0) {
             FilterChipsView(
                 categories: vm.filterCategories,
-                selectedCategory: vm.selectedCategory,
-                selectedValue: vm.selectedValue,
+                activeFilters: vm.activeFilters,
                 onSelect: { cat, val in
                     vm.selectFilter(category: cat, value: val)
                     Task { await vm.loadExercises() }
                 },
-                onClear: {
-                    vm.clearFilter()
+                onRemove: { cat in
+                    vm.removeFilter(category: cat)
+                    Task { await vm.loadExercises() }
+                },
+                onClearAll: {
+                    vm.clearFilters()
                     Task { await vm.loadExercises() }
                 }
             )

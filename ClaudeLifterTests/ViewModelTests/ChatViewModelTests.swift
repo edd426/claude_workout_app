@@ -205,6 +205,121 @@ struct ChatViewModelTests {
         withExtendedLifetime(vmContainer) {}
     }
 
+    // MARK: - Confirmation Flow
+
+    @Test("create_template tool triggers confirmation flow")
+    func createTemplateToolTriggersPendingConfirmation() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(bench)
+        try context.save()
+
+        let mock = MockAnthropicService()
+        // First call: tool use event. Second call: follow-up text after tool result.
+        mock.stubbedEvents = [
+            .toolUse(id: "t1", name: "create_template", inputJSON: """
+            {"template_name": "Push Day", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
+            """),
+            .complete,
+            .text("I've prepared a template for your review."),
+            .complete
+        ]
+
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
+        )
+
+        await vm.sendMessage("Create a push day template")
+
+        #expect(vm.pendingConfirmation != nil)
+        #expect(vm.pendingConfirmation?.toolName == "create_template")
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Confirming pending action saves the template")
+    func confirmPendingActionSavesTemplate() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(bench)
+        try context.save()
+
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [
+            .toolUse(id: "t1", name: "create_template", inputJSON: """
+            {"template_name": "My Template", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
+            """),
+            .complete,
+            .text("Template ready."),
+            .complete
+        ]
+
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: templateRepo,
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
+        )
+
+        await vm.sendMessage("Create a template")
+        #expect(vm.pendingConfirmation != nil)
+
+        await vm.confirmPendingAction()
+
+        let saved = try await templateRepo.fetchAll()
+        #expect(saved.contains { $0.name == "My Template" })
+        #expect(vm.pendingConfirmation == nil)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Canceling pending action does not save template")
+    func cancelPendingActionDoesNotSave() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(bench)
+        try context.save()
+
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [
+            .toolUse(id: "t1", name: "create_template", inputJSON: """
+            {"template_name": "Cancelled Template", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
+            """),
+            .complete,
+            .text("Template ready."),
+            .complete
+        ]
+
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: templateRepo,
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
+        )
+
+        await vm.sendMessage("Create a template")
+        #expect(vm.pendingConfirmation != nil)
+
+        vm.cancelPendingAction()
+
+        let saved = try await templateRepo.fetchAll()
+        #expect(saved.isEmpty)
+        #expect(vm.pendingConfirmation == nil)
+        withExtendedLifetime(container) {}
+    }
+
     // MARK: - System Prompt
 
     @Test("System prompt includes training preferences")

@@ -1,6 +1,15 @@
 import Foundation
 import Observation
 
+// MARK: - PendingConfirmation
+
+struct PendingConfirmation: Identifiable {
+    let id = UUID()
+    let toolName: String
+    let description: String
+    let onConfirm: () async throws -> Void
+}
+
 // MARK: - ChatViewModel
 
 @Observable
@@ -14,6 +23,7 @@ final class ChatViewModel {
     var isLoading: Bool = false
     var errorMessage: String?
     var activeWorkoutContext: String?
+    var pendingConfirmation: PendingConfirmation?
 
     // MARK: - Dependencies
 
@@ -58,7 +68,10 @@ final class ChatViewModel {
             GetRecentWorkoutsTool(),
             SuggestWeightTool(),
             AddExerciseTool(),
-            RemoveExerciseTool()
+            RemoveExerciseTool(),
+            CreateTemplateTool(),
+            CreateProgramTool(),
+            ModifyTemplateTool()
         ]
     }
 
@@ -85,6 +98,20 @@ final class ChatViewModel {
         currentStreamingText = ""
         errorMessage = nil
         isLoading = false
+    }
+
+    func confirmPendingAction() async {
+        guard let confirmation = pendingConfirmation else { return }
+        pendingConfirmation = nil
+        do {
+            try await confirmation.onConfirm()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func cancelPendingAction() {
+        pendingConfirmation = nil
     }
 
     // MARK: - Private
@@ -192,6 +219,82 @@ final class ChatViewModel {
         guard let tool = tools.first(where: { type(of: $0).toolName == name }) else {
             return "Error: unknown tool '\(name)'"
         }
+
+        // Confirmation-gated tools: execute for summary, then set pendingConfirmation
+        if name == CreateTemplateTool.toolName {
+            let createTool = CreateTemplateTool()
+            do {
+                let summary = try await createTool.execute(inputJSON: inputJSON, context: context)
+                let capturedInputJSON = inputJSON
+                let capturedExerciseRepo = exerciseRepository
+                let capturedTemplateRepo = templateRepository
+                pendingConfirmation = PendingConfirmation(
+                    toolName: name,
+                    description: summary,
+                    onConfirm: {
+                        guard let template = try await createTool.buildTemplate(
+                            inputJSON: capturedInputJSON,
+                            exerciseRepository: capturedExerciseRepo
+                        ) else { return }
+                        try await capturedTemplateRepo.save(template)
+                    }
+                )
+                return summary
+            } catch {
+                return "Tool error: \(error.localizedDescription)"
+            }
+        }
+
+        if name == CreateProgramTool.toolName {
+            let programTool = CreateProgramTool()
+            do {
+                let summary = try await programTool.execute(inputJSON: inputJSON, context: context)
+                let capturedInputJSON = inputJSON
+                let capturedExerciseRepo = exerciseRepository
+                let capturedTemplateRepo = templateRepository
+                pendingConfirmation = PendingConfirmation(
+                    toolName: name,
+                    description: summary,
+                    onConfirm: {
+                        let templates = try await programTool.buildTemplates(
+                            inputJSON: capturedInputJSON,
+                            exerciseRepository: capturedExerciseRepo
+                        )
+                        for template in templates {
+                            try await capturedTemplateRepo.save(template)
+                        }
+                    }
+                )
+                return summary
+            } catch {
+                return "Tool error: \(error.localizedDescription)"
+            }
+        }
+
+        if name == ModifyTemplateTool.toolName {
+            let modifyTool = ModifyTemplateTool()
+            do {
+                let summary = try await modifyTool.execute(inputJSON: inputJSON, context: context)
+                let capturedInputJSON = inputJSON
+                let capturedExerciseRepo = exerciseRepository
+                let capturedTemplateRepo = templateRepository
+                pendingConfirmation = PendingConfirmation(
+                    toolName: name,
+                    description: summary,
+                    onConfirm: {
+                        _ = try await modifyTool.applyAndSave(
+                            inputJSON: capturedInputJSON,
+                            templateRepository: capturedTemplateRepo,
+                            exerciseRepository: capturedExerciseRepo
+                        )
+                    }
+                )
+                return summary
+            } catch {
+                return "Tool error: \(error.localizedDescription)"
+            }
+        }
+
         do {
             return try await tool.execute(inputJSON: inputJSON, context: context)
         } catch {

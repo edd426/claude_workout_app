@@ -2,10 +2,10 @@ import SwiftUI
 
 struct FilterChipsView: View {
     let categories: [String]
-    let selectedCategory: String?
-    let selectedValue: String?
+    let activeFilters: [String: String]
     let onSelect: (String, String) -> Void
-    let onClear: () -> Void
+    let onRemove: (String) -> Void
+    let onClearAll: () -> Void
 
     private let categoryValues: [String: [String]] = [
         "muscle_group": ["chest", "back", "shoulders", "biceps", "triceps", "quadriceps", "hamstrings", "glutes", "calves", "abs"],
@@ -19,8 +19,9 @@ struct FilterChipsView: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if selectedCategory != nil {
-                    clearChip
+                if !activeFilters.isEmpty {
+                    clearAllChip
+                    activeFilterChips
                 }
                 ForEach(categories, id: \.self) { category in
                     categoryChip(category)
@@ -31,14 +32,38 @@ struct FilterChipsView: View {
         }
     }
 
-    private var clearChip: some View {
-        Button("Clear") { onClear() }
+    private var clearAllChip: some View {
+        Button("Clear All") { onClearAll() }
             .font(.caption)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Color.orange.opacity(0.2))
             .foregroundStyle(.orange)
             .cornerRadius(16)
+    }
+
+    private var activeFilterChips: some View {
+        ForEach(activeFilters.sorted(by: { $0.key < $1.key }), id: \.key) { category, value in
+            activeFilterChip(category: category, value: value)
+        }
+    }
+
+    private func activeFilterChip(category: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text("\(category.replacingOccurrences(of: "_", with: " ").capitalized): \(value.replacingOccurrences(of: "_", with: " ").capitalized)")
+                .font(.caption)
+            Button {
+                onRemove(category)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.blue.opacity(0.2))
+        .foregroundStyle(.blue)
+        .cornerRadius(16)
     }
 
     private func categoryChip(_ category: String) -> some View {
@@ -52,8 +77,8 @@ struct FilterChipsView: View {
         .font(.caption)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(selectedCategory == category ? Color.blue.opacity(0.2) : Color(uiColor: .secondarySystemBackground))
-        .foregroundStyle(selectedCategory == category ? .blue : .primary)
+        .background(activeFilters[category] != nil ? Color.blue.opacity(0.1) : Color(uiColor: .secondarySystemBackground))
+        .foregroundStyle(activeFilters[category] != nil ? .blue : .primary)
         .cornerRadius(16)
     }
 }

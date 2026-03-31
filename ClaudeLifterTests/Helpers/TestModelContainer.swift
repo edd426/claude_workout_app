@@ -8,7 +8,7 @@ func makeTestContainer() throws -> ModelContainer {
         for: Exercise.self, ExerciseTag.self, WorkoutSet.self,
         WorkoutExercise.self, TemplateExercise.self, Workout.self,
         WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
-        TrainingPreference.self,
+        TrainingPreference.self, PersonalRecord.self,
         configurations: config
     )
 }

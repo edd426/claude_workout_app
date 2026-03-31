@@ -181,4 +181,42 @@ struct ActiveWorkoutViewModelTests {
         #expect(vm.workout?.exercises.count == 0)
         #expect(template.exercises.count == 1)
     }
+
+    @Test("ad-hoc workout starts with no exercises")
+    func adHocWorkoutStartsWithNoExercises() async throws {
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: workoutRepo,
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        #expect(vm.workout != nil)
+        #expect(vm.workout?.exercises.isEmpty == true)
+    }
+
+    @Test("ad-hoc workout has the provided custom name")
+    func adHocWorkoutHasCustomName() async throws {
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        #expect(vm.workout?.name == "Quick Workout")
+    }
+
+    @Test("ad-hoc workout has no templateId")
+    func adHocWorkoutHasNoTemplateId() async throws {
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        #expect(vm.workout?.templateId == nil)
+    }
 }

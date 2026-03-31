@@ -18,6 +18,21 @@ struct ChatView: View {
         }
         .navigationTitle("Coach")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            viewModel.pendingConfirmation?.description ?? "",
+            isPresented: .init(
+                get: { viewModel.pendingConfirmation != nil },
+                set: { if !$0 { viewModel.cancelPendingAction() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Save") {
+                Task { await viewModel.confirmPendingAction() }
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelPendingAction()
+            }
+        }
     }
 
     // MARK: - Subviews

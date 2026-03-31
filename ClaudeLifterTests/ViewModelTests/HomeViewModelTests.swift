@@ -41,4 +41,33 @@ struct HomeViewModelTests {
         #expect(vm.templates.isEmpty)
         #expect(vm.errorMessage == nil)
     }
+
+    @Test("createAdHocWorkout returns workout with Quick Workout name")
+    func createAdHocWorkoutReturnsNamedWorkout() async throws {
+        let workoutRepo = MockWorkoutRepository()
+        let vm = HomeViewModel(
+            templateRepository: MockTemplateRepository(),
+            workoutRepository: workoutRepo
+        )
+
+        let workout = try await vm.createAdHocWorkout()
+
+        #expect(workout.name == "Quick Workout")
+        #expect(workout.templateId == nil)
+        #expect(workoutRepo.saveCallCount == 1)
+    }
+
+    @Test("createAdHocWorkout saves workout to repository")
+    func createAdHocWorkoutSavesToRepository() async throws {
+        let workoutRepo = MockWorkoutRepository()
+        let vm = HomeViewModel(
+            templateRepository: MockTemplateRepository(),
+            workoutRepository: workoutRepo
+        )
+
+        _ = try await vm.createAdHocWorkout()
+
+        #expect(workoutRepo.savedWorkouts.count == 1)
+        #expect(workoutRepo.savedWorkouts.first?.name == "Quick Workout")
+    }
 }

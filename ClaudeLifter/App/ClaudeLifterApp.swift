@@ -16,7 +16,7 @@ struct ClaudeLifterApp: App {
                 for: Exercise.self, ExerciseTag.self, WorkoutSet.self,
                 WorkoutExercise.self, TemplateExercise.self, Workout.self,
                 WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
-                TrainingPreference.self
+                TrainingPreference.self, PersonalRecord.self
             )
             modelContainer = container
             dependencies = DependencyContainer(modelContext: container.mainContext)

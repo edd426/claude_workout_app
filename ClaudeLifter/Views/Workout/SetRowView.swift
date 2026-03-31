@@ -6,6 +6,11 @@ struct SetRowView: View {
 
     @State private var weight: Double
     @State private var reps: Int
+    @FocusState private var focusedField: FocusField?
+
+    private enum FocusField {
+        case weight, reps
+    }
 
     init(set: WorkoutSet, onComplete: @escaping (WorkoutSet) -> Void) {
         self.set = set
@@ -26,6 +31,12 @@ struct SetRowView: View {
         .contentShape(Rectangle())
         .background(set.isCompleted ? Color.green.opacity(0.1) : Color.clear)
         .cornerRadius(8)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedField = nil }
+            }
+        }
     }
 
     private var setNumberLabel: some View {
@@ -41,6 +52,7 @@ struct SetRowView: View {
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.center)
                 .frame(width: 60)
+                .focused($focusedField, equals: .weight)
                 .onChange(of: weight) { _, v in set.weight = v }
             Text(set.weightUnit.rawValue)
                 .font(.caption)
@@ -53,11 +65,13 @@ struct SetRowView: View {
             .keyboardType(.numberPad)
             .multilineTextAlignment(.center)
             .frame(width: 44)
+            .focused($focusedField, equals: .reps)
             .onChange(of: reps) { _, v in set.reps = v }
     }
 
     private var completeButton: some View {
         Button {
+            focusedField = nil
             set.weight = weight
             set.reps = reps
             onComplete(set)

@@ -64,6 +64,7 @@ struct ActiveWorkoutView: View {
                 .padding()
                 .padding(.bottom, 80)
             }
+            .scrollDismissesKeyboard(.interactively)
 
             if showRestTimer {
                 RestTimerOverlayView(durationSeconds: restDuration) {

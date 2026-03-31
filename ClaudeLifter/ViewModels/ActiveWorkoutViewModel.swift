@@ -10,7 +10,8 @@ final class ActiveWorkoutViewModel {
     var errorMessage: String? = nil
     var lastCompletedSet: WorkoutSet? = nil
 
-    private let template: WorkoutTemplate
+    private let template: WorkoutTemplate?
+    private let adHocName: String?
     private let workoutRepository: any WorkoutRepository
     private let autoFillService: any AutoFillServiceProtocol
 
@@ -28,11 +29,41 @@ final class ActiveWorkoutViewModel {
         autoFillService: any AutoFillServiceProtocol
     ) {
         self.template = template
+        self.adHocName = nil
+        self.workoutRepository = workoutRepository
+        self.autoFillService = autoFillService
+    }
+
+    init(
+        adHocName: String,
+        workoutRepository: any WorkoutRepository,
+        autoFillService: any AutoFillServiceProtocol
+    ) {
+        self.template = nil
+        self.adHocName = adHocName
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
     }
 
     func startWorkout() async {
+        if let template {
+            await startFromTemplate(template)
+        } else if let adHocName {
+            await startAdHoc(name: adHocName)
+        }
+    }
+
+    private func startAdHoc(name: String) async {
+        let newWorkout = Workout(name: name, startedAt: .now, templateId: nil)
+        do {
+            try await saveWorkout(newWorkout)
+            workout = newWorkout
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func startFromTemplate(_ template: WorkoutTemplate) async {
         let newWorkout = Workout(
             name: template.name,
             startedAt: .now,

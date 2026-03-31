@@ -9,9 +9,11 @@ final class HomeViewModel {
     var errorMessage: String? = nil
 
     private let templateRepository: any TemplateRepository
+    private let workoutRepository: (any WorkoutRepository)?
 
-    init(templateRepository: any TemplateRepository) {
+    init(templateRepository: any TemplateRepository, workoutRepository: (any WorkoutRepository)? = nil) {
         self.templateRepository = templateRepository
+        self.workoutRepository = workoutRepository
     }
 
     func loadTemplates() async {
@@ -24,4 +26,18 @@ final class HomeViewModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    @discardableResult
+    func createAdHocWorkout() async throws -> Workout {
+        guard let workoutRepository else {
+            throw HomeViewModelError.noWorkoutRepository
+        }
+        let workout = Workout(name: "Quick Workout", startedAt: .now, templateId: nil)
+        try await workoutRepository.save(workout)
+        return workout
+    }
+}
+
+enum HomeViewModelError: Error {
+    case noWorkoutRepository
 }

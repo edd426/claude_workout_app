@@ -6,8 +6,7 @@ import Observation
 final class ExerciseLibraryViewModel {
     var exercises: [Exercise] = []
     var searchQuery = ""
-    var selectedCategory: String? = nil
-    var selectedValue: String? = nil
+    var activeFilters: [String: String] = [:]
     var isLoading = false
     var errorMessage: String? = nil
 
@@ -24,10 +23,16 @@ final class ExerciseLibraryViewModel {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            if let category = selectedCategory, let value = selectedValue {
-                exercises = try await exerciseRepository.filter(category: category, value: value)
-            } else {
+            if activeFilters.isEmpty {
                 exercises = try await exerciseRepository.fetchAll()
+            } else {
+                var all = try await exerciseRepository.fetchAll()
+                for (category, value) in activeFilters {
+                    all = all.filter { exercise in
+                        exercise.tags.contains { $0.category == category && $0.value == value }
+                    }
+                }
+                exercises = all
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -47,12 +52,14 @@ final class ExerciseLibraryViewModel {
     }
 
     func selectFilter(category: String, value: String) {
-        selectedCategory = category
-        selectedValue = value
+        activeFilters[category] = value
     }
 
-    func clearFilter() {
-        selectedCategory = nil
-        selectedValue = nil
+    func removeFilter(category: String) {
+        activeFilters.removeValue(forKey: category)
+    }
+
+    func clearFilters() {
+        activeFilters.removeAll()
     }
 }

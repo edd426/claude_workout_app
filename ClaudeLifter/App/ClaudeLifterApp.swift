@@ -35,6 +35,9 @@ struct ClaudeLifterApp: App {
             ContentView(dependencies: dependencies)
                 .modelContainer(modelContainer)
                 .environment(appState)
+                .task {
+                    await importExercisesIfNeeded()
+                }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -43,6 +46,21 @@ struct ClaudeLifterApp: App {
                     await dependencies.syncManager.syncIfNeeded()
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func importExercisesIfNeeded() async {
+        guard !UserDefaults.standard.bool(forKey: "hasImportedExercises") else { return }
+        guard let url = Bundle.main.url(forResource: "exercises", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return }
+        // Capture context on MainActor before passing to the service
+        let context = modelContainer.mainContext
+        do {
+            try await dependencies.exerciseImportService.importExercises(from: data, into: context)
+            UserDefaults.standard.set(true, forKey: "hasImportedExercises")
+        } catch {
+            // Import failure is non-fatal; will retry next launch since flag is not set
         }
     }
 }

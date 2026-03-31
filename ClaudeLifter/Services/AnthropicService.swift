@@ -1,22 +1,37 @@
 import Foundation
 @preconcurrency import SwiftAnthropic
 
+// MARK: - AnthropicError
+
+enum AnthropicError: LocalizedError {
+    case missingAPIKey
+
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey:
+            return "API key is missing. Please add your Anthropic API key in Settings."
+        }
+    }
+}
+
 // MARK: - AnthropicService
 
 final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
 
-    private let sdkService: any SwiftAnthropic.AnthropicService
+    private let sdkService: (any SwiftAnthropic.AnthropicService)?
+    private let settingsManager: SettingsManager?
 
-    init(apiKey: String) {
-        self.sdkService = AnthropicServiceFactory.service(
-            apiKey: apiKey,
-            betaHeaders: nil
-        )
+    /// Production init — reads API key from SettingsManager at call time so that
+    /// keys entered after app launch are always picked up.
+    init(settingsManager: SettingsManager) {
+        self.settingsManager = settingsManager
+        self.sdkService = nil
     }
 
     // Internal init for testing with a custom SDK service
     init(sdkService: any SwiftAnthropic.AnthropicService) {
         self.sdkService = sdkService
+        self.settingsManager = nil
     }
 
     func streamChat(
@@ -25,7 +40,28 @@ final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
         tools: [ToolDefinition]?,
         model: String
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
-        AsyncThrowingStream { continuation in
+        // Resolve SDK service. When settingsManager is present, read the API key
+        // at call time so keys entered after app launch are always picked up.
+        let resolvedSDKService: any SwiftAnthropic.AnthropicService
+        if let settings = settingsManager {
+            let key = settings.apiKey
+            guard !key.isEmpty else {
+                return AsyncThrowingStream { continuation in
+                    continuation.yield(.error(AnthropicError.missingAPIKey))
+                    continuation.finish()
+                }
+            }
+            resolvedSDKService = AnthropicServiceFactory.service(apiKey: key, betaHeaders: nil)
+        } else if let existing = sdkService {
+            resolvedSDKService = existing
+        } else {
+            return AsyncThrowingStream { continuation in
+                continuation.yield(.error(AnthropicError.missingAPIKey))
+                continuation.finish()
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
             Task {
                 do {
                     let sdkMessages = messages.compactMap { msg -> MessageParameter.Message? in
@@ -55,7 +91,7 @@ final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
                         tools: sdkTools
                     )
 
-                    let stream = try await sdkService.streamMessage(parameter)
+                    let stream = try await resolvedSDKService.streamMessage(parameter)
 
                     // Accumulate tool input JSON across delta events
                     var toolUseId: String?

@@ -1,12 +1,13 @@
 import Foundation
 @preconcurrency import SwiftData
 
-protocol ExerciseImportServiceProtocol: Sendable {
+@MainActor
+protocol ExerciseImportServiceProtocol {
     @discardableResult
     func importExercises(from data: Data, into context: ModelContext) async throws -> Int
 }
 
-final class ExerciseImportService: ExerciseImportServiceProtocol, @unchecked Sendable {
+final class ExerciseImportService: ExerciseImportServiceProtocol {
     private struct ExerciseJSON: Decodable {
         let id: String
         let name: String

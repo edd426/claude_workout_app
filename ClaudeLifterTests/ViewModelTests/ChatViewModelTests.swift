@@ -95,6 +95,40 @@ struct ChatViewModelTests {
         withExtendedLifetime(container) {}
     }
 
+    // MARK: - API Key error handling
+
+    @Test("Error message shown when API key missing")
+    func errorMessageShownWhenAPIKeyMissing() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        struct MissingKeyError: LocalizedError {
+            var errorDescription: String? { "API key is missing. Please add your Anthropic API key in Settings." }
+        }
+        mock.stubbedError = MissingKeyError()
+
+        await vm.sendMessage("Hello")
+        #expect(vm.errorMessage?.lowercased().contains("api key") == true)
+        #expect(!vm.isLoading)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Error message cleared on next successful send")
+    func errorMessageClearedOnNextSuccessfulSend() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        struct MissingKeyError: LocalizedError {
+            var errorDescription: String? { "API key is missing. Please add your Anthropic API key in Settings." }
+        }
+        mock.stubbedError = MissingKeyError()
+        await vm.sendMessage("Hello")
+        #expect(vm.errorMessage != nil)
+
+        // Fix the mock — next call succeeds
+        mock.stubbedError = nil
+        mock.stubbedEvents = [.text("All good!"), .complete]
+        await vm.sendMessage("Try again")
+        #expect(vm.errorMessage == nil)
+        withExtendedLifetime(container) {}
+    }
+
     // MARK: - clearChat
 
     @Test("clearChat resets all state")

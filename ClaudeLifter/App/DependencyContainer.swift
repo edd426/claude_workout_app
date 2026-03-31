@@ -10,6 +10,7 @@ final class DependencyContainer {
     let preferenceRepository: any TrainingPreferenceRepository
     let insightRepository: any InsightRepository
     let autoFillService: any AutoFillServiceProtocol
+    let exerciseImportService: any ExerciseImportServiceProtocol
     let networkService: any NetworkServiceProtocol
     let imageUploadService: any ImageUploadServiceProtocol
     let anthropicService: any AnthropicServiceProtocol
@@ -32,6 +33,7 @@ final class DependencyContainer {
         self.preferenceRepository = prefRepo
         self.insightRepository = insightRepo
         self.autoFillService = AutoFillService(workoutRepository: SwiftDataWorkoutRepository(context: modelContext))
+        self.exerciseImportService = ExerciseImportService()
         self.networkService = network
         self.imageUploadService = ImageUploadService(networkService: network)
 
@@ -39,7 +41,7 @@ final class DependencyContainer {
         if !settings.serverURL.isEmpty {
             self.anthropicService = ProxiedAnthropicService(networkService: network)
         } else {
-            self.anthropicService = AnthropicService(apiKey: settings.apiKey)
+            self.anthropicService = AnthropicService(settingsManager: settings)
         }
 
         self.syncManager = SyncManager(

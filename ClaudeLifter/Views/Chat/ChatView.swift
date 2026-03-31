@@ -9,6 +9,7 @@ struct ChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             contextBanner
+            errorBanner
             messageList
             Divider()
             ChatInputView(onSend: { text in
@@ -35,6 +36,24 @@ struct ChatView: View {
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(.systemBackground))
+            Divider()
+        }
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let errorMsg = viewModel.errorMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(errorMsg)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
             Divider()
         }
     }

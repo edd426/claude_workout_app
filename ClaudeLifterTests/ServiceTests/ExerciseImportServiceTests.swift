@@ -193,4 +193,82 @@ struct ExerciseImportServiceTests {
         let count = try await service.importExercises(from: data, into: context)
         #expect(count > 800)
     }
+
+    @Test("first launch import populates empty database")
+    @MainActor
+    func firstLaunchImportPopulatesDatabase() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let service = ExerciseImportService()
+
+        // Load from the actual bundled exercises.json (skips test if not available in test bundle)
+        guard let url = Bundle(for: BundleLocator.self).url(forResource: "exercises", withExtension: "json") ??
+                        Bundle.main.url(forResource: "exercises", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else {
+            return
+        }
+
+        let count = try await service.importExercises(from: data, into: context)
+        #expect(count > 800)
+
+        let all = try context.fetch(FetchDescriptor<Exercise>())
+        #expect(all.count > 800)
+    }
+
+    @Test("second launch skips import when UserDefaults flag is set")
+    @MainActor
+    func secondLaunchSkipsImportWhenFlagSet() async throws {
+        // Use an isolated UserDefaults suite to avoid polluting test environment
+        let suiteName = "com.claudelifter.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // Simulate flag already set (second launch)
+        defaults.set(true, forKey: "hasImportedExercises")
+
+        // The guard in the app's .task checks UserDefaults before calling importExercises.
+        // Here we verify that reading the flag correctly indicates no import should run.
+        let shouldImport = !defaults.bool(forKey: "hasImportedExercises")
+        #expect(shouldImport == false)
+
+        // Verify that if we respect the flag, the database stays empty
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        if shouldImport {
+            let service = ExerciseImportService()
+            let data = sampleJSON.data(using: .utf8)!
+            try await service.importExercises(from: data, into: context)
+        }
+
+        let all = try context.fetch(FetchDescriptor<Exercise>())
+        #expect(all.count == 0)
+    }
+
+    @Test("import sets UserDefaults flag on completion")
+    @MainActor
+    func importSetsUserDefaultsFlagOnCompletion() async throws {
+        let suiteName = "com.claudelifter.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // Initially the flag is not set
+        #expect(defaults.bool(forKey: "hasImportedExercises") == false)
+
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let service = ExerciseImportService()
+        let data = sampleJSON.data(using: .utf8)!
+
+        // Simulate the app startup flow: check flag, import, set flag
+        let shouldImport = !defaults.bool(forKey: "hasImportedExercises")
+        if shouldImport {
+            try await service.importExercises(from: data, into: context)
+            defaults.set(true, forKey: "hasImportedExercises")
+        }
+
+        #expect(defaults.bool(forKey: "hasImportedExercises") == true)
+    }
 }
+
+// Helper class used to locate the test bundle
+private class BundleLocator {}

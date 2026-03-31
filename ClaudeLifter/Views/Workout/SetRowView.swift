@@ -29,7 +29,7 @@ struct SetRowView: View {
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .background(set.isCompleted ? Color.green.opacity(0.1) : Color.clear)
+        .background(set.isCompleted ? BrandTheme.terracotta.opacity(0.1) : Color.clear)
         .cornerRadius(8)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -78,7 +78,7 @@ struct SetRowView: View {
         } label: {
             Image(systemName: set.isCompleted ? "checkmark.circle.fill" : "circle")
                 .font(.title2)
-                .foregroundStyle(set.isCompleted ? .green : .secondary)
+                .foregroundStyle(set.isCompleted ? BrandTheme.terracotta : .secondary)
         }
         .frame(width: 44, height: 44)
         .buttonStyle(.plain)

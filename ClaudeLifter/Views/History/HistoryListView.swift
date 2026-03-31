@@ -29,7 +29,21 @@ struct HistoryListView: View {
         }
     }
 
+    @ToolbarContentBuilder
     private var viewToggleToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            if vm != nil {
+                NavigationLink {
+                    ChartsView(viewModel: ProgressChartsViewModel(
+                        workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
+                        exerciseRepository: SwiftDataExerciseRepository(context: modelContext)
+                    ))
+                } label: {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .foregroundStyle(BrandTheme.terracotta)
+                }
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Picker("View", selection: $showCalendar) {
                 Image(systemName: "calendar").tag(true)

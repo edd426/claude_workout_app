@@ -13,7 +13,7 @@ struct CalendarDayCellView: View {
                 .fill(cellBackground)
             if isToday && !isSelected {
                 Circle()
-                    .strokeBorder(Color.accentColor, lineWidth: 1.5)
+                    .strokeBorder(BrandTheme.terracotta, lineWidth: 1.5)
             }
             Text("\(day)")
                 .font(.system(size: 14, weight: isToday || isSelected ? .semibold : .regular))
@@ -25,13 +25,13 @@ struct CalendarDayCellView: View {
 
     private var cellBackground: Color {
         if isSelected {
-            return .accentColor
+            return BrandTheme.terracotta
         }
         switch intensity {
         case .none: return .clear
-        case .light: return .accentColor.opacity(0.3)
-        case .medium: return .accentColor.opacity(0.6)
-        case .heavy: return .accentColor.opacity(1.0)
+        case .light: return BrandTheme.terracotta.opacity(0.3)
+        case .medium: return BrandTheme.terracotta.opacity(0.6)
+        case .heavy: return BrandTheme.terracotta.opacity(1.0)
         }
     }
 

@@ -26,7 +26,7 @@ struct ChatInputView: View {
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color(.systemGray3) : Color.accentColor)
+                    .foregroundStyle(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color(.systemGray3) : BrandTheme.terracotta)
             }
             .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }

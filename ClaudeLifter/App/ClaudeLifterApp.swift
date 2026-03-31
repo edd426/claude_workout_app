@@ -44,6 +44,9 @@ struct ClaudeLifterApp: App {
                 Task { @MainActor in
                     dependencies.syncManager.startMonitoring()
                     await dependencies.syncManager.syncIfNeeded()
+                    if dependencies.insightGenerationService.shouldGenerateInsights() {
+                        try? await dependencies.insightGenerationService.generateInsights()
+                    }
                 }
             }
         }

@@ -25,7 +25,7 @@ struct ActiveWorkoutView: View {
         .task { await vm.startWorkout() }
         .sheet(isPresented: $showSummary) {
             if let workout = vm.workout {
-                WorkoutSummaryView(workout: workout) {
+                WorkoutSummaryView(workout: workout, personalRecords: vm.detectedPRs) {
                     showSummary = false
                     appState.endWorkout()
                 }
@@ -92,7 +92,7 @@ struct ActiveWorkoutView: View {
             Button("Finish") {
                 Task { await vm.finishWorkout() }
             }
-            .foregroundStyle(.green)
+            .foregroundStyle(BrandTheme.terracotta)
         }
     }
 }

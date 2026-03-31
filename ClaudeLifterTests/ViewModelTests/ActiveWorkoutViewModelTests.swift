@@ -220,3 +220,84 @@ struct ActiveWorkoutViewModelTests {
         #expect(vm.workout?.templateId == nil)
     }
 }
+
+extension ActiveWorkoutViewModelTests {
+
+    // MARK: - PR Detection Tests
+
+    @Test("finishWorkout detects PRs and stores them")
+    func finishWorkoutDetectsPRs() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let prService = MockPRDetectionService()
+        let fakePR = PersonalRecord(
+            exerciseId: exercise.id,
+            type: .heaviestWeight,
+            value: 100,
+            weight: 100,
+            achievedAt: .now,
+            workoutId: UUID()
+        )
+        prService.detectedPRs = [fakePR]
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            prDetectionService: prService
+        )
+        await vm.startWorkout()
+        await vm.finishWorkout()
+
+        #expect(vm.detectedPRs.count == 1)
+        #expect(prService.detectCallCount == 1)
+    }
+
+    @Test("detected PRs stored in observable property after finish")
+    func detectedPRsStoredInObservableProperty() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let prService = MockPRDetectionService()
+        let pr1 = PersonalRecord(exerciseId: exercise.id, type: .heaviestWeight, value: 80, weight: 80, achievedAt: .now, workoutId: UUID())
+        let pr2 = PersonalRecord(exerciseId: exercise.id, type: .highest1RM, value: 90, achievedAt: .now, workoutId: UUID())
+        prService.detectedPRs = [pr1, pr2]
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            prDetectionService: prService
+        )
+        await vm.startWorkout()
+        await vm.finishWorkout()
+
+        #expect(vm.detectedPRs.count == 2)
+    }
+
+    @Test("no PRs detected for empty workout")
+    func noPRsForEmptyWorkout() async throws {
+        let prService = MockPRDetectionService()
+        prService.detectedPRs = []
+
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Empty",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            prDetectionService: prService
+        )
+        await vm.startWorkout()
+        await vm.finishWorkout()
+
+        #expect(vm.detectedPRs.isEmpty)
+    }
+}

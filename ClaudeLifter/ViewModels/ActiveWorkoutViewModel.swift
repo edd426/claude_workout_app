@@ -9,11 +9,13 @@ final class ActiveWorkoutViewModel {
     var isFinished = false
     var errorMessage: String? = nil
     var lastCompletedSet: WorkoutSet? = nil
+    var detectedPRs: [PersonalRecord] = []
 
     private let template: WorkoutTemplate?
     private let adHocName: String?
     private let workoutRepository: any WorkoutRepository
     private let autoFillService: any AutoFillServiceProtocol
+    private let prDetectionService: (any PRDetectionServiceProtocol)?
 
     var totalSetsCompleted: Int {
         workout?.exercises.flatMap(\.sets).filter(\.isCompleted).count ?? 0
@@ -26,23 +28,27 @@ final class ActiveWorkoutViewModel {
     init(
         template: WorkoutTemplate,
         workoutRepository: any WorkoutRepository,
-        autoFillService: any AutoFillServiceProtocol
+        autoFillService: any AutoFillServiceProtocol,
+        prDetectionService: (any PRDetectionServiceProtocol)? = nil
     ) {
         self.template = template
         self.adHocName = nil
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.prDetectionService = prDetectionService
     }
 
     init(
         adHocName: String,
         workoutRepository: any WorkoutRepository,
-        autoFillService: any AutoFillServiceProtocol
+        autoFillService: any AutoFillServiceProtocol,
+        prDetectionService: (any PRDetectionServiceProtocol)? = nil
     ) {
         self.template = nil
         self.adHocName = adHocName
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.prDetectionService = prDetectionService
     }
 
     func startWorkout() async {
@@ -123,6 +129,9 @@ final class ActiveWorkoutViewModel {
         workout.lastModified = .now
         do {
             try await saveWorkout(workout)
+            if let prService = prDetectionService {
+                detectedPRs = (try? await prService.detectPRs(for: workout)) ?? []
+            }
             isFinished = true
         } catch {
             errorMessage = error.localizedDescription

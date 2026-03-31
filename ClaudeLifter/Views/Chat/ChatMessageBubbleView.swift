@@ -17,7 +17,7 @@ struct ChatMessageBubbleView: View {
         }
     }
 
-    // MARK: - User Bubble (right-aligned, blue)
+    // MARK: - User Bubble (right-aligned, terracotta)
 
     private var userBubble: some View {
         HStack {
@@ -25,22 +25,22 @@ struct ChatMessageBubbleView: View {
             Text(message.content)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Color.accentColor)
+                .background(BrandTheme.terracotta)
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: 280, alignment: .trailing)
         }
     }
 
-    // MARK: - Assistant Bubble (left-aligned, gray)
+    // MARK: - Assistant Bubble (left-aligned, midNavy)
 
     private var assistantBubble: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Text(message.content)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Color(.systemGray5))
-                .foregroundStyle(.primary)
+                .background(BrandTheme.midNavy)
+                .foregroundStyle(BrandTheme.primaryText)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: 280, alignment: .leading)
             Spacer()

@@ -14,6 +14,7 @@ final class DependencyContainer {
     let networkService: any NetworkServiceProtocol
     let imageUploadService: any ImageUploadServiceProtocol
     let anthropicService: any AnthropicServiceProtocol
+    let insightGenerationService: any InsightGenerationServiceProtocol
     let syncManager: SyncManager
 
     init(modelContext: ModelContext) {
@@ -38,11 +39,18 @@ final class DependencyContainer {
         self.imageUploadService = ImageUploadService(networkService: network)
 
         // Use proxy when serverURL is configured (Phase 2), fall back to direct API key (Phase 1)
+        let anthropic: any AnthropicServiceProtocol
         if !settings.serverURL.isEmpty {
-            self.anthropicService = ProxiedAnthropicService(networkService: network)
+            anthropic = ProxiedAnthropicService(networkService: network)
         } else {
-            self.anthropicService = AnthropicService(settingsManager: settings)
+            anthropic = AnthropicService(settingsManager: settings)
         }
+        self.anthropicService = anthropic
+        self.insightGenerationService = InsightGenerationService(
+            anthropicService: anthropic,
+            workoutRepository: workoutRepo,
+            insightRepository: insightRepo
+        )
 
         self.syncManager = SyncManager(
             workoutRepository: workoutRepo,

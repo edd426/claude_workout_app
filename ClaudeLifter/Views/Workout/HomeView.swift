@@ -8,6 +8,7 @@ struct HomeView: View {
     @State private var selectedTemplate: WorkoutTemplate? = nil
     @State private var showTemplateEditor = false
     @State private var showAdHocWorkout = false
+    @State private var unreadInsights: [ProactiveInsight] = []
 
     var body: some View {
         NavigationStack {
@@ -27,6 +28,10 @@ struct HomeView: View {
                     workoutRepository: SwiftDataWorkoutRepository(context: modelContext)
                 )
                 await vm?.loadTemplates()
+            }
+            let insightRepo = SwiftDataInsightRepository(context: modelContext)
+            if let fetched = try? await insightRepo.fetchUnread() {
+                unreadInsights = fetched
             }
         }
         .fullScreenCover(item: $selectedTemplate) { template in
@@ -73,6 +78,9 @@ struct HomeView: View {
 
     private var templatePickerView: some View {
         VStack(spacing: 0) {
+            if !unreadInsights.isEmpty {
+                insightCardsSection
+            }
             if let vm {
                 if vm.templates.isEmpty {
                     emptyState(vm: vm)
@@ -83,6 +91,20 @@ struct HomeView: View {
                 ProgressView()
             }
         }
+    }
+
+    private var insightCardsSection: some View {
+        VStack(spacing: 8) {
+            ForEach(unreadInsights, id: \.id) { insight in
+                InsightCardView(insight: insight) {
+                    let insightRepo = SwiftDataInsightRepository(context: modelContext)
+                    try? await insightRepo.markAsRead(insight)
+                    unreadInsights.removeAll { $0.id == insight.id }
+                }
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     private func emptyState(vm: HomeViewModel) -> some View {

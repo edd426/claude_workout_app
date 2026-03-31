@@ -61,8 +61,8 @@ struct FilterChipsView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Color.blue.opacity(0.2))
-        .foregroundStyle(.blue)
+        .background(BrandTheme.terracotta.opacity(0.2))
+        .foregroundStyle(BrandTheme.terracotta)
         .cornerRadius(16)
     }
 
@@ -77,8 +77,8 @@ struct FilterChipsView: View {
         .font(.caption)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(activeFilters[category] != nil ? Color.blue.opacity(0.1) : Color(uiColor: .secondarySystemBackground))
-        .foregroundStyle(activeFilters[category] != nil ? .blue : .primary)
+        .background(activeFilters[category] != nil ? BrandTheme.terracotta.opacity(0.1) : Color(uiColor: .secondarySystemBackground))
+        .foregroundStyle(activeFilters[category] != nil ? BrandTheme.terracotta : .primary)
         .cornerRadius(16)
     }
 }

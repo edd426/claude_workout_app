@@ -47,7 +47,7 @@ struct RestTimerOverlayView: View {
                 .frame(width: 120, height: 120)
             Circle()
                 .trim(from: 0, to: vm.progress)
-                .stroke(Color.green, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .stroke(BrandTheme.terracotta, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                 .frame(width: 120, height: 120)
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 1), value: vm.progress)

@@ -452,6 +452,93 @@ struct CreateTemplateToolTests {
         #expect(result.contains("4"))
         #expect(result.contains("6"))
     }
+
+    @Test("buildTemplate persists template to repository when confirmed")
+    func buildTemplatePersistsToRepository() async throws {
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        let exerciseRepo = MockExerciseRepository()
+        exerciseRepo.exercises = [bench]
+        let templateRepo = MockTemplateRepository()
+        let tool = CreateTemplateTool()
+
+        let input = """
+        {
+          "template_name": "Push Day",
+          "exercises": [
+            {"name": "Bench Press", "sets": 3, "reps": 8}
+          ]
+        }
+        """
+
+        guard let template = try await tool.buildTemplate(inputJSON: input, exerciseRepository: exerciseRepo) else {
+            Issue.record("buildTemplate returned nil")
+            return
+        }
+        try await templateRepo.save(template)
+
+        #expect(templateRepo.saveCallCount == 1)
+        #expect(templateRepo.savedTemplates.count == 1)
+        #expect(templateRepo.savedTemplates.first?.name == "Push Day")
+        #expect(templateRepo.savedTemplates.first?.exercises.count == 1)
+    }
+
+    @Test("confirmPendingAction saves template via repository")
+    func confirmPendingActionSavesTemplate() async throws {
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        let exerciseRepo = MockExerciseRepository()
+        exerciseRepo.exercises = [bench]
+        let templateRepo = MockTemplateRepository()
+
+        let anthropicService = MockAnthropicService()
+        let vm = ChatViewModel(
+            anthropicService: anthropicService,
+            exerciseRepository: exerciseRepo,
+            workoutRepository: MockWorkoutRepository(),
+            templateRepository: templateRepo,
+            preferenceRepository: MockTrainingPreferenceRepository()
+        )
+
+        let input = """
+        {
+          "template_name": "Upper Body",
+          "exercises": [
+            {"name": "Bench Press", "sets": 4, "reps": 6}
+          ]
+        }
+        """
+
+        // Simulate the tool execution that sets pendingConfirmation
+        let toolContext = ToolContext(
+            exerciseRepository: exerciseRepo,
+            workoutRepository: MockWorkoutRepository(),
+            templateRepository: templateRepo,
+            activeWorkout: nil
+        )
+        let createTool = CreateTemplateTool()
+        let summary = try await createTool.execute(inputJSON: input, context: toolContext)
+        let capturedInput = input
+        let capturedExerciseRepo = exerciseRepo
+        let capturedTemplateRepo = templateRepo
+        vm.pendingConfirmation = PendingConfirmation(
+            toolName: CreateTemplateTool.toolName,
+            description: summary,
+            onConfirm: {
+                guard let template = try await createTool.buildTemplate(
+                    inputJSON: capturedInput,
+                    exerciseRepository: capturedExerciseRepo
+                ) else { return }
+                try await capturedTemplateRepo.save(template)
+            }
+        )
+
+        #expect(vm.pendingConfirmation != nil)
+
+        await vm.confirmPendingAction()
+
+        #expect(vm.pendingConfirmation == nil)
+        #expect(templateRepo.saveCallCount == 1)
+        #expect(templateRepo.savedTemplates.first?.name == "Upper Body")
+    }
 }
 
 // MARK: - CreateProgramTool Tests

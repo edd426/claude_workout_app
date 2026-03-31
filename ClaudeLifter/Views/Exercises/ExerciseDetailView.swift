@@ -11,6 +11,7 @@ struct ExerciseDetailView: View {
             if let uploadService {
                 photoSection(uploadService: uploadService)
             }
+            imageSection
             musclesSection
             if !exercise.instructions.isEmpty {
                 instructionsSection
@@ -20,6 +21,27 @@ struct ExerciseDetailView: View {
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.large)
         .onAppear { photoURL = exercise.photoURL }
+    }
+
+    @ViewBuilder
+    private var imageSection: some View {
+        if let imageURLString = exercise.imageURL, let url = URL(string: imageURLString) {
+            Section {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().aspectRatio(contentMode: .fit)
+                    case .failure:
+                        Image(systemName: "photo").foregroundStyle(.secondary)
+                    default:
+                        ProgressView()
+                    }
+                }
+                .frame(maxHeight: 200)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .listRowInsets(EdgeInsets())
+        }
     }
 
     private func photoSection(uploadService: any ImageUploadServiceProtocol) -> some View {

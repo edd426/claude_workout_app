@@ -11,6 +11,8 @@ final class TemplateEditorViewModel {
     var isSaved = false
     var isNew: Bool
 
+    var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+
     private let templateRepository: any TemplateRepository
     private let existingTemplate: WorkoutTemplate?
 

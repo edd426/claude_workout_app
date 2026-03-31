@@ -34,6 +34,9 @@ struct HomeView: View {
                 unreadInsights = fetched
             }
         }
+        .onAppear {
+            Task { await vm?.loadTemplates() }
+        }
         .fullScreenCover(item: $selectedTemplate) { template in
             ActiveWorkoutView(
                 vm: ActiveWorkoutViewModel(
@@ -128,9 +131,11 @@ struct HomeView: View {
     private func templateList(vm: HomeViewModel) -> some View {
         List {
             ForEach(vm.templates, id: \.id) { template in
-                Button {
-                    appState.startWorkout(id: UUID())
-                    selectedTemplate = template
+                NavigationLink {
+                    TemplatePreviewView(template: template) {
+                        appState.startWorkout(id: UUID())
+                        selectedTemplate = template
+                    }
                 } label: {
                     TemplateRowView(template: template)
                 }

@@ -21,6 +21,10 @@ final class ActiveWorkoutViewModel {
         workout?.exercises.flatMap(\.sets).filter(\.isCompleted).count ?? 0
     }
 
+    var hasCompletedSets: Bool {
+        workout?.exercises.flatMap(\.sets).contains(where: \.isCompleted) ?? false
+    }
+
     var totalSets: Int {
         workout?.exercises.flatMap(\.sets).count ?? 0
     }
@@ -121,6 +125,35 @@ final class ActiveWorkoutViewModel {
 
     func removeExercise(_ workoutExercise: WorkoutExercise) {
         workout?.exercises.removeAll { $0.id == workoutExercise.id }
+    }
+
+    func removeSet(_ set: WorkoutSet, from workoutExercise: WorkoutExercise) {
+        workoutExercise.sets.removeAll { $0.id == set.id }
+    }
+
+    func saveDraft() async {
+        guard let workout else { return }
+        workout.lastModified = .now
+        try? await saveWorkout(workout)
+    }
+
+    func cancelWorkout() async {
+        guard let workout else { return }
+        do {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                Task { @MainActor in
+                    do {
+                        try await self.workoutRepository.delete(workout)
+                        cont.resume()
+                    } catch {
+                        cont.resume(throwing: error)
+                    }
+                }
+            }
+            self.workout = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func finishWorkout() async {

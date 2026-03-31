@@ -11,6 +11,8 @@ final class MockExerciseRepository: ExerciseRepository {
     var searchCallCount = 0
     var lastSearchQuery: String = ""
     var errorToThrow: Error? = nil
+    var distinctCategories: [String] = []
+    var distinctValuesByCategory: [String: [String]] = [:]
 
     func fetchAll() async throws -> [Exercise] {
         fetchAllCallCount += 1
@@ -52,6 +54,16 @@ final class MockExerciseRepository: ExerciseRepository {
         if !exercises.contains(where: { $0.id == exercise.id }) {
             exercises.append(exercise)
         }
+    }
+
+    func fetchDistinctTagCategories() async throws -> [String] {
+        if let error = errorToThrow { throw error }
+        return distinctCategories
+    }
+
+    func fetchDistinctTagValues(for category: String) async throws -> [String] {
+        if let error = errorToThrow { throw error }
+        return distinctValuesByCategory[category] ?? []
     }
 
     func delete(_ exercise: Exercise) async throws {

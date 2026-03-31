@@ -147,4 +147,76 @@ struct ExerciseRepositoryTests {
         let found = try await repo.fetchByExternalId("bench_press")
         #expect(found?.name == "Bench Press")
     }
+
+    @Test("fetchDistinctTagCategories returns unique categories sorted")
+    @MainActor
+    func fetchDistinctTagCategories() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(bench)
+        let equipTag = ExerciseTag(category: "equipment", value: "barbell")
+        let muscleTag = ExerciseTag(category: "muscle_group", value: "chest")
+        let levelTag = ExerciseTag(category: "level", value: "intermediate")
+        context.insert(equipTag)
+        context.insert(muscleTag)
+        context.insert(levelTag)
+        bench.tags.append(contentsOf: [equipTag, muscleTag, levelTag])
+
+        // Duplicate category — should only appear once
+        let squat = TestFixtures.makeExercise(name: "Squat")
+        context.insert(squat)
+        let equipTag2 = ExerciseTag(category: "equipment", value: "barbell")
+        context.insert(equipTag2)
+        squat.tags.append(equipTag2)
+
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let categories = try await repo.fetchDistinctTagCategories()
+
+        #expect(categories.contains("equipment"))
+        #expect(categories.contains("muscle_group"))
+        #expect(categories.contains("level"))
+        // Duplicates collapsed
+        #expect(categories.filter { $0 == "equipment" }.count == 1)
+        // Sorted
+        #expect(categories == categories.sorted())
+    }
+
+    @Test("fetchDistinctTagValues returns unique values for category sorted")
+    @MainActor
+    func fetchDistinctTagValues() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(bench)
+        let t1 = ExerciseTag(category: "equipment", value: "barbell")
+        let t2 = ExerciseTag(category: "equipment", value: "dumbbell")
+        let t3 = ExerciseTag(category: "muscle_group", value: "chest")
+        context.insert(t1); context.insert(t2); context.insert(t3)
+        bench.tags.append(contentsOf: [t1, t2, t3])
+
+        // Duplicate value in same category
+        let squat = TestFixtures.makeExercise(name: "Squat")
+        context.insert(squat)
+        let t4 = ExerciseTag(category: "equipment", value: "barbell")
+        context.insert(t4)
+        squat.tags.append(t4)
+
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let values = try await repo.fetchDistinctTagValues(for: "equipment")
+
+        #expect(values.contains("barbell"))
+        #expect(values.contains("dumbbell"))
+        #expect(!values.contains("chest"))
+        // Duplicates collapsed
+        #expect(values.filter { $0 == "barbell" }.count == 1)
+        // Sorted
+        #expect(values == values.sorted())
+    }
 }

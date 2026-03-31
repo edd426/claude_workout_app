@@ -9,13 +9,22 @@ final class ExerciseLibraryViewModel {
     var activeFilters: [String: String] = [:]
     var isLoading = false
     var errorMessage: String? = nil
-
-    let filterCategories = ["muscle_group", "equipment", "movement_pattern", "force", "mechanic", "level"]
+    var filterCategories: [String] = []
+    var categoryValues: [String: [String]] = [:]
 
     private let exerciseRepository: any ExerciseRepository
 
     init(exerciseRepository: any ExerciseRepository) {
         self.exerciseRepository = exerciseRepository
+    }
+
+    func loadFilterOptions() async {
+        do {
+            filterCategories = try await exerciseRepository.fetchDistinctTagCategories()
+            for cat in filterCategories {
+                categoryValues[cat] = try await exerciseRepository.fetchDistinctTagValues(for: cat)
+            }
+        } catch {}
     }
 
     func loadExercises() async {

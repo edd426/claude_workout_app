@@ -39,6 +39,13 @@ final class ExerciseImportService: ExerciseImportServiceProtocol {
                     continue
                 }
 
+                let imageURL: String?
+                if let firstImage = json.images.first {
+                    imageURL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/\(firstImage)"
+                } else {
+                    imageURL = nil
+                }
+
                 let exercise = Exercise(
                     name: json.name,
                     force: json.force,
@@ -49,7 +56,8 @@ final class ExerciseImportService: ExerciseImportServiceProtocol {
                     primaryMuscles: json.primaryMuscles,
                     secondaryMuscles: json.secondaryMuscles,
                     isCustom: false,
-                    externalId: json.id
+                    externalId: json.id,
+                    imageURL: imageURL
                 )
                 context.insert(exercise)
 

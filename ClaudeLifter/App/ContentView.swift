@@ -7,6 +7,8 @@ struct ContentView: View {
 
     let dependencies: DependencyContainer
 
+    @State private var chatViewModel: ChatViewModel?
+
     var body: some View {
         TabView {
             HomeView()
@@ -19,13 +21,11 @@ struct ContentView: View {
                 .tabItem { Label("Exercises", systemImage: "dumbbell") }
 
             NavigationStack {
-                ChatView(viewModel: ChatViewModel(
-                    anthropicService: dependencies.anthropicService,
-                    exerciseRepository: SwiftDataExerciseRepository(context: modelContext),
-                    workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext),
-                    preferenceRepository: SwiftDataTrainingPreferenceRepository(context: modelContext)
-                ))
+                if let chatViewModel {
+                    ChatView(viewModel: chatViewModel)
+                } else {
+                    ProgressView()
+                }
             }
             .tabItem { Label("Coach", systemImage: "bubble.left.and.bubble.right") }
 
@@ -34,5 +34,16 @@ struct ContentView: View {
         }
         .tint(BrandTheme.accent)
         .preferredColorScheme(.dark)
+        .task {
+            if chatViewModel == nil {
+                chatViewModel = ChatViewModel(
+                    anthropicService: dependencies.anthropicService,
+                    exerciseRepository: SwiftDataExerciseRepository(context: modelContext),
+                    workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
+                    templateRepository: SwiftDataTemplateRepository(context: modelContext),
+                    preferenceRepository: SwiftDataTrainingPreferenceRepository(context: modelContext)
+                )
+            }
+        }
     }
 }

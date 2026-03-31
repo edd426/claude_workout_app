@@ -79,16 +79,55 @@ struct ClaudeLifterApp: App {
 
     @MainActor
     private func importExercisesIfNeeded() async {
-        guard !UserDefaults.standard.bool(forKey: "hasImportedExercises") else { return }
         guard let url = Bundle.main.url(forResource: "exercises", withExtension: "json"),
               let data = try? Data(contentsOf: url) else { return }
-        // Capture context on MainActor before passing to the service
         let context = modelContainer.mainContext
+
+        if !UserDefaults.standard.bool(forKey: "hasImportedExercises") {
+            do {
+                try await dependencies.exerciseImportService.importExercises(from: data, into: context)
+                UserDefaults.standard.set(true, forKey: "hasImportedExercises")
+            } catch {
+                // Import failure is non-fatal; will retry next launch since flag is not set
+            }
+        }
+
+        if !UserDefaults.standard.bool(forKey: "hasPopulatedImageURLs") {
+            await populateImageURLsIfNeeded(from: data, context: context)
+        }
+    }
+
+    @MainActor
+    private func populateImageURLsIfNeeded(from data: Data, context: ModelContext) async {
+        struct ExerciseImageJSON: Decodable {
+            let id: String
+            let images: [String]
+        }
+
+        guard let jsonArray = try? JSONDecoder().decode([ExerciseImageJSON].self, from: data) else { return }
+
+        let idToFirstImage: [String: String] = jsonArray.reduce(into: [:]) { dict, item in
+            if let first = item.images.first {
+                dict[item.id] = first
+            }
+        }
+
         do {
-            try await dependencies.exerciseImportService.importExercises(from: data, into: context)
-            UserDefaults.standard.set(true, forKey: "hasImportedExercises")
+            let descriptor = FetchDescriptor<Exercise>(
+                predicate: #Predicate { $0.imageURL == nil && $0.externalId != nil }
+            )
+            let exercises = try context.fetch(descriptor)
+            for exercise in exercises {
+                if let exId = exercise.externalId, let firstImage = idToFirstImage[exId] {
+                    exercise.imageURL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/\(firstImage)"
+                }
+            }
+            if !exercises.isEmpty {
+                try context.save()
+            }
+            UserDefaults.standard.set(true, forKey: "hasPopulatedImageURLs")
         } catch {
-            // Import failure is non-fatal; will retry next launch since flag is not set
+            // Non-fatal; will retry next launch
         }
     }
 

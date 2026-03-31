@@ -8,6 +8,8 @@ protocol ExerciseRepository {
     func fetchByExternalId(_ externalId: String) async throws -> Exercise?
     func search(query: String) async throws -> [Exercise]
     func filter(category: String, value: String) async throws -> [Exercise]
+    func fetchDistinctTagCategories() async throws -> [String]
+    func fetchDistinctTagValues(for category: String) async throws -> [String]
     func save(_ exercise: Exercise) async throws
     func delete(_ exercise: Exercise) async throws
 }
@@ -57,6 +59,19 @@ final class SwiftDataExerciseRepository: ExerciseRepository {
                 tag.category == category && tag.value == value
             }
         }
+    }
+
+    func fetchDistinctTagCategories() async throws -> [String] {
+        let tags = try context.fetch(FetchDescriptor<ExerciseTag>())
+        return Array(Set(tags.map(\.category))).sorted()
+    }
+
+    func fetchDistinctTagValues(for category: String) async throws -> [String] {
+        let descriptor = FetchDescriptor<ExerciseTag>(
+            predicate: #Predicate { $0.category == category }
+        )
+        let tags = try context.fetch(descriptor)
+        return Array(Set(tags.map(\.value))).sorted()
     }
 
     func save(_ exercise: Exercise) async throws {

@@ -4,13 +4,29 @@ struct ExerciseCardView: View {
     let workoutExercise: WorkoutExercise
     let onCompleteSet: (WorkoutSet) -> Void
     let onAddSet: () -> Void
+    var onRemoveSet: ((WorkoutSet) -> Void)? = nil
+
+    private var sortedSets: [WorkoutSet] {
+        workoutExercise.sets.sorted(by: { $0.order < $1.order })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             exerciseHeader
             Divider()
-            ForEach(workoutExercise.sets.sorted(by: { $0.order < $1.order }), id: \.id) { set in
-                SetRowView(set: set, onComplete: onCompleteSet)
+            ForEach(sortedSets, id: \.id) { set in
+                HStack {
+                    SetRowView(set: set, onComplete: onCompleteSet)
+                    if sortedSets.count > 1, let onRemoveSet {
+                        Button {
+                            onRemoveSet(set)
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
             Button("+ Add Set", action: onAddSet)
                 .font(.caption)

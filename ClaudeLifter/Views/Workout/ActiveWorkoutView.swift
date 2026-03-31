@@ -7,7 +7,9 @@ struct ActiveWorkoutView: View {
     @State private var restDuration = 90
     @State private var showSummary = false
     @State private var showExercisePicker = false
+    @State private var showCancelDialog = false
     @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -28,6 +30,7 @@ struct ActiveWorkoutView: View {
                 WorkoutSummaryView(workout: workout, personalRecords: vm.detectedPRs) {
                     showSummary = false
                     appState.endWorkout()
+                    dismiss()
                 }
             }
         }
@@ -38,6 +41,23 @@ struct ActiveWorkoutView: View {
         }
         .onChange(of: vm.isFinished) { _, finished in
             if finished { showSummary = true }
+        }
+        .confirmationDialog("End Workout?", isPresented: $showCancelDialog) {
+            Button("Save as Draft") {
+                Task {
+                    await vm.saveDraft()
+                    appState.endWorkout()
+                    dismiss()
+                }
+            }
+            Button("Discard Workout", role: .destructive) {
+                Task {
+                    await vm.cancelWorkout()
+                    appState.endWorkout()
+                    dismiss()
+                }
+            }
+            Button("Keep Going", role: .cancel) {}
         }
     }
 
@@ -56,6 +76,9 @@ struct ActiveWorkoutView: View {
                             onAddSet: {
                                 let nextOrder = (we.sets.map(\.order).max() ?? -1) + 1
                                 we.sets.append(WorkoutSet(order: nextOrder))
+                            },
+                            onRemoveSet: { set in
+                                vm.removeSet(set, from: we)
                             }
                         )
                     }
@@ -89,10 +112,17 @@ struct ActiveWorkoutView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") {
+                showCancelDialog = true
+            }
+            .accessibilityIdentifier("cancelWorkout")
+        }
         ToolbarItem(placement: .primaryAction) {
             Button("Finish") {
                 Task { await vm.finishWorkout() }
             }
+            .disabled(!vm.hasCompletedSets)
             .foregroundStyle(BrandTheme.terracotta)
             .accessibilityIdentifier("finishWorkout")
         }

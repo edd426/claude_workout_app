@@ -58,6 +58,7 @@ struct TemplateEditorView: View {
             Button("Save") {
                 Task { await vm.save() }
             }
+            .disabled(!vm.canSave)
             .accessibilityIdentifier("saveTemplate")
         }
     }

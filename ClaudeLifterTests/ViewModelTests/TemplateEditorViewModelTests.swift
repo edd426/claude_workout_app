@@ -90,6 +90,24 @@ struct TemplateEditorViewModelTests {
         #expect(vm.exercises.isEmpty)
     }
 
+    @Test("canSave is false when name is empty or whitespace")
+    func canSaveIsFalseForEmptyName() {
+        let repo = MockTemplateRepository()
+        let vm = TemplateEditorViewModel(template: nil, templateRepository: repo)
+        vm.name = ""
+        #expect(vm.canSave == false)
+        vm.name = "   "
+        #expect(vm.canSave == false)
+    }
+
+    @Test("canSave is true when name has non-whitespace characters")
+    func canSaveIsTrueForValidName() {
+        let repo = MockTemplateRepository()
+        let vm = TemplateEditorViewModel(template: nil, templateRepository: repo)
+        vm.name = "Push Day"
+        #expect(vm.canSave == true)
+    }
+
     @Test("moveExercise reorders exercises")
     func moveExerciseReordersExercises() throws {
         let container = try makeTestContainer()

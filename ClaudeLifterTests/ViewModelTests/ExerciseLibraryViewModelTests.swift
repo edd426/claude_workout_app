@@ -178,4 +178,23 @@ struct ExerciseLibraryViewModelTests {
 
         #expect(vm.errorMessage != nil)
     }
+
+    @Test("loadFilterOptions populates filterCategories and categoryValues from database")
+    func loadFilterOptionsPopulatesFromDatabase() async {
+        let repo = MockExerciseRepository()
+        repo.distinctCategories = ["equipment", "level", "muscle_group"]
+        repo.distinctValuesByCategory = [
+            "equipment": ["barbell", "dumbbell"],
+            "level": ["beginner", "intermediate"],
+            "muscle_group": ["chest", "quadriceps"]
+        ]
+        let vm = ExerciseLibraryViewModel(exerciseRepository: repo)
+
+        await vm.loadFilterOptions()
+
+        #expect(vm.filterCategories == ["equipment", "level", "muscle_group"])
+        #expect(vm.categoryValues["equipment"] == ["barbell", "dumbbell"])
+        #expect(vm.categoryValues["level"] == ["beginner", "intermediate"])
+        #expect(vm.categoryValues["muscle_group"] == ["chest", "quadriceps"])
+    }
 }

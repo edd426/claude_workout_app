@@ -49,6 +49,7 @@ struct ExerciseLibraryView: View {
                 vm = ExerciseLibraryViewModel(
                     exerciseRepository: SwiftDataExerciseRepository(context: modelContext)
                 )
+                await vm?.loadFilterOptions()
                 await vm?.loadExercises()
             }
         }
@@ -58,6 +59,7 @@ struct ExerciseLibraryView: View {
         VStack(spacing: 0) {
             FilterChipsView(
                 categories: vm.filterCategories,
+                categoryValues: vm.categoryValues,
                 activeFilters: vm.activeFilters,
                 onSelect: { cat, val in
                     vm.selectFilter(category: cat, value: val)

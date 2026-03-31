@@ -244,6 +244,36 @@ struct ExerciseImportServiceTests {
         #expect(all.count == 0)
     }
 
+    @Test("import sets imageURL from first image path")
+    @MainActor
+    func importSetsImageURL() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let service = ExerciseImportService()
+        let data = sampleJSON.data(using: .utf8)!
+
+        try await service.importExercises(from: data, into: context)
+
+        let descriptor = FetchDescriptor<Exercise>(predicate: #Predicate { $0.name == "Bench Press" })
+        let bench = try context.fetch(descriptor).first
+        #expect(bench?.imageURL == "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Bench_Press/0.jpg")
+    }
+
+    @Test("import leaves imageURL nil when images array is empty")
+    @MainActor
+    func importLeavesImageURLNilWhenNoImages() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let service = ExerciseImportService()
+        let data = sampleJSON.data(using: .utf8)!
+
+        try await service.importExercises(from: data, into: context)
+
+        let descriptor = FetchDescriptor<Exercise>(predicate: #Predicate { $0.name == "Squat" })
+        let squat = try context.fetch(descriptor).first
+        #expect(squat?.imageURL == nil)
+    }
+
     @Test("import sets UserDefaults flag on completion")
     @MainActor
     func importSetsUserDefaultsFlagOnCompletion() async throws {

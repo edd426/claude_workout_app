@@ -2,19 +2,11 @@ import SwiftUI
 
 struct FilterChipsView: View {
     let categories: [String]
+    let categoryValues: [String: [String]]
     let activeFilters: [String: String]
     let onSelect: (String, String) -> Void
     let onRemove: (String) -> Void
     let onClearAll: () -> Void
-
-    private let categoryValues: [String: [String]] = [
-        "muscle_group": ["chest", "back", "shoulders", "biceps", "triceps", "quadriceps", "hamstrings", "glutes", "calves", "abs"],
-        "equipment": ["barbell", "dumbbell", "machine", "cable", "bodyweight", "kettlebell", "band"],
-        "movement_pattern": ["horizontal_push", "horizontal_pull", "vertical_push", "vertical_pull", "hip_hinge", "squat"],
-        "force": ["push", "pull", "static"],
-        "mechanic": ["compound", "isolation"],
-        "level": ["beginner", "intermediate", "advanced"]
-    ]
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {

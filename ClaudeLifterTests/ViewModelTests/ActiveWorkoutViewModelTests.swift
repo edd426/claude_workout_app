@@ -182,6 +182,116 @@ struct ActiveWorkoutViewModelTests {
         #expect(template.exercises.count == 1)
     }
 
+    @Test("cancelWorkout deletes workout from repository")
+    func cancelWorkoutDeletesFromRepository() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        #expect(vm.workout != nil)
+
+        await vm.cancelWorkout()
+
+        #expect(workoutRepo.deletedWorkouts.count == 1)
+        #expect(vm.workout == nil)
+    }
+
+    @Test("saveDraft saves workout without completedAt")
+    func saveDraftSavesWithoutCompletedAt() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        await vm.saveDraft()
+
+        #expect(workoutRepo.saveCallCount >= 1)
+        #expect(vm.workout?.completedAt == nil)
+    }
+
+    @Test("removeSet removes the specified set from the workout exercise")
+    func removeSetRemovesFromExercise() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 3, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+        #expect(we.sets.count == 3)
+
+        let setToRemove = try #require(we.sets.first)
+        vm.removeSet(setToRemove, from: we)
+
+        #expect(we.sets.count == 2)
+    }
+
+    @Test("hasCompletedSets is false when no sets are completed")
+    func hasCompletedSetsIsFalseWhenNoneCompleted() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        #expect(vm.hasCompletedSets == false)
+    }
+
+    @Test("hasCompletedSets is true after completing one set")
+    func hasCompletedSetsIsTrueAfterCompletion() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
+
+        #expect(vm.hasCompletedSets == true)
+    }
+
     @Test("ad-hoc workout starts with no exercises")
     func adHocWorkoutStartsWithNoExercises() async throws {
         let workoutRepo = MockWorkoutRepository()

@@ -32,15 +32,15 @@ struct ChatMessageBubbleView: View {
         }
     }
 
-    // MARK: - Assistant Bubble (left-aligned, midNavy)
+    // MARK: - Assistant Bubble (left-aligned, lightGray)
 
     private var assistantBubble: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Text(message.content)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(BrandTheme.midNavy)
-                .foregroundStyle(BrandTheme.primaryText)
+                .background(BrandTheme.lightGray)
+                .foregroundStyle(.primary)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: 280, alignment: .leading)
             Spacer()

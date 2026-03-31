@@ -54,6 +54,7 @@ struct SetRowView: View {
                 .frame(width: 60)
                 .focused($focusedField, equals: .weight)
                 .onChange(of: weight) { _, v in set.weight = v }
+                .accessibilityIdentifier("weight_\(set.order)")
             Text(set.weightUnit.rawValue)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -67,6 +68,7 @@ struct SetRowView: View {
             .frame(width: 44)
             .focused($focusedField, equals: .reps)
             .onChange(of: reps) { _, v in set.reps = v }
+            .accessibilityIdentifier("reps_\(set.order)")
     }
 
     private var completeButton: some View {
@@ -82,5 +84,6 @@ struct SetRowView: View {
         }
         .frame(width: 44, height: 44)
         .buttonStyle(.plain)
+        .accessibilityIdentifier("completeSet_\(set.order)")
     }
 }

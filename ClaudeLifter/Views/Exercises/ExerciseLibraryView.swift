@@ -77,10 +77,10 @@ struct ExerciseLibraryView: View {
                 exerciseRow(exercise, vm: vm)
             }
             .listStyle(.plain)
-            .searchable(text: Binding(
-                get: { vm.searchQuery },
-                set: { vm.searchQuery = $0 }
-            ))
+            .searchable(
+                text: Binding(get: { vm.searchQuery }, set: { vm.searchQuery = $0 }),
+                placement: .navigationBarDrawer(displayMode: .always)
+            )
             .onChange(of: vm.searchQuery) { _, _ in
                 searchTask?.cancel()
                 searchTask = Task {

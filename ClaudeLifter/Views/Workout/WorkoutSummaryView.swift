@@ -47,6 +47,7 @@ struct WorkoutSummaryView: View {
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                         .padding(.bottom)
+                        .accessibilityIdentifier("summaryDone")
                 }
                 .padding()
             }

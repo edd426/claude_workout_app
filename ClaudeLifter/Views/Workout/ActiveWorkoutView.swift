@@ -84,6 +84,7 @@ struct ActiveWorkoutView: View {
         }
         .buttonStyle(.bordered)
         .padding(.top, 8)
+        .accessibilityIdentifier("addExerciseToWorkout")
     }
 
     @ToolbarContentBuilder
@@ -93,6 +94,7 @@ struct ActiveWorkoutView: View {
                 Task { await vm.finishWorkout() }
             }
             .foregroundStyle(BrandTheme.terracotta)
+            .accessibilityIdentifier("finishWorkout")
         }
     }
 }

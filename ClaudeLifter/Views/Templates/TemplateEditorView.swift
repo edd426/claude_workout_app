@@ -33,6 +33,7 @@ struct TemplateEditorView: View {
     private var templateNameSection: some View {
         Section("Template Name") {
             TextField("e.g. Wednesday Push Day", text: $vm.name)
+                .accessibilityIdentifier("templateName")
         }
     }
 
@@ -44,6 +45,7 @@ struct TemplateEditorView: View {
             .onDelete { vm.removeExercise(at: $0) }
             .onMove { vm.moveExercise(from: $0, to: $1) }
             Button("Add Exercise") { showExercisePicker = true }
+                .accessibilityIdentifier("addExerciseToTemplate")
         }
     }
 
@@ -56,6 +58,7 @@ struct TemplateEditorView: View {
             Button("Save") {
                 Task { await vm.save() }
             }
+            .accessibilityIdentifier("saveTemplate")
         }
     }
 }

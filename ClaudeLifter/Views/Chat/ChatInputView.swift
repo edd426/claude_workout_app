@@ -22,6 +22,7 @@ struct ChatInputView: View {
                 .onSubmit {
                     sendMessage()
                 }
+                .accessibilityIdentifier("chatMessageInput")
 
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -29,6 +30,7 @@ struct ChatInputView: View {
                     .foregroundStyle(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color(.systemGray3) : BrandTheme.terracotta)
             }
             .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityIdentifier("sendMessage")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

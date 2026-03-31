@@ -8,6 +8,14 @@ def uid(name):
     """Generate a deterministic 24-char hex UUID from a name."""
     return hashlib.md5(name.encode()).hexdigest()[:24].upper()
 
+def pbxproj_path(name):
+    """Quote a filename if it contains characters special to pbxproj format."""
+    import re
+    # Characters that need quoting in old-style plist: +, space, etc.
+    if re.search(r'[+\s]', name):
+        return f'"{name}"'
+    return name
+
 # Collect all Swift source files
 def collect_swift_files(root_dir):
     files = []
@@ -20,6 +28,7 @@ def collect_swift_files(root_dir):
 
 app_sources = collect_swift_files('ClaudeLifter')
 test_sources = collect_swift_files('ClaudeLifterTests')
+uitest_sources = collect_swift_files('ClaudeLifterUITests')
 
 # IDs for key objects
 PROJECT_ID = uid('project')
@@ -54,6 +63,17 @@ APP_RESOURCES_PHASE_ID = uid('appResourcesPhase')
 
 APP_DEP_ID = uid('appDependency')
 APP_DEP_PROXY_ID = uid('appDependencyProxy')
+
+UITEST_TARGET_ID = uid('uitestTarget')
+UITEST_PRODUCT_REF_ID = uid('uitestProductRef')
+UITEST_BUILD_CONFIG_LIST_ID = uid('uitestBuildConfigList')
+UITEST_DEBUG_ID = uid('uitestDebug')
+UITEST_RELEASE_ID = uid('uitestRelease')
+UITEST_SOURCES_PHASE_ID = uid('uitestSourcesPhase')
+UITEST_FRAMEWORKS_PHASE_ID = uid('uitestFrameworksPhase')
+UITEST_GROUP_ID = uid('uitestGroup')
+UITEST_DEP_ID = uid('uitestDependency')
+UITEST_DEP_PROXY_ID = uid('uitestDependencyProxy')
 
 # Resources
 EXERCISES_JSON_REF_ID = uid('exercises.json_ref')
@@ -91,6 +111,16 @@ for f in test_sources:
     build_files_test.append((build_id, ref_id, os.path.basename(f)))
     d = os.path.dirname(f)
     group_children_test.setdefault(d, []).append(ref_id)
+
+build_files_uitest = []
+group_children_uitest = {}
+for f in uitest_sources:
+    ref_id = uid(f + '_ref')
+    build_id = uid(f + '_build')
+    file_refs.append((ref_id, f, os.path.basename(f)))
+    build_files_uitest.append((build_id, ref_id, os.path.basename(f)))
+    d = os.path.dirname(f)
+    group_children_uitest.setdefault(d, []).append(ref_id)
 
 # Build group hierarchy
 def build_groups(children_map, root_prefix, root_id, root_name):
@@ -141,6 +171,7 @@ def build_groups(children_map, root_prefix, root_id, root_name):
 
 app_groups, app_dir_map = build_groups(group_children_app, 'ClaudeLifter', APP_GROUP_ID, 'ClaudeLifter')
 test_groups, test_dir_map = build_groups(group_children_test, 'ClaudeLifterTests', TEST_GROUP_ID, 'ClaudeLifterTests')
+uitest_groups, uitest_dir_map = build_groups(group_children_uitest, 'ClaudeLifterUITests', UITEST_GROUP_ID, 'ClaudeLifterUITests')
 
 # Now write the project.pbxproj
 lines = []
@@ -162,6 +193,8 @@ for build_id, ref_id, name in build_files_app:
     w(f'\t\t{build_id} /* {name} in Sources */ = {{isa = PBXBuildFile; fileRef = {ref_id} /* {name} */; }};')
 for build_id, ref_id, name in build_files_test:
     w(f'\t\t{build_id} /* {name} in Sources */ = {{isa = PBXBuildFile; fileRef = {ref_id} /* {name} */; }};')
+for build_id, ref_id, name in build_files_uitest:
+    w(f'\t\t{build_id} /* {name} in Sources */ = {{isa = PBXBuildFile; fileRef = {ref_id} /* {name} */; }};')
 # Resources
 w(f'\t\t{EXERCISES_JSON_BUILD_ID} /* exercises.json in Resources */ = {{isa = PBXBuildFile; fileRef = {EXERCISES_JSON_REF_ID} /* exercises.json */; }};')
 w(f'\t\t{ASSETS_BUILD_ID} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {ASSETS_REF_ID} /* Assets.xcassets */; }};')
@@ -177,6 +210,13 @@ w(f'\t\t\tproxyType = 1;')
 w(f'\t\t\tremoteGlobalIDString = {APP_TARGET_ID};')
 w(f'\t\t\tremoteInfo = ClaudeLifter;')
 w(f'\t\t}};')
+w(f'\t\t{UITEST_DEP_PROXY_ID} /* PBXContainerItemProxy */ = {{')
+w(f'\t\t\tisa = PBXContainerItemProxy;')
+w(f'\t\t\tcontainerPortal = {PROJECT_ID} /* Project object */;')
+w(f'\t\t\tproxyType = 1;')
+w(f'\t\t\tremoteGlobalIDString = {APP_TARGET_ID};')
+w(f'\t\t\tremoteInfo = ClaudeLifter;')
+w(f'\t\t}};')
 w('/* End PBXContainerItemProxy section */')
 w('')
 
@@ -184,8 +224,9 @@ w('')
 w('/* Begin PBXFileReference section */')
 w(f'\t\t{APP_PRODUCT_REF_ID} /* ClaudeLifter.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeLifter.app; sourceTree = BUILT_PRODUCTS_DIR; }};')
 w(f'\t\t{TEST_PRODUCT_REF_ID} /* ClaudeLifterTests.xctest */ = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeLifterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};')
+w(f'\t\t{UITEST_PRODUCT_REF_ID} /* ClaudeLifterUITests.xctest */ = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeLifterUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};')
 for ref_id, path, name in file_refs:
-    w(f'\t\t{ref_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {name}; sourceTree = "<group>"; }};')
+    w(f'\t\t{ref_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {pbxproj_path(name)}; sourceTree = "<group>"; }};')
 w(f'\t\t{EXERCISES_JSON_REF_ID} /* exercises.json */ = {{isa = PBXFileReference; lastKnownFileType = text.json; path = exercises.json; sourceTree = "<group>"; }};')
 w(f'\t\t{ASSETS_REF_ID} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; }};')
 w('/* End PBXFileReference section */')
@@ -201,6 +242,13 @@ w(f'\t\t\t);')
 w(f'\t\t\trunOnlyForDeploymentPostprocessing = 0;')
 w(f'\t\t}};')
 w(f'\t\t{TEST_FRAMEWORKS_PHASE_ID} /* Frameworks */ = {{')
+w(f'\t\t\tisa = PBXFrameworksBuildPhase;')
+w(f'\t\t\tbuildActionMask = 2147483647;')
+w(f'\t\t\tfiles = (')
+w(f'\t\t\t);')
+w(f'\t\t\trunOnlyForDeploymentPostprocessing = 0;')
+w(f'\t\t}};')
+w(f'\t\t{UITEST_FRAMEWORKS_PHASE_ID} /* Frameworks */ = {{')
 w(f'\t\t\tisa = PBXFrameworksBuildPhase;')
 w(f'\t\t\tbuildActionMask = 2147483647;')
 w(f'\t\t\tfiles = (')
@@ -238,6 +286,7 @@ w(f'\t\t\tisa = PBXGroup;')
 w(f'\t\t\tchildren = (')
 w(f'\t\t\t\t{APP_GROUP_ID} /* ClaudeLifter */,')
 w(f'\t\t\t\t{TEST_GROUP_ID} /* ClaudeLifterTests */,')
+w(f'\t\t\t\t{UITEST_GROUP_ID} /* ClaudeLifterUITests */,')
 w(f'\t\t\t\t{PRODUCTS_GROUP_ID} /* Products */,')
 w(f'\t\t\t\t{FRAMEWORKS_GROUP_ID} /* Frameworks */,')
 w(f'\t\t\t);')
@@ -250,6 +299,7 @@ w(f'\t\t\tisa = PBXGroup;')
 w(f'\t\t\tchildren = (')
 w(f'\t\t\t\t{APP_PRODUCT_REF_ID} /* ClaudeLifter.app */,')
 w(f'\t\t\t\t{TEST_PRODUCT_REF_ID} /* ClaudeLifterTests.xctest */,')
+w(f'\t\t\t\t{UITEST_PRODUCT_REF_ID} /* ClaudeLifterUITests.xctest */,')
 w(f'\t\t\t);')
 w(f'\t\t\tname = Products;')
 w(f'\t\t\tsourceTree = "<group>";')
@@ -354,6 +404,43 @@ for gid, name, path, children in test_groups:
     w(f'\t\t\tsourceTree = "<group>";')
     w(f'\t\t}};')
 
+# UI test groups - root
+uitest_root_subdirs = set()
+for d in sorted(group_children_uitest.keys()):
+    parts = d.replace('ClaudeLifterUITests/', '').split('/')
+    if len(parts) >= 1 and parts[0]:
+        subdir = 'ClaudeLifterUITests/' + parts[0]
+        uitest_root_subdirs.add(subdir)
+
+uitest_root_children = []
+for sd in sorted(uitest_root_subdirs):
+    if sd in uitest_dir_map:
+        uitest_root_children.append(uitest_dir_map[sd])
+uitest_root_children.extend(group_children_uitest.get('ClaudeLifterUITests', []))
+
+w(f'\t\t{UITEST_GROUP_ID} /* ClaudeLifterUITests */ = {{')
+w(f'\t\t\tisa = PBXGroup;')
+w(f'\t\t\tchildren = (')
+for cid in uitest_root_children:
+    w(f'\t\t\t\t{cid},')
+w(f'\t\t\t);')
+w(f'\t\t\tpath = ClaudeLifterUITests;')
+w(f'\t\t\tsourceTree = "<group>";')
+w(f'\t\t}};')
+
+for gid, name, path, children in uitest_groups:
+    if gid == UITEST_GROUP_ID:
+        continue
+    w(f'\t\t{gid} /* {name} */ = {{')
+    w(f'\t\t\tisa = PBXGroup;')
+    w(f'\t\t\tchildren = (')
+    for cid in children:
+        w(f'\t\t\t\t{cid},')
+    w(f'\t\t\t);')
+    w(f'\t\t\tpath = {path};')
+    w(f'\t\t\tsourceTree = "<group>";')
+    w(f'\t\t}};')
+
 w('/* End PBXGroup section */')
 w('')
 
@@ -397,6 +484,24 @@ w(f'\t\t\tproductName = ClaudeLifterTests;')
 w(f'\t\t\tproductReference = {TEST_PRODUCT_REF_ID} /* ClaudeLifterTests.xctest */;')
 w(f'\t\t\tproductType = "com.apple.product-type.bundle.unit-test";')
 w(f'\t\t}};')
+
+w(f'\t\t{UITEST_TARGET_ID} /* ClaudeLifterUITests */ = {{')
+w(f'\t\t\tisa = PBXNativeTarget;')
+w(f'\t\t\tbuildConfigurationList = {UITEST_BUILD_CONFIG_LIST_ID};')
+w(f'\t\t\tbuildPhases = (')
+w(f'\t\t\t\t{UITEST_SOURCES_PHASE_ID} /* Sources */,')
+w(f'\t\t\t\t{UITEST_FRAMEWORKS_PHASE_ID} /* Frameworks */,')
+w(f'\t\t\t);')
+w(f'\t\t\tbuildRules = (')
+w(f'\t\t\t);')
+w(f'\t\t\tdependencies = (')
+w(f'\t\t\t\t{UITEST_DEP_ID} /* PBXTargetDependency */,')
+w(f'\t\t\t);')
+w(f'\t\t\tname = ClaudeLifterUITests;')
+w(f'\t\t\tproductName = ClaudeLifterUITests;')
+w(f'\t\t\tproductReference = {UITEST_PRODUCT_REF_ID} /* ClaudeLifterUITests.xctest */;')
+w(f'\t\t\tproductType = "com.apple.product-type.bundle.ui-testing";')
+w(f'\t\t}};')
 w('/* End PBXNativeTarget section */')
 w('')
 
@@ -427,6 +532,7 @@ w(f'\t\t\tprojectRoot = "";')
 w(f'\t\t\ttargets = (')
 w(f'\t\t\t\t{APP_TARGET_ID} /* ClaudeLifter */,')
 w(f'\t\t\t\t{TEST_TARGET_ID} /* ClaudeLifterTests */,')
+w(f'\t\t\t\t{UITEST_TARGET_ID} /* ClaudeLifterUITests */,')
 w(f'\t\t\t);')
 w(f'\t\t}};')
 w('/* End PBXProject section */')
@@ -466,6 +572,15 @@ for build_id, ref_id, name in build_files_test:
 w(f'\t\t\t);')
 w(f'\t\t\trunOnlyForDeploymentPostprocessing = 0;')
 w(f'\t\t}};')
+w(f'\t\t{UITEST_SOURCES_PHASE_ID} /* Sources */ = {{')
+w(f'\t\t\tisa = PBXSourcesBuildPhase;')
+w(f'\t\t\tbuildActionMask = 2147483647;')
+w(f'\t\t\tfiles = (')
+for build_id, ref_id, name in build_files_uitest:
+    w(f'\t\t\t\t{build_id} /* {name} in Sources */,')
+w(f'\t\t\t);')
+w(f'\t\t\trunOnlyForDeploymentPostprocessing = 0;')
+w(f'\t\t}};')
 w('/* End PBXSourcesBuildPhase section */')
 w('')
 
@@ -475,6 +590,11 @@ w(f'\t\t{APP_DEP_ID} /* PBXTargetDependency */ = {{')
 w(f'\t\t\tisa = PBXTargetDependency;')
 w(f'\t\t\ttarget = {APP_TARGET_ID} /* ClaudeLifter */;')
 w(f'\t\t\ttargetProxy = {APP_DEP_PROXY_ID} /* PBXContainerItemProxy */;')
+w(f'\t\t}};')
+w(f'\t\t{UITEST_DEP_ID} /* PBXTargetDependency */ = {{')
+w(f'\t\t\tisa = PBXTargetDependency;')
+w(f'\t\t\ttarget = {APP_TARGET_ID} /* ClaudeLifter */;')
+w(f'\t\t\ttargetProxy = {UITEST_DEP_PROXY_ID} /* PBXContainerItemProxy */;')
 w(f'\t\t}};')
 w('/* End PBXTargetDependency section */')
 w('')
@@ -552,6 +672,19 @@ test_settings = {
     'TEST_HOST': '"$(BUILT_PRODUCTS_DIR)/ClaudeLifter.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ClaudeLifter"',
 }
 
+uitest_settings = {
+    'CODE_SIGN_STYLE': 'Automatic',
+    'CURRENT_PROJECT_VERSION': '1',
+    'GENERATE_INFOPLIST_FILE': 'YES',
+    'MARKETING_VERSION': '1.0',
+    'PRODUCT_BUNDLE_IDENTIFIER': 'com.eddelord.ClaudeLifterUITests',
+    'PRODUCT_NAME': '"$(TARGET_NAME)"',
+    'SWIFT_EMIT_LOC_STRINGS': 'NO',
+    'SWIFT_VERSION': '6.0',
+    'TARGETED_DEVICE_FAMILY': '"1,2"',
+    'TEST_TARGET_NAME': 'ClaudeLifter',
+}
+
 def write_config(config_id, name, settings):
     w(f'\t\t{config_id} /* {name} */ = {{')
     w(f'\t\t\tisa = XCBuildConfiguration;')
@@ -569,6 +702,8 @@ write_config(APP_DEBUG_ID, 'Debug', app_settings)
 write_config(APP_RELEASE_ID, 'Release', app_settings)
 write_config(TEST_DEBUG_ID, 'Debug', test_settings)
 write_config(TEST_RELEASE_ID, 'Release', test_settings)
+write_config(UITEST_DEBUG_ID, 'Debug', uitest_settings)
+write_config(UITEST_RELEASE_ID, 'Release', uitest_settings)
 w('/* End XCBuildConfiguration section */')
 w('')
 
@@ -597,6 +732,15 @@ w(f'\t\t\tisa = XCConfigurationList;')
 w(f'\t\t\tbuildConfigurations = (')
 w(f'\t\t\t\t{TEST_DEBUG_ID} /* Debug */,')
 w(f'\t\t\t\t{TEST_RELEASE_ID} /* Release */,')
+w(f'\t\t\t);')
+w(f'\t\t\tdefaultConfigurationIsVisible = 0;')
+w(f'\t\t\tdefaultConfigurationName = Release;')
+w(f'\t\t}};')
+w(f'\t\t{UITEST_BUILD_CONFIG_LIST_ID} /* Build configuration list for PBXNativeTarget "ClaudeLifterUITests" */ = {{')
+w(f'\t\t\tisa = XCConfigurationList;')
+w(f'\t\t\tbuildConfigurations = (')
+w(f'\t\t\t\t{UITEST_DEBUG_ID} /* Debug */,')
+w(f'\t\t\t\t{UITEST_RELEASE_ID} /* Release */,')
 w(f'\t\t\t);')
 w(f'\t\t\tdefaultConfigurationIsVisible = 0;')
 w(f'\t\t\tdefaultConfigurationName = Release;')
@@ -634,5 +778,5 @@ w('}')
 with open('ClaudeLifter.xcodeproj/project.pbxproj', 'w') as f:
     f.write('\n'.join(lines) + '\n')
 
-print(f"Generated project with {len(app_sources)} app sources and {len(test_sources)} test sources")
-print(f"App groups: {len(app_groups)}, Test groups: {len(test_groups)}")
+print(f"Generated project with {len(app_sources)} app sources, {len(test_sources)} test sources, and {len(uitest_sources)} UI test sources")
+print(f"App groups: {len(app_groups)}, Test groups: {len(test_groups)}, UITest groups: {len(uitest_groups)}")

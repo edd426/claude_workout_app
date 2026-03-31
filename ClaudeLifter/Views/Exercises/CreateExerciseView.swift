@@ -19,6 +19,7 @@ struct CreateExerciseView: View {
             Form {
                 Section("Name") {
                     TextField("Exercise name", text: $vm.name)
+                        .accessibilityIdentifier("exerciseName")
                 }
                 Section("Details") {
                     Picker("Equipment", selection: $vm.equipment) {
@@ -70,6 +71,7 @@ struct CreateExerciseView: View {
                         }
                     }
                     .disabled(!vm.canSave)
+                    .accessibilityIdentifier("saveExercise")
                 }
             }
         }

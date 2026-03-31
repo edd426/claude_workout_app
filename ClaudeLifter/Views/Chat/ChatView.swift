@@ -76,6 +76,7 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
+
                 LazyVStack(spacing: 12) {
                     ForEach(viewModel.messages) { message in
                         ChatMessageBubbleView(message: message)
@@ -92,6 +93,10 @@ struct ChatView: View {
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 12)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             }
             .onChange(of: viewModel.messages.count) { _, _ in
                 scrollToBottom(proxy: proxy)

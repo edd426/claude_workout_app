@@ -32,6 +32,8 @@ Package.resolved
 # MCP server (Phase 3)
 workout-mcp/node_modules/
 workout-mcp/dist/
+infra/mcp/node_modules/
+infra/mcp/dist/
 
 # Azure (Phase 2)
 .azure/

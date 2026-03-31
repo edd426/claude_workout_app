@@ -101,6 +101,7 @@
 		2A214A37B94DED7CBCD858C8 /* SetRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 312CDB66507E64087F645623 /* SetRowView.swift */; };
 		39ED1AD66A8E287CBEAB90AC /* WorkoutSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9112E64C3083491FD6334D9B /* WorkoutSummaryView.swift */; };
 		6B13333443AEDD7615DC85AA /* ClaudeLifterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A37442BD01F482A5FA2B78 /* ClaudeLifterTests.swift */; };
+		CB68982469DAD1772819C0D1 /* WorkoutFlowE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FAEEF2FF181E02E96BA99C /* WorkoutFlowE2ETests.swift */; };
 		67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED5C3AB824D34919DA2D319 /* MockAnthropicService.swift */; };
 		ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91456C9AD6483E9EC173B6F /* MockAutoFillService.swift */; };
 		EF0190BDBED8D17D8409E895 /* MockChatMessageRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21483199A38B51BC7C2521CF /* MockChatMessageRepository.swift */; };
@@ -264,6 +265,7 @@
 		312CDB66507E64087F645623 /* SetRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetRowView.swift; sourceTree = "<group>"; };
 		9112E64C3083491FD6334D9B /* WorkoutSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSummaryView.swift; sourceTree = "<group>"; };
 		B5A37442BD01F482A5FA2B78 /* ClaudeLifterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeLifterTests.swift; sourceTree = "<group>"; };
+		F9FAEEF2FF181E02E96BA99C /* WorkoutFlowE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFlowE2ETests.swift; sourceTree = "<group>"; };
 		2ED5C3AB824D34919DA2D319 /* MockAnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAnthropicService.swift; sourceTree = "<group>"; };
 		A91456C9AD6483E9EC173B6F /* MockAutoFillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAutoFillService.swift; sourceTree = "<group>"; };
 		21483199A38B51BC7C2521CF /* MockChatMessageRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockChatMessageRepository.swift; sourceTree = "<group>"; };
@@ -597,6 +599,7 @@
 		F850DA3429877D0A2E262956 /* ClaudeLifterTests */ = {
 			isa = PBXGroup;
 			children = (
+				22E792A5F39110658981D2DE,
 				97107AF04494E75BADA722E7,
 				CF12D254341ED344C07D574A,
 				44E75DEB8FD8A3B27E2723C1,
@@ -605,6 +608,14 @@
 				B5A37442BD01F482A5FA2B78,
 			);
 			path = ClaudeLifterTests;
+			sourceTree = "<group>";
+		};
+		22E792A5F39110658981D2DE /* E2ETests */ = {
+			isa = PBXGroup;
+			children = (
+				F9FAEEF2FF181E02E96BA99C,
+			);
+			path = E2ETests;
 			sourceTree = "<group>";
 		};
 		97107AF04494E75BADA722E7 /* Helpers */ = {
@@ -884,6 +895,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6B13333443AEDD7615DC85AA /* ClaudeLifterTests.swift in Sources */,
+				CB68982469DAD1772819C0D1 /* WorkoutFlowE2ETests.swift in Sources */,
 				67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */,
 				ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */,
 				EF0190BDBED8D17D8409E895 /* MockChatMessageRepository.swift in Sources */,

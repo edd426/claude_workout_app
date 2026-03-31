@@ -1,3 +1,13 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "workout": {
+      "command": "node",
+      "args": ["dist/src/server.js"],
+      "cwd": "infra/mcp",
+      "env": {
+        "COSMOS_DB_ENDPOINT": "https://cosmos-workout-prod.documents.azure.com",
+        "COSMOS_DB_DATABASE": "workout-db"
+      }
+    }
+  }
 }

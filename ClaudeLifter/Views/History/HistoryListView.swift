@@ -6,6 +6,7 @@ struct HistoryListView: View {
     @State private var vm: HistoryViewModel?
     @State private var calendarVM: CalendarViewModel?
     @State private var showCalendar = true
+    @State private var workoutToDelete: Workout? = nil
 
     var body: some View {
         NavigationStack {
@@ -18,6 +19,20 @@ struct HistoryListView: View {
             }
             .navigationTitle("History")
             .toolbar { viewToggleToolbar }
+        }
+        .alert("Delete Workout?", isPresented: Binding(
+            get: { workoutToDelete != nil },
+            set: { if !$0 { workoutToDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                if let workout = workoutToDelete {
+                    workoutToDelete = nil
+                    Task { await vm?.deleteWorkout(workout) }
+                }
+            }
+            Button("Cancel", role: .cancel) { workoutToDelete = nil }
+        } message: {
+            Text("This cannot be undone.")
         }
         .task {
             if vm == nil {
@@ -92,9 +107,18 @@ struct HistoryListView: View {
                     } else {
                         ForEach(calendarVM.selectedDayWorkouts, id: \.id) { workout in
                             NavigationLink {
-                                WorkoutDetailView(workout: workout)
+                                WorkoutDetailView(workout: workout, onSave: { updated in
+                                    await historyVM.updateWorkout(updated)
+                                })
                             } label: {
                                 WorkoutHistoryRowView(workout: workout)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    workoutToDelete = workout
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
                             }
                             .padding(.horizontal)
                         }
@@ -114,9 +138,18 @@ struct HistoryListView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(vm.completedWorkouts, id: \.id) { workout in
                         NavigationLink {
-                            WorkoutDetailView(workout: workout)
+                            WorkoutDetailView(workout: workout, onSave: { updated in
+                                await vm.updateWorkout(updated)
+                            })
                         } label: {
                             WorkoutHistoryRowView(workout: workout)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                workoutToDelete = workout
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                         .padding(.horizontal)
                         Divider().padding(.leading)
@@ -133,9 +166,18 @@ struct HistoryListView: View {
             } else {
                 List(vm.completedWorkouts, id: \.id) { workout in
                     NavigationLink {
-                        WorkoutDetailView(workout: workout)
+                        WorkoutDetailView(workout: workout, onSave: { updated in
+                            await vm.updateWorkout(updated)
+                        })
                     } label: {
                         WorkoutHistoryRowView(workout: workout)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            workoutToDelete = workout
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
                 }
                 .listStyle(.plain)

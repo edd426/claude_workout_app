@@ -57,4 +57,66 @@ struct HistoryViewModelTests {
         #expect(vm.completedWorkouts.count == 1)
         #expect(vm.completedWorkouts.first?.name == "Done")
     }
+
+    @Test("deleteWorkout removes workout and refreshes list")
+    func deleteWorkoutRemovesAndRefreshes() async {
+        let workout1 = TestFixtures.makeWorkout(name: "Push Day")
+        let workout2 = TestFixtures.makeWorkout(name: "Pull Day")
+        let repo = MockWorkoutRepository()
+        repo.workouts = [workout1, workout2]
+        let vm = HistoryViewModel(workoutRepository: repo)
+        await vm.loadWorkouts()
+        #expect(vm.workouts.count == 2)
+
+        await vm.deleteWorkout(workout1)
+
+        #expect(vm.workouts.count == 1)
+        #expect(vm.workouts.first?.name == "Pull Day")
+        #expect(repo.deletedWorkouts.count == 1)
+        #expect(repo.deletedWorkouts.first?.id == workout1.id)
+    }
+
+    @Test("deleteWorkout with error sets errorMessage")
+    func deleteWorkoutWithErrorSetsMessage() async {
+        let workout = TestFixtures.makeWorkout(name: "Push Day")
+        let repo = MockWorkoutRepository()
+        repo.workouts = [workout]
+        let vm = HistoryViewModel(workoutRepository: repo)
+        await vm.loadWorkouts()
+
+        repo.errorToThrow = NSError(domain: "test", code: 42, userInfo: [NSLocalizedDescriptionKey: "Delete failed"])
+        await vm.deleteWorkout(workout)
+
+        #expect(vm.errorMessage != nil)
+        #expect(vm.workouts.count == 1)
+    }
+
+    @Test("updateWorkout saves changes via repository")
+    func updateWorkoutSavesViaRepository() async {
+        let workout = TestFixtures.makeWorkout(name: "Push Day")
+        let repo = MockWorkoutRepository()
+        repo.workouts = [workout]
+        let vm = HistoryViewModel(workoutRepository: repo)
+        await vm.loadWorkouts()
+
+        workout.name = "Updated Push Day"
+        await vm.updateWorkout(workout)
+
+        #expect(repo.saveCallCount == 1)
+        #expect(repo.savedWorkouts.first?.name == "Updated Push Day")
+    }
+
+    @Test("updateWorkout with error sets errorMessage")
+    func updateWorkoutWithErrorSetsMessage() async {
+        let workout = TestFixtures.makeWorkout(name: "Push Day")
+        let repo = MockWorkoutRepository()
+        repo.workouts = [workout]
+        let vm = HistoryViewModel(workoutRepository: repo)
+        await vm.loadWorkouts()
+
+        repo.errorToThrow = NSError(domain: "test", code: 99, userInfo: [NSLocalizedDescriptionKey: "Save failed"])
+        await vm.updateWorkout(workout)
+
+        #expect(vm.errorMessage != nil)
+    }
 }

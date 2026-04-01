@@ -39,6 +39,9 @@ final class SwiftDataTemplateRepository: TemplateRepository {
 
     func save(_ template: WorkoutTemplate) async throws {
         context.insert(template)
+        for exercise in template.exercises {
+            context.insert(exercise)
+        }
         try context.save()
     }
 

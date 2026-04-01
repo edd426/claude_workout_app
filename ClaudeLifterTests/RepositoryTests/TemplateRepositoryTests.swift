@@ -81,4 +81,63 @@ struct TemplateRepositoryTests {
         let results = try await repo.fetchAll()
         #expect(results.isEmpty)
     }
+
+    @Test("save template with pre-built exercises persists exercises")
+    @MainActor
+    func saveTemplateWithExercisesPersistsExercises() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        // Arrange: create Exercise objects in context first (needed as foreign keys)
+        let exercise1 = Exercise(name: "Bench Press")
+        let exercise2 = Exercise(name: "Overhead Press")
+        context.insert(exercise1)
+        context.insert(exercise2)
+        try context.save()
+
+        // Create template with TemplateExercise children but do NOT manually insert
+        // the TemplateExercise objects — only the parent is passed to repo.save().
+        // This simulates how Claude-generated templates are built and handed to the repo.
+        let template = WorkoutTemplate(name: "Push Day")
+        let te1 = TemplateExercise(order: 0, exercise: exercise1, defaultSets: 3, defaultReps: 8)
+        let te2 = TemplateExercise(order: 1, exercise: exercise2, defaultSets: 4, defaultReps: 10)
+        template.exercises.append(te1)
+        template.exercises.append(te2)
+
+        let repo = SwiftDataTemplateRepository(context: context)
+
+        // Act: only the template is explicitly saved; exercises must be inserted by the repo
+        try await repo.save(template)
+
+        // Assert: fetching back by ID should show both TemplateExercise children
+        let fetched = try await repo.fetch(id: template.id)
+        #expect(fetched != nil)
+        #expect(fetched?.exercises.count == 2)
+    }
+
+    @Test("save template exercises are queryable after re-fetch")
+    @MainActor
+    func saveTemplateExercisesQueryableAfterReFetch() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        // Arrange: exercises in context
+        let exercise = Exercise(name: "Squat")
+        context.insert(exercise)
+        try context.save()
+
+        // Build template with 3 TemplateExercise children
+        let template = WorkoutTemplate(name: "Leg Day")
+        for i in 0..<3 {
+            let te = TemplateExercise(order: i, exercise: exercise, defaultSets: 3, defaultReps: 5)
+            template.exercises.append(te)
+        }
+
+        let repo = SwiftDataTemplateRepository(context: context)
+        try await repo.save(template)
+
+        // Fetch all TemplateExercise objects directly to confirm they are in the store
+        let allTEs = try context.fetch(FetchDescriptor<TemplateExercise>())
+        #expect(allTEs.count == 3)
+    }
 }

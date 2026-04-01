@@ -18,6 +18,7 @@ final class MockAnthropicService: AnthropicServiceProtocol, @unchecked Sendable 
     var lastSystemPrompt: String = ""
     var lastTools: [ToolDefinition]?
     var lastModel: String = ""
+    var lastThinkingBudget: Int?
 
     // MARK: - AnthropicServiceProtocol
 
@@ -25,13 +26,15 @@ final class MockAnthropicService: AnthropicServiceProtocol, @unchecked Sendable 
         messages: [ChatMessage],
         systemPrompt: String,
         tools: [ToolDefinition]?,
-        model: String
+        model: String,
+        thinkingBudget: Int?
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
         streamChatCallCount += 1
         lastMessages = messages
         lastSystemPrompt = systemPrompt
         lastTools = tools
         lastModel = model
+        lastThinkingBudget = thinkingBudget
 
         let events = stubbedEvents
         let error = stubbedError

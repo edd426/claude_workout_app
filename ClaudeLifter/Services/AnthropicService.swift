@@ -38,7 +38,8 @@ final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
         messages: [ChatMessage],
         systemPrompt: String,
         tools: [ToolDefinition]?,
-        model: String
+        model: String,
+        thinkingBudget: Int?
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
         // Resolve SDK service. When settingsManager is present, read the API key
         // at call time so keys entered after app launch are always picked up.
@@ -82,13 +83,19 @@ final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
                         }
                     }
 
+                    let sdkThinking: MessageParameter.Thinking? = thinkingBudget.map {
+                        MessageParameter.Thinking(budgetTokens: $0)
+                    }
+                    let maxTokens = thinkingBudget.map { max(4096, $0 + 4096) } ?? 4096
+
                     let parameter = MessageParameter(
                         model: .other(model),
                         messages: sdkMessages,
-                        maxTokens: 4096,
+                        maxTokens: maxTokens,
                         system: .text(systemPrompt),
                         stream: true,
-                        tools: sdkTools
+                        tools: sdkTools,
+                        thinking: sdkThinking
                     )
 
                     let stream = try await resolvedSDKService.streamMessage(parameter)
@@ -110,7 +117,9 @@ final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
                             }
                         case .contentBlockDelta:
                             if let delta = event.delta {
-                                if let text = delta.text {
+                                if event.isThinkingDelta, let thinkingChunk = delta.thinking {
+                                    continuation.yield(.thinking(thinkingChunk))
+                                } else if let text = delta.text {
                                     continuation.yield(.text(text))
                                 } else if let partialJson = delta.partialJson {
                                     toolInputAccumulator += partialJson

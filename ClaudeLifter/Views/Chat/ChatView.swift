@@ -82,11 +82,15 @@ struct ChatView: View {
                         ChatMessageBubbleView(message: message)
                             .id(message.id)
                     }
+                    if viewModel.isLoading && !viewModel.thinkingText.isEmpty && viewModel.currentStreamingText.isEmpty {
+                        thinkingIndicator
+                            .id("thinking")
+                    }
                     if !viewModel.currentStreamingText.isEmpty {
                         streamingBubble
                             .id("streaming")
                     }
-                    if viewModel.isLoading && viewModel.currentStreamingText.isEmpty {
+                    if viewModel.isLoading && viewModel.currentStreamingText.isEmpty && viewModel.thinkingText.isEmpty {
                         loadingIndicator
                             .id("loading")
                     }
@@ -104,6 +108,9 @@ struct ChatView: View {
             .onChange(of: viewModel.currentStreamingText) { _, _ in
                 scrollToBottom(proxy: proxy)
             }
+            .onChange(of: viewModel.thinkingText) { _, _ in
+                scrollToBottom(proxy: proxy)
+            }
         }
     }
 
@@ -116,6 +123,23 @@ struct ChatView: View {
                 .foregroundStyle(.primary)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: 280, alignment: .leading)
+            Spacer()
+        }
+    }
+
+    private var thinkingIndicator: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .scaleEffect(0.7)
+                Text("Thinking...")
+                    .font(.caption)
+                    .foregroundStyle(BrandTheme.secondaryText)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(BrandTheme.lightGray)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
             Spacer()
         }
     }
@@ -138,6 +162,8 @@ struct ChatView: View {
         withAnimation(.easeOut(duration: 0.2)) {
             if !viewModel.currentStreamingText.isEmpty {
                 proxy.scrollTo("streaming", anchor: .bottom)
+            } else if !viewModel.thinkingText.isEmpty {
+                proxy.scrollTo("thinking", anchor: .bottom)
             } else if let last = viewModel.messages.last {
                 proxy.scrollTo(last.id, anchor: .bottom)
             }

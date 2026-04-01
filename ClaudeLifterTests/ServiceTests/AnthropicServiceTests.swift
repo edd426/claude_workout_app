@@ -154,6 +154,96 @@ struct AnthropicServiceTests {
         // and the structural init test above (non-empty → no early exit).
     }
 
+    // MARK: - Extended Thinking
+
+    @Test("Mock records thinkingBudget when provided")
+    func mockRecordsThinkingBudget() async throws {
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [.complete]
+
+        let msg = ChatMessage(role: .user, content: "Build me a 4-day program")
+
+        for try await _ in mock.streamChat(
+            messages: [msg],
+            systemPrompt: "Be helpful",
+            tools: nil,
+            model: "claude-sonnet-4-6",
+            thinkingBudget: 10000
+        ) {}
+
+        #expect(mock.lastThinkingBudget == 10000)
+    }
+
+    @Test("Mock records nil thinkingBudget when not provided")
+    func mockRecordsNilThinkingBudget() async throws {
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [.complete]
+
+        let msg = ChatMessage(role: .user, content: "Hi")
+
+        for try await _ in mock.streamChat(
+            messages: [msg],
+            systemPrompt: "Be helpful",
+            tools: nil,
+            model: "claude-haiku-4-5"
+        ) {}
+
+        #expect(mock.lastThinkingBudget == nil)
+    }
+
+    @Test("Thinking streaming events are yielded correctly")
+    func thinkingStreamingEventsYielded() async throws {
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [
+            .thinking("Let me reason through this..."),
+            .thinking(" Step 1: assess the user's goals."),
+            .text("Here is your program:"),
+            .complete
+        ]
+
+        var thinkingChunks: [String] = []
+        var textChunks: [String] = []
+
+        for try await event in mock.streamChat(
+            messages: [],
+            systemPrompt: "",
+            tools: nil,
+            model: "claude-sonnet-4-6",
+            thinkingBudget: 10000
+        ) {
+            switch event {
+            case .thinking(let chunk):
+                thinkingChunks.append(chunk)
+            case .text(let chunk):
+                textChunks.append(chunk)
+            default:
+                break
+            }
+        }
+
+        #expect(thinkingChunks.count == 2)
+        #expect(thinkingChunks[0] == "Let me reason through this...")
+        #expect(thinkingChunks[1] == " Step 1: assess the user's goals.")
+        #expect(textChunks.count == 1)
+        #expect(textChunks[0] == "Here is your program:")
+    }
+
+    @Test("Default streamChat overload passes nil thinkingBudget")
+    func defaultOverloadPassesNilBudget() async throws {
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [.complete]
+
+        // Call the default overload (without thinkingBudget param)
+        for try await _ in mock.streamChat(
+            messages: [],
+            systemPrompt: "",
+            tools: nil,
+            model: "claude-haiku-4-5"
+        ) {}
+
+        #expect(mock.lastThinkingBudget == nil)
+    }
+
     // MARK: - ChatMessage
 
     @Test("ChatMessage defaults to current timestamp")

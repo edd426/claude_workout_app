@@ -20,10 +20,12 @@ final class ChatViewModel {
 
     var messages: [ChatMessage] = []
     var currentStreamingText: String = ""
+    var thinkingText: String = ""
     var isLoading: Bool = false
     var errorMessage: String?
     var activeWorkoutContext: String?
     var pendingConfirmation: PendingConfirmation?
+    var useExtendedThinking: Bool = false
 
     // MARK: - Dependencies
 
@@ -84,6 +86,7 @@ final class ChatViewModel {
         messages.append(userMessage)
         isLoading = true
         errorMessage = nil
+        thinkingText = ""
 
         do {
             try await streamResponse()
@@ -125,15 +128,21 @@ final class ChatViewModel {
         var pendingToolName: String?
         var pendingToolJSON: String?
 
+        let budget = useExtendedThinking ? 10000 : nil
+
         let stream = anthropicService.streamChat(
             messages: messages,
             systemPrompt: systemPrompt,
             tools: toolDefs,
-            model: selectedModel
+            model: selectedModel,
+            thinkingBudget: budget
         )
 
         for try await event in stream {
             switch event {
+            case .thinking(let chunk):
+                thinkingText += chunk
+
             case .text(let chunk):
                 accumulatedText += chunk
                 currentStreamingText = accumulatedText
@@ -203,6 +212,8 @@ final class ChatViewModel {
                     messages.append(msg)
                     currentStreamingText = ""
                 }
+            case .thinking(let chunk):
+                thinkingText += chunk
             case .toolUse, .error:
                 break
             }

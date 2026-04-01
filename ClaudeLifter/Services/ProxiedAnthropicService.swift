@@ -18,18 +18,21 @@ final class ProxiedAnthropicService: AnthropicServiceProtocol, @unchecked Sendab
         messages: [ChatMessage],
         systemPrompt: String,
         tools: [ToolDefinition]?,
-        model: String
+        model: String,
+        thinkingBudget: Int?
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
+                    let maxTokens = thinkingBudget.map { max(4096, $0 + 4096) } ?? 4096
                     let body = ProxyChatRequest(
                         model: model,
                         system: systemPrompt,
                         messages: messages.compactMap { ProxyChatRequest.ProxyMessage($0) },
                         tools: tools?.map { ProxyChatRequest.ProxyTool($0) },
-                        maxTokens: 4096,
-                        stream: true
+                        maxTokens: maxTokens,
+                        stream: true,
+                        thinkingBudget: thinkingBudget
                     )
 
                     var lineBuffer = ""
@@ -70,7 +73,9 @@ final class ProxiedAnthropicService: AnthropicServiceProtocol, @unchecked Sendab
                             case "content_block_delta":
                                 if let delta = event["delta"] as? [String: Any] {
                                     let deltaType = delta["type"] as? String
-                                    if deltaType == "text_delta", let text = delta["text"] as? String {
+                                    if deltaType == "thinking_delta", let thinking = delta["thinking"] as? String {
+                                        continuation.yield(.thinking(thinking))
+                                    } else if deltaType == "text_delta", let text = delta["text"] as? String {
                                         continuation.yield(.text(text))
                                     } else if deltaType == "input_json_delta",
                                               let partial = delta["partial_json"] as? String {
@@ -114,10 +119,12 @@ private struct ProxyChatRequest: Encodable, Sendable {
     let tools: [ProxyTool]?
     let maxTokens: Int
     let stream: Bool
+    let thinkingBudget: Int?
 
     enum CodingKeys: String, CodingKey {
         case model, system, messages, tools, stream
         case maxTokens = "max_tokens"
+        case thinkingBudget = "thinking_budget"
     }
 
     struct ProxyMessage: Encodable, Sendable {

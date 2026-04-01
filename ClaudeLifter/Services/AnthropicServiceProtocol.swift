@@ -40,6 +40,7 @@ struct ToolDefinition: Sendable {
 
 enum StreamingEvent: Sendable {
     case text(String)
+    case thinking(String)
     case toolUse(id: String, name: String, inputJSON: String)
     case complete
     case error(Error)
@@ -52,6 +53,26 @@ protocol AnthropicServiceProtocol: Sendable {
         messages: [ChatMessage],
         systemPrompt: String,
         tools: [ToolDefinition]?,
-        model: String
+        model: String,
+        thinkingBudget: Int?
     ) -> AsyncThrowingStream<StreamingEvent, Error>
+}
+
+// MARK: - Default Extension (backward compatibility)
+
+extension AnthropicServiceProtocol {
+    func streamChat(
+        messages: [ChatMessage],
+        systemPrompt: String,
+        tools: [ToolDefinition]?,
+        model: String
+    ) -> AsyncThrowingStream<StreamingEvent, Error> {
+        streamChat(
+            messages: messages,
+            systemPrompt: systemPrompt,
+            tools: tools,
+            model: model,
+            thinkingBudget: nil
+        )
+    }
 }

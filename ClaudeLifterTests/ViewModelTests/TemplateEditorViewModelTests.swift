@@ -131,4 +131,93 @@ struct TemplateEditorViewModelTests {
         #expect(vm.exercises[0].exercise?.name == "B")
         #expect(vm.exercises[1].exercise?.name == "A")
     }
+
+    // MARK: - Issue #21: existing-template exercise sync
+
+    @Test("save on existing template syncs added exercises")
+    func saveOnExistingTemplateSyncsAddedExercises() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let existingExercise = TestFixtures.makeExercise(name: "Squat")
+        let newExercise = TestFixtures.makeExercise(name: "Leg Press")
+        context.insert(existingExercise)
+        context.insert(newExercise)
+
+        let template = TestFixtures.makeTemplate(name: "Leg Day")
+        context.insert(template)
+        let te = TemplateExercise(order: 0, exercise: existingExercise, defaultSets: 3, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let repo = MockTemplateRepository()
+        let vm = TemplateEditorViewModel(template: template, templateRepository: repo)
+
+        vm.addExercise(newExercise)
+        await vm.save()
+
+        #expect(repo.saveCallCount == 1)
+        let saved = try #require(repo.savedTemplates.first)
+        #expect(saved.exercises.count == 2)
+    }
+
+    @Test("save on existing template syncs removed exercises")
+    func saveOnExistingTemplateSyncsRemovedExercises() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let exA = TestFixtures.makeExercise(name: "Bench Press")
+        let exB = TestFixtures.makeExercise(name: "Incline Press")
+        context.insert(exA)
+        context.insert(exB)
+
+        let template = TestFixtures.makeTemplate(name: "Push Day")
+        context.insert(template)
+        let teA = TemplateExercise(order: 0, exercise: exA, defaultSets: 3, defaultReps: 8)
+        let teB = TemplateExercise(order: 1, exercise: exB, defaultSets: 3, defaultReps: 10)
+        context.insert(teA)
+        context.insert(teB)
+        template.exercises.append(teA)
+        template.exercises.append(teB)
+        try context.save()
+
+        let repo = MockTemplateRepository()
+        let vm = TemplateEditorViewModel(template: template, templateRepository: repo)
+
+        vm.removeExercise(at: IndexSet(integer: 1))
+        await vm.save()
+
+        #expect(repo.saveCallCount == 1)
+        let saved = try #require(repo.savedTemplates.first)
+        #expect(saved.exercises.count == 1)
+        #expect(saved.exercises.first?.exercise?.name == "Bench Press")
+    }
+
+    @Test("save on new template with multiple exercises persists all")
+    func saveOnNewTemplateWithMultipleExercisesAll() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let exA = TestFixtures.makeExercise(name: "Deadlift")
+        let exB = TestFixtures.makeExercise(name: "Romanian Deadlift")
+        let exC = TestFixtures.makeExercise(name: "Leg Curl")
+        context.insert(exA)
+        context.insert(exB)
+        context.insert(exC)
+        try context.save()
+
+        let repo = MockTemplateRepository()
+        let vm = TemplateEditorViewModel(template: nil, templateRepository: repo)
+        vm.name = "Pull Day"
+
+        vm.addExercise(exA)
+        vm.addExercise(exB)
+        vm.addExercise(exC)
+        await vm.save()
+
+        #expect(repo.saveCallCount == 1)
+        let saved = try #require(repo.savedTemplates.first)
+        #expect(saved.exercises.count == 3)
+    }
 }

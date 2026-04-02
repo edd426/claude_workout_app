@@ -57,6 +57,8 @@ struct ExerciseLibraryView: View {
 
     private func libraryContent(vm: ExerciseLibraryViewModel) -> some View {
         VStack(spacing: 0) {
+            searchBar(vm: vm)
+
             FilterChipsView(
                 categories: vm.filterCategories,
                 categoryValues: vm.categoryValues,
@@ -79,10 +81,6 @@ struct ExerciseLibraryView: View {
                 exerciseRow(exercise, vm: vm)
             }
             .listStyle(.plain)
-            .searchable(
-                text: Binding(get: { vm.searchQuery }, set: { vm.searchQuery = $0 }),
-                placement: .navigationBarDrawer(displayMode: .always)
-            )
             .onChange(of: vm.searchQuery) { _, _ in
                 searchTask?.cancel()
                 searchTask = Task {
@@ -92,6 +90,34 @@ struct ExerciseLibraryView: View {
                 }
             }
         }
+    }
+
+    private func searchBar(vm: ExerciseLibraryViewModel) -> some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(BrandTheme.secondaryText)
+            TextField("Search exercises...", text: Binding(
+                get: { vm.searchQuery },
+                set: { vm.searchQuery = $0 }
+            ))
+            .textFieldStyle(.plain)
+            .accessibilityIdentifier("exerciseSearchField")
+            if !vm.searchQuery.isEmpty {
+                Button {
+                    vm.searchQuery = ""
+                    Task { await vm.performSearch() }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(BrandTheme.secondaryText)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(BrandTheme.cardBackground)
+        .cornerRadius(10)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
     }
 
     private func exerciseRow(_ exercise: Exercise, vm: ExerciseLibraryViewModel) -> some View {

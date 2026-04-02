@@ -56,11 +56,7 @@ final class TemplateEditorViewModel {
         for (i, ex) in exercises.enumerated() {
             ex.order = i
         }
-        if isNew {
-            for ex in exercises {
-                template.exercises.append(ex)
-            }
-        }
+        template.exercises = exercises
         // Capture a reference to pass to async boundary (both sides are @MainActor)
         let templateToSave = template
         do {

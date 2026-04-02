@@ -20,9 +20,9 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Bench Press"].waitForExistence(timeout: 8))
     }
 
-    // Returns the search field (always visible with displayMode: .always)
+    // Returns the custom search text field pinned above the filter chips
     private func revealSearchBar() -> XCUIElement {
-        return app.searchFields.firstMatch
+        return app.textFields["exerciseSearchField"]
     }
 
     func testExercisesTabNavigatesCorrectly() throws {

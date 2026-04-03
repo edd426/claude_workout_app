@@ -1,8 +1,7 @@
 import SwiftUI
-import SwiftData
 
 struct TemplateListView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dependencies) private var deps
     @State private var vm: TemplateListViewModel?
     @State private var showEditor = false
     @State private var selectedTemplate: WorkoutTemplate? = nil
@@ -16,9 +15,9 @@ struct TemplateListView: View {
             }
         }
         .task {
-            if vm == nil {
+            if vm == nil, let deps {
                 vm = TemplateListViewModel(
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext)
+                    templateRepository: deps.templateRepository
                 )
                 await vm?.loadTemplates()
             }
@@ -47,20 +46,24 @@ struct TemplateListView: View {
             }
         }
         .sheet(isPresented: $showEditor, onDismiss: { Task { await vm.loadTemplates() } }) {
-            TemplateEditorView(
-                vm: TemplateEditorViewModel(
-                    template: nil,
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext)
+            if let deps {
+                TemplateEditorView(
+                    vm: TemplateEditorViewModel(
+                        template: nil,
+                        templateRepository: deps.templateRepository
+                    )
                 )
-            )
+            }
         }
         .sheet(item: $selectedTemplate, onDismiss: { Task { await vm.loadTemplates() } }) { template in
-            TemplateEditorView(
-                vm: TemplateEditorViewModel(
-                    template: template,
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext)
+            if let deps {
+                TemplateEditorView(
+                    vm: TemplateEditorViewModel(
+                        template: template,
+                        templateRepository: deps.templateRepository
+                    )
                 )
-            )
+            }
         }
     }
 }

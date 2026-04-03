@@ -1,12 +1,11 @@
 import SwiftUI
-import SwiftData
 
 struct TemplatePreviewView: View {
     let template: WorkoutTemplate
     let onStartWorkout: () -> Void
 
     @State private var showEditor = false
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dependencies) private var deps
 
     private var sortedExercises: [TemplateExercise] {
         template.exercises.sorted { $0.order < $1.order }
@@ -56,12 +55,14 @@ struct TemplatePreviewView: View {
             }
         }
         .sheet(isPresented: $showEditor) {
-            TemplateEditorView(
-                vm: TemplateEditorViewModel(
-                    template: template,
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext)
+            if let deps {
+                TemplateEditorView(
+                    vm: TemplateEditorViewModel(
+                        template: template,
+                        templateRepository: deps.templateRepository
+                    )
                 )
-            )
+            }
         }
     }
 }

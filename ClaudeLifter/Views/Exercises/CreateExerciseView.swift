@@ -1,9 +1,8 @@
 import SwiftUI
-import SwiftData
 
 struct CreateExerciseView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dependencies) private var deps
     @State private var vm = CreateExerciseViewModel()
 
     private let equipmentOptions = ["barbell", "dumbbell", "machine", "cable", "bodyweight", "kettlebell", "band", "smith_machine"]
@@ -64,8 +63,9 @@ struct CreateExerciseView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
-                            let repo = SwiftDataExerciseRepository(context: modelContext)
-                            try? await vm.save(using: repo)
+                            if let deps {
+                                try? await vm.save(using: deps.exerciseRepository)
+                            }
                             onSaved?()
                             dismiss()
                         }

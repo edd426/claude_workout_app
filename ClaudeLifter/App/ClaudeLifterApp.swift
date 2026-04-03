@@ -53,6 +53,7 @@ struct ClaudeLifterApp: App {
             ContentView(dependencies: dependencies)
                 .modelContainer(modelContainer)
                 .environment(appState)
+                .environment(\.dependencies, dependencies)
                 .task {
                     if isUITesting {
                         if shouldSeedTestData {

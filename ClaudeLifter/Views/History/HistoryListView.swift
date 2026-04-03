@@ -1,8 +1,7 @@
 import SwiftUI
-import SwiftData
 
 struct HistoryListView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dependencies) private var deps
     @State private var vm: HistoryViewModel?
     @State private var calendarVM: CalendarViewModel?
     @State private var showCalendar = true
@@ -35,10 +34,9 @@ struct HistoryListView: View {
             Text("This cannot be undone.")
         }
         .task {
-            if vm == nil {
-                let repo = SwiftDataWorkoutRepository(context: modelContext)
-                vm = HistoryViewModel(workoutRepository: repo)
-                calendarVM = CalendarViewModel(workoutRepository: repo)
+            if vm == nil, let deps {
+                vm = HistoryViewModel(workoutRepository: deps.workoutRepository)
+                calendarVM = CalendarViewModel(workoutRepository: deps.workoutRepository)
                 await vm?.loadWorkouts()
             }
         }
@@ -47,11 +45,11 @@ struct HistoryListView: View {
     @ToolbarContentBuilder
     private var viewToggleToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            if vm != nil {
+            if vm != nil, let deps {
                 NavigationLink {
                     ChartsView(viewModel: ProgressChartsViewModel(
-                        workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
-                        exerciseRepository: SwiftDataExerciseRepository(context: modelContext)
+                        workoutRepository: deps.workoutRepository,
+                        exerciseRepository: deps.exerciseRepository
                     ))
                 } label: {
                     Image(systemName: "chart.line.uptrend.xyaxis")

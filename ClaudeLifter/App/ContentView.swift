@@ -1,8 +1,6 @@
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
 
     let dependencies: DependencyContainer
@@ -38,10 +36,10 @@ struct ContentView: View {
             if chatViewModel == nil {
                 chatViewModel = ChatViewModel(
                     anthropicService: dependencies.anthropicService,
-                    exerciseRepository: SwiftDataExerciseRepository(context: modelContext),
-                    workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext),
-                    preferenceRepository: SwiftDataTrainingPreferenceRepository(context: modelContext)
+                    exerciseRepository: dependencies.exerciseRepository,
+                    workoutRepository: dependencies.workoutRepository,
+                    templateRepository: dependencies.templateRepository,
+                    preferenceRepository: dependencies.preferenceRepository
                 )
             }
         }

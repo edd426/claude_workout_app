@@ -1,8 +1,7 @@
 import SwiftUI
-import SwiftData
 
 struct HomeView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dependencies) private var deps
     @Environment(AppState.self) private var appState
     @State private var vm: HomeViewModel?
     @State private var selectedTemplate: WorkoutTemplate? = nil
@@ -22,15 +21,15 @@ struct HomeView: View {
             .navigationTitle("ClaudeLifter")
         }
         .task {
+            guard let deps else { return }
             if vm == nil {
                 vm = HomeViewModel(
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext),
-                    workoutRepository: SwiftDataWorkoutRepository(context: modelContext)
+                    templateRepository: deps.templateRepository,
+                    workoutRepository: deps.workoutRepository
                 )
                 await vm?.loadTemplates()
             }
-            let insightRepo = SwiftDataInsightRepository(context: modelContext)
-            if let fetched = try? await insightRepo.fetchUnread() {
+            if let fetched = try? await deps.insightRepository.fetchUnread() {
                 unreadInsights = fetched
             }
         }
@@ -38,37 +37,39 @@ struct HomeView: View {
             Task { await vm?.loadTemplates() }
         }
         .fullScreenCover(item: $selectedTemplate) { template in
-            ActiveWorkoutView(
-                vm: ActiveWorkoutViewModel(
-                    template: template,
-                    workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
-                    autoFillService: AutoFillService(
-                        workoutRepository: SwiftDataWorkoutRepository(context: modelContext)
-                    ),
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext)
-                )
-            )
-            .onDisappear { Task { await vm?.loadTemplates() } }
-        }
-        .fullScreenCover(isPresented: $showAdHocWorkout) {
-            ActiveWorkoutView(
-                vm: ActiveWorkoutViewModel(
-                    adHocName: "Quick Workout",
-                    workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
-                    autoFillService: AutoFillService(
-                        workoutRepository: SwiftDataWorkoutRepository(context: modelContext)
+            if let deps {
+                ActiveWorkoutView(
+                    vm: ActiveWorkoutViewModel(
+                        template: template,
+                        workoutRepository: deps.workoutRepository,
+                        autoFillService: deps.autoFillService,
+                        templateRepository: deps.templateRepository
                     )
                 )
-            )
+                .onDisappear { Task { await vm?.loadTemplates() } }
+            }
+        }
+        .fullScreenCover(isPresented: $showAdHocWorkout) {
+            if let deps {
+                ActiveWorkoutView(
+                    vm: ActiveWorkoutViewModel(
+                        adHocName: "Quick Workout",
+                        workoutRepository: deps.workoutRepository,
+                        autoFillService: deps.autoFillService
+                    )
+                )
+            }
         }
         .sheet(isPresented: $showTemplateEditor) {
-            TemplateEditorView(
-                vm: TemplateEditorViewModel(
-                    template: nil,
-                    templateRepository: SwiftDataTemplateRepository(context: modelContext)
+            if let deps {
+                TemplateEditorView(
+                    vm: TemplateEditorViewModel(
+                        template: nil,
+                        templateRepository: deps.templateRepository
+                    )
                 )
-            )
-            .onDisappear { Task { await vm?.loadTemplates() } }
+                .onDisappear { Task { await vm?.loadTemplates() } }
+            }
         }
     }
 
@@ -101,8 +102,7 @@ struct HomeView: View {
         VStack(spacing: 8) {
             ForEach(unreadInsights, id: \.id) { insight in
                 InsightCardView(insight: insight) {
-                    let insightRepo = SwiftDataInsightRepository(context: modelContext)
-                    try? await insightRepo.markAsRead(insight)
+                    try? await deps?.insightRepository.markAsRead(insight)
                     unreadInsights.removeAll { $0.id == insight.id }
                 }
             }

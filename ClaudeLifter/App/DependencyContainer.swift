@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import SwiftUI
 
 @MainActor
 final class DependencyContainer {
@@ -61,5 +62,16 @@ final class DependencyContainer {
             networkService: network,
             settings: settings
         )
+    }
+}
+
+private struct DependencyContainerKey: EnvironmentKey {
+    static let defaultValue: DependencyContainer? = nil
+}
+
+extension EnvironmentValues {
+    var dependencies: DependencyContainer? {
+        get { self[DependencyContainerKey.self] }
+        set { self[DependencyContainerKey.self] = newValue }
     }
 }

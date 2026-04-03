@@ -1,8 +1,7 @@
 import SwiftUI
-import SwiftData
 
 struct ExerciseLibraryView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dependencies) private var deps
     @Environment(\.dismiss) private var dismiss
     @State private var vm: ExerciseLibraryViewModel?
     @State private var searchTask: Task<Void, Never>? = nil
@@ -44,9 +43,9 @@ struct ExerciseLibraryView: View {
             }
         }
         .task {
-            if vm == nil {
+            if vm == nil, let deps {
                 vm = ExerciseLibraryViewModel(
-                    exerciseRepository: SwiftDataExerciseRepository(context: modelContext)
+                    exerciseRepository: deps.exerciseRepository
                 )
                 await vm?.loadFilterOptions()
                 await vm?.loadExercises()

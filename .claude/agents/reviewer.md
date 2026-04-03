@@ -4,7 +4,7 @@ description: >
   Code review agent. Reviews implementation for TDD compliance, architecture quality,
   and SPEC alignment. Does NOT write code. Use after implementation is complete.
   Examples: "review the data models", "check TDD compliance", "review all Phase 1 code".
-model: haiku
+model: opus
 tools: Read, Glob, Grep, Bash
 disallowedTools: Write, Edit, NotebookEdit
 ---

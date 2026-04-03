@@ -5,7 +5,7 @@ description: >
   Use for cloud backend work: Cosmos DB, Blob Storage, Function App endpoints,
   API proxying. Examples: "create the Bicep templates", "add the sync/pull endpoint",
   "deploy Azure Functions".
-model: sonnet
+model: opus
 ---
 
 # Infrastructure Agent

@@ -33,7 +33,7 @@ final class DependencyContainer {
         self.chatRepository = chatRepo
         self.preferenceRepository = prefRepo
         self.insightRepository = insightRepo
-        self.autoFillService = AutoFillService(workoutRepository: SwiftDataWorkoutRepository(context: modelContext))
+        self.autoFillService = AutoFillService(workoutRepository: workoutRepo)
         self.exerciseImportService = ExerciseImportService()
         self.networkService = network
         self.imageUploadService = ImageUploadService(networkService: network)

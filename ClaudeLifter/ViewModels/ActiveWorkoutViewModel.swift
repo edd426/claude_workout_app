@@ -158,11 +158,11 @@ final class ActiveWorkoutViewModel {
         workout.lastModified = .now
         do {
             try await saveWorkout(workout)
-            if let template {
+            if let template, let templateRepository {
                 template.timesPerformed += 1
                 template.lastPerformedAt = .now
                 template.lastModified = .now
-                try? await templateRepository?.save(template)
+                try? await templateRepository.save(template)
             }
             if let prService = prDetectionService {
                 detectedPRs = (try? await prService.detectPRs(for: workout)) ?? []

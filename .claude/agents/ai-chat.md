@@ -4,7 +4,7 @@ description: >
   Implements Claude AI integration: Anthropic service, chat ViewModel, tool definitions,
   chat UI, and streaming responses. Use for AI-related work. Examples: "set up the Anthropic
   service", "add the suggest_weight tool", "build the chat tab UI".
-model: sonnet
+model: opus
 ---
 
 # AI Chat Agent

@@ -5,7 +5,7 @@ description: >
   Use for UI work: screens, navigation, rest timer, template picker, exercise browser,
   history views. Examples: "build the active workout screen", "create the rest timer view",
   "add the template picker".
-model: sonnet
+model: opus
 ---
 
 # UI & ViewModels Agent

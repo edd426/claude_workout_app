@@ -5,7 +5,7 @@ description: >
   exercise import, and auto-fill service. Use when creating or modifying data entities,
   database queries, or data access patterns. Examples: "create the Exercise model",
   "add a repository method for fetching recent sets", "import the exercise database JSON".
-model: sonnet
+model: opus
 ---
 
 # Data Models Agent

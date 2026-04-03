@@ -216,7 +216,8 @@ struct WorkoutFlowE2ETests {
         let vm = ActiveWorkoutViewModel(
             template: template,
             workoutRepository: workoutRepo,
-            autoFillService: autoFill
+            autoFillService: autoFill,
+            templateRepository: templateRepo
         )
         await vm.startWorkout()
         let workout = try #require(vm.workout)
@@ -236,10 +237,7 @@ struct WorkoutFlowE2ETests {
         await vm.finishWorkout()
         #expect(vm.isFinished)
 
-        // Manually increment timesPerformed (as the app would do)
-        template.timesPerformed += 1
-        try await templateRepo.save(template)
-
+        // finishWorkout() should have incremented timesPerformed automatically
         let updatedTemplates = try await templateRepo.fetchAll()
         let updatedTemplate = try #require(updatedTemplates.first { $0.id == template.id })
         #expect(updatedTemplate.timesPerformed == 1)

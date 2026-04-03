@@ -53,14 +53,17 @@ app.http("syncPull", {
       };
     }
 
-    if (!body.lastSyncTimestamp || !body.collections) {
+    if (!body.collections) {
       return {
         status: 400,
         jsonBody: {
-          error: "Missing required fields: lastSyncTimestamp, collections",
+          error: "Missing required field: collections",
         },
       };
     }
+
+    // Default to epoch on first-ever sync (iOS client sends null/undefined)
+    const lastSync = body.lastSyncTimestamp || "1970-01-01T00:00:00.000Z";
 
     const requestedCollections = body.collections.filter((c) =>
       VALID_COLLECTIONS.includes(c)
@@ -72,7 +75,7 @@ app.http("syncPull", {
         requestedCollections.map(async (collection) => {
           results[collection] = await pullFromContainer(
             collection,
-            body.lastSyncTimestamp
+            lastSync
           );
         })
       );

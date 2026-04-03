@@ -1,5 +1,5 @@
 export interface SyncPullRequest {
-  lastSyncTimestamp: string;
+  lastSyncTimestamp?: string | null;
   collections: string[];
 }
 
@@ -43,6 +43,7 @@ export interface ChatRequest {
   max_tokens?: number;
   tools?: Record<string, unknown>[];
   stream?: boolean;
+  thinking_budget?: number;
 }
 
 export interface InsightsRequest {

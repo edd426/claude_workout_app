@@ -44,7 +44,8 @@ struct HomeView: View {
                     workoutRepository: SwiftDataWorkoutRepository(context: modelContext),
                     autoFillService: AutoFillService(
                         workoutRepository: SwiftDataWorkoutRepository(context: modelContext)
-                    )
+                    ),
+                    templateRepository: SwiftDataTemplateRepository(context: modelContext)
                 )
             )
             .onDisappear { Task { await vm?.loadTemplates() } }

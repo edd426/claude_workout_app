@@ -411,3 +411,138 @@ extension ActiveWorkoutViewModelTests {
         #expect(vm.detectedPRs.isEmpty)
     }
 }
+
+extension ActiveWorkoutViewModelTests {
+
+    // MARK: - #31 / #53: completeSet() auto-saves (crash recovery)
+
+    @Test("completeSet triggers a repository save for crash recovery")
+    func completeSetTriggersRepositorySave() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let saveCountAfterStart = workoutRepo.saveCallCount
+
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
+
+        // Allow the async Task inside completeSet to execute
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(workoutRepo.saveCallCount > saveCountAfterStart,
+                "completeSet() must trigger a save so completed sets survive a crash")
+    }
+
+    @Test("completeSet updates workout lastModified")
+    func completeSetUpdatesLastModified() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let before = vm.workout?.lastModified ?? Date.distantPast
+
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
+        try await Task.sleep(for: .milliseconds(50))
+
+        let after = vm.workout?.lastModified ?? Date.distantPast
+        #expect(after >= before, "lastModified must be updated when a set is completed")
+    }
+
+    // MARK: - #33 / #34: timesPerformed and lastPerformedAt updated on finish
+
+    @Test("finishWorkout increments template timesPerformed")
+    func finishWorkoutIncrementsTimesPerformed() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let initialCount = template.timesPerformed
+
+        let templateRepo = MockTemplateRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            templateRepository: templateRepo
+        )
+        await vm.startWorkout()
+        await vm.finishWorkout()
+
+        #expect(template.timesPerformed == initialCount + 1,
+                "timesPerformed must be incremented when a workout is finished")
+        #expect(templateRepo.saveCallCount >= 1)
+    }
+
+    @Test("finishWorkout sets template lastPerformedAt")
+    func finishWorkoutSetsLastPerformedAt() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let templateRepo = MockTemplateRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            templateRepository: templateRepo
+        )
+        await vm.startWorkout()
+        let beforeFinish = Date.now
+        await vm.finishWorkout()
+
+        let lastPerformed = try #require(template.lastPerformedAt,
+                                         "lastPerformedAt must be set when a workout is finished")
+        #expect(lastPerformed >= beforeFinish)
+    }
+
+    @Test("finishWorkout without templateRepository leaves template unchanged")
+    func finishWorkoutWithoutTemplateRepoLeavesTemplateUnchanged() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let initialCount = template.timesPerformed
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+            // no templateRepository
+        )
+        await vm.startWorkout()
+        await vm.finishWorkout()
+
+        // Without a templateRepository the template should be untouched
+        #expect(template.timesPerformed == initialCount)
+    }
+}

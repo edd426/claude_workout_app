@@ -58,13 +58,24 @@ app.http("chat", {
 
       if (body.stream) {
         // Stream SSE response back to client
-        const stream = await client.messages.stream({
+        const streamParams: Anthropic.MessageStreamParams = {
           model,
           max_tokens: maxTokens,
-          messages: body.messages as Anthropic.MessageParam[],
+          messages: body.messages as unknown as Anthropic.MessageParam[],
           system: body.system as string | Anthropic.TextBlockParam[] | undefined,
-          tools: body.tools as Anthropic.Tool[] | undefined,
-        });
+          tools: body.tools as unknown as Anthropic.Tool[] | undefined,
+        };
+
+        if (body.thinking_budget) {
+          (streamParams as unknown as Record<string, unknown>).thinking = {
+            type: "enabled",
+            budget_tokens: body.thinking_budget,
+          };
+          // When thinking is enabled, max_tokens must accommodate thinking + response
+          streamParams.max_tokens = Math.max(maxTokens, body.thinking_budget + 4096);
+        }
+
+        const stream = await client.messages.stream(streamParams);
 
         const encoder = new TextEncoder();
         const readableStream = new ReadableStream({
@@ -94,13 +105,24 @@ app.http("chat", {
         };
       } else {
         // Non-streaming response
-        const response = await client.messages.create({
+        const createParams: Anthropic.MessageCreateParamsNonStreaming = {
           model,
           max_tokens: maxTokens,
-          messages: body.messages as Anthropic.MessageParam[],
+          messages: body.messages as unknown as Anthropic.MessageParam[],
           system: body.system as string | Anthropic.TextBlockParam[] | undefined,
-          tools: body.tools as Anthropic.Tool[] | undefined,
-        });
+          tools: body.tools as unknown as Anthropic.Tool[] | undefined,
+        };
+
+        if (body.thinking_budget) {
+          (createParams as unknown as Record<string, unknown>).thinking = {
+            type: "enabled",
+            budget_tokens: body.thinking_budget,
+          };
+          // When thinking is enabled, max_tokens must accommodate thinking + response
+          createParams.max_tokens = Math.max(maxTokens, body.thinking_budget + 4096);
+        }
+
+        const response = await client.messages.create(createParams);
 
         return { jsonBody: response };
       }

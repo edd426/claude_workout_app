@@ -16,6 +16,7 @@ final class ActiveWorkoutViewModel {
     private let workoutRepository: any WorkoutRepository
     private let autoFillService: any AutoFillServiceProtocol
     private let prDetectionService: (any PRDetectionServiceProtocol)?
+    private let templateRepository: (any TemplateRepository)?
 
     var totalSetsCompleted: Int {
         workout?.exercises.flatMap(\.sets).filter(\.isCompleted).count ?? 0
@@ -33,12 +34,14 @@ final class ActiveWorkoutViewModel {
         template: WorkoutTemplate,
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
+        templateRepository: (any TemplateRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil
     ) {
         self.template = template
         self.adHocName = nil
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
     }
 
@@ -52,6 +55,7 @@ final class ActiveWorkoutViewModel {
         self.adHocName = adHocName
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.templateRepository = nil
         self.prDetectionService = prDetectionService
     }
 
@@ -111,6 +115,7 @@ final class ActiveWorkoutViewModel {
         set.completedAt = .now
         lastCompletedSet = set
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task { await saveDraft() }
     }
 
     func addExercise(_ exercise: Exercise) {
@@ -140,16 +145,7 @@ final class ActiveWorkoutViewModel {
     func cancelWorkout() async {
         guard let workout else { return }
         do {
-            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                Task { @MainActor in
-                    do {
-                        try await self.workoutRepository.delete(workout)
-                        cont.resume()
-                    } catch {
-                        cont.resume(throwing: error)
-                    }
-                }
-            }
+            try await workoutRepository.delete(workout)
             self.workout = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -162,6 +158,12 @@ final class ActiveWorkoutViewModel {
         workout.lastModified = .now
         do {
             try await saveWorkout(workout)
+            if let template {
+                template.timesPerformed += 1
+                template.lastPerformedAt = .now
+                template.lastModified = .now
+                try? await templateRepository?.save(template)
+            }
             if let prService = prDetectionService {
                 detectedPRs = (try? await prService.detectPRs(for: workout)) ?? []
             }
@@ -171,17 +173,7 @@ final class ActiveWorkoutViewModel {
         }
     }
 
-    // Bridge @MainActor-isolated model to Sendable async repository
     private func saveWorkout(_ w: Workout) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            Task { @MainActor in
-                do {
-                    try await self.workoutRepository.save(w)
-                    cont.resume()
-                } catch {
-                    cont.resume(throwing: error)
-                }
-            }
-        }
+        try await workoutRepository.save(w)
     }
 }

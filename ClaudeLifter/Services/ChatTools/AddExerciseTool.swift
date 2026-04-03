@@ -31,8 +31,20 @@ struct AddExerciseTool: ClaudeTool {
         }
 
         let exercises = try await context.exerciseRepository.search(query: exerciseName)
-        guard let exercise = exercises.first else {
+        guard !exercises.isEmpty else {
             return "No exercise found matching '\(exerciseName)'"
+        }
+
+        // (#38 fix) Prefer exact case-insensitive match over first result
+        let exercise: Exercise
+        if let exact = exercises.first(where: { $0.name.lowercased() == exerciseName.lowercased() }) {
+            exercise = exact
+        } else if exercises.count == 1 {
+            exercise = exercises[0]
+        } else {
+            // Multiple ambiguous matches — ask for clarification
+            let options = exercises.prefix(3).map { $0.name }.joined(separator: ", ")
+            return "Multiple exercises match '\(exerciseName)'. Did you mean: \(options)? Please be more specific."
         }
 
         // Check not already in the workout

@@ -65,16 +65,8 @@ final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             Task {
                 do {
-                    let sdkMessages = messages.compactMap { msg -> MessageParameter.Message? in
-                        switch msg.role {
-                        case .user:
-                            return MessageParameter.Message(role: .user, content: .text(msg.content))
-                        case .assistant:
-                            return MessageParameter.Message(role: .assistant, content: .text(msg.content))
-                        case .system:
-                            return nil // system messages go in systemPrompt
-                        }
-                    }
+                    // Build SDK messages from our domain ChatMessage type (#29 fix)
+                    let sdkMessages = buildSDKMessages(from: messages)
 
                     let sdkTools: [MessageParameter.Tool]? = tools.map { defs in
                         defs.map { def in
@@ -145,6 +137,52 @@ final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
                 }
             }
         }
+    }
+
+    // MARK: - Message Conversion (#29 fix)
+
+    private func buildSDKMessages(from messages: [ChatMessage]) -> [MessageParameter.Message] {
+        var result: [MessageParameter.Message] = []
+
+        for msg in messages {
+            switch msg.content {
+            case .text(let str):
+                switch msg.role {
+                case .user:
+                    result.append(MessageParameter.Message(role: .user, content: .text(str)))
+                case .assistant:
+                    result.append(MessageParameter.Message(role: .assistant, content: .text(str)))
+                case .system:
+                    break // system messages go in the systemPrompt parameter
+                }
+
+            case .toolUse(let id, let name, let inputJSON):
+                // Parse JSON string into [String: DynamicContent] for the SDK
+                let input = parseToolInput(from: inputJSON)
+                let toolUseBlock = MessageParameter.Message.Content.list([
+                    .toolUse(id, name, input)
+                ])
+                result.append(MessageParameter.Message(role: .assistant, content: toolUseBlock))
+
+            case .toolResult(let toolUseId, let content):
+                // Send tool result as user message with tool_result content block
+                let toolResultBlock = MessageParameter.Message.Content.list([
+                    .toolResult(toolUseId, content)
+                ])
+                result.append(MessageParameter.Message(role: .user, content: toolResultBlock))
+            }
+        }
+
+        return result
+    }
+
+    /// Parse a JSON string into the SDK's Input type `[String: DynamicContent]`.
+    private func parseToolInput(from jsonString: String) -> MessageResponse.Content.Input {
+        guard let data = jsonString.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String: MessageResponse.Content.DynamicContent].self, from: data) else {
+            return [:]
+        }
+        return decoded
     }
 
     // MARK: - Private Helpers

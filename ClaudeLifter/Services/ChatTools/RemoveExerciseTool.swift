@@ -31,8 +31,21 @@ struct RemoveExerciseTool: ClaudeTool {
         }
 
         let lowercased = exerciseName.lowercased()
-        let matchIndex = workout.exercises.firstIndex {
-            $0.exercise?.name.lowercased().contains(lowercased) == true
+
+        // (#38 fix) Prefer exact case-insensitive match first
+        let exactIndex = workout.exercises.firstIndex {
+            $0.exercise?.name.lowercased() == lowercased
+        }
+
+        let matchIndex: Int?
+        if let exact = exactIndex {
+            matchIndex = exact
+        } else {
+            // Fall back to contains-match only if there's exactly one candidate
+            let containsMatches = workout.exercises.indices.filter {
+                workout.exercises[$0].exercise?.name.lowercased().contains(lowercased) == true
+            }
+            matchIndex = containsMatches.count == 1 ? containsMatches[0] : nil
         }
 
         guard let index = matchIndex else {

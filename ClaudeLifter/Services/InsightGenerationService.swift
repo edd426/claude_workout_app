@@ -20,17 +20,20 @@ final class InsightGenerationService: InsightGenerationServiceProtocol {
     private let workoutRepository: any WorkoutRepository
     private let insightRepository: any InsightRepository
     private let defaults: UserDefaults
+    private let settings: SettingsManager?
 
     init(
         anthropicService: any AnthropicServiceProtocol,
         workoutRepository: any WorkoutRepository,
         insightRepository: any InsightRepository,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        settings: SettingsManager? = nil
     ) {
         self.anthropicService = anthropicService
         self.workoutRepository = workoutRepository
         self.insightRepository = insightRepository
         self.defaults = defaults
+        self.settings = settings
     }
 
     func shouldGenerateInsights() -> Bool {
@@ -53,14 +56,17 @@ final class InsightGenerationService: InsightGenerationServiceProtocol {
         Where TYPE is one of: suggestion, warning, encouragement
         """
 
-        let messages = [ChatMessage(role: .user, content: "Here is my recent workout data:\n\(summary)\n\nProvide brief insights.")]
+        let messages = [ChatMessage(role: .user, text: "Here is my recent workout data:\n\(summary)\n\nProvide brief insights.")]
+
+        // Use SettingsManager model if available, otherwise default to Haiku (#44 fix)
+        let model = settings?.aiModel.rawValue ?? AIModel.haiku.rawValue
 
         var responseText = ""
         for try await event in anthropicService.streamChat(
             messages: messages,
             systemPrompt: systemPrompt,
             tools: nil,
-            model: "claude-haiku-4-5-20251001"
+            model: model
         ) {
             if case .text(let text) = event {
                 responseText += text

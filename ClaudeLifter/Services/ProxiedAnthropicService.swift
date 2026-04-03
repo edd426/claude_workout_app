@@ -127,17 +127,78 @@ private struct ProxyChatRequest: Encodable, Sendable {
         case thinkingBudget = "thinking_budget"
     }
 
+    // MARK: - ProxyMessage
+
     struct ProxyMessage: Encodable, Sendable {
         let role: String
-        let content: String
+        let content: ProxyContent
+
+        enum ProxyContent: Encodable, Sendable {
+            case text(String)
+            case blocks([ProxyContentBlock])
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.singleValueContainer()
+                switch self {
+                case .text(let str):
+                    try container.encode(str)
+                case .blocks(let arr):
+                    try container.encode(arr)
+                }
+            }
+        }
+
+        struct ProxyContentBlock: Encodable, Sendable {
+            let type: String
+            // For text blocks
+            var text: String?
+            // For tool_use blocks
+            var id: String?
+            var name: String?
+            var input: JSONValue?
+            // For tool_result blocks
+            var toolUseId: String?
+
+            enum CodingKeys: String, CodingKey {
+                case type, text, id, name, input
+                case toolUseId = "tool_use_id"
+            }
+        }
 
         init?(_ message: ChatMessage) {
-            switch message.role {
-            case .user: self.role = "user"
-            case .assistant: self.role = "assistant"
-            case .system: return nil // system messages go in the top-level system field
+            switch message.content {
+            case .text(let str):
+                switch message.role {
+                case .user:
+                    self.role = "user"
+                    self.content = .text(str)
+                case .assistant:
+                    self.role = "assistant"
+                    self.content = .text(str)
+                case .system:
+                    return nil // system goes in top-level system field
+                }
+
+            case .toolUse(let id, let name, let inputJSON):
+                self.role = "assistant"
+                // Parse JSON input
+                let inputValue: JSONValue
+                if let data = inputJSON.data(using: .utf8),
+                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    inputValue = .object(dict.mapValues { JSONValue.fromAny($0) })
+                } else {
+                    inputValue = .object([:])
+                }
+                self.content = .blocks([
+                    ProxyContentBlock(type: "tool_use", text: nil, id: id, name: name, input: inputValue, toolUseId: nil)
+                ])
+
+            case .toolResult(let toolUseId, let resultContent):
+                self.role = "user"
+                self.content = .blocks([
+                    ProxyContentBlock(type: "tool_result", text: resultContent, id: nil, name: nil, input: nil, toolUseId: toolUseId)
+                ])
             }
-            self.content = message.content
         }
     }
 

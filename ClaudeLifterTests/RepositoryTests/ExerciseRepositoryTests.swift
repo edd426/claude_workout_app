@@ -219,4 +219,99 @@ struct ExerciseRepositoryTests {
         // Sorted
         #expect(values == values.sorted())
     }
+
+    // MARK: - fuzzySearch Tests
+
+    @Test("fuzzySearch finds Squat when querying Barbell Squat")
+    @MainActor
+    func fuzzySearchFindsSquatWithBarbellSquatQuery() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        context.insert(TestFixtures.makeExercise(name: "Squat"))
+        context.insert(TestFixtures.makeExercise(name: "Bench Press", externalId: "bench_press"))
+        context.insert(TestFixtures.makeExercise(name: "Deadlift", externalId: "deadlift"))
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let results = try await repo.fuzzySearch(query: "Barbell Squat")
+        let names = results.map(\.name)
+        #expect(names.contains("Squat"))
+    }
+
+    @Test("fuzzySearch finds Bench Press variants when querying Barbell Bench Press")
+    @MainActor
+    func fuzzySearchFindsBenchPressVariantsWithBarbellQuery() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        context.insert(TestFixtures.makeExercise(name: "Bench Press", externalId: "bench_press"))
+        context.insert(TestFixtures.makeExercise(name: "Incline Bench Press", externalId: "incline_bench_press"))
+        context.insert(TestFixtures.makeExercise(name: "Decline Bench Press", externalId: "decline_bench_press"))
+        context.insert(TestFixtures.makeExercise(name: "Squat", externalId: "squat"))
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let results = try await repo.fuzzySearch(query: "Barbell Bench Press")
+        let names = results.map(\.name)
+        #expect(names.contains("Bench Press"))
+        // Should not return Squat (no matching words)
+        #expect(!names.contains("Squat"))
+    }
+
+    @Test("fuzzySearch returns standard results when query matches directly")
+    @MainActor
+    func fuzzySearchUsesStandardPathWhenQueryMatchesDirectly() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        context.insert(TestFixtures.makeExercise(name: "Bench Press"))
+        context.insert(TestFixtures.makeExercise(name: "Squat", externalId: "squat"))
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let results = try await repo.fuzzySearch(query: "bench")
+        let names = results.map(\.name)
+        #expect(names.contains("Bench Press"))
+        #expect(!names.contains("Squat"))
+    }
+
+    @Test("fuzzySearch with real exercise import returns results for Claude-style queries")
+    @MainActor
+    func fuzzySearchWithRealExerciseImport() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        // Try to load exercises.json from the main app bundle (it's bundled with ClaudeLifter)
+        let url = Bundle.main.url(forResource: "exercises", withExtension: "json")
+            ?? Bundle.allBundles.compactMap { $0.url(forResource: "exercises", withExtension: "json") }.first
+
+        if let url = url {
+            let data = try Data(contentsOf: url)
+            let service = ExerciseImportService()
+            try await service.importExercises(from: data, into: context)
+
+            let repo = SwiftDataExerciseRepository(context: context)
+            let squatResults = try await repo.fuzzySearch(query: "Barbell Squat")
+            #expect(!squatResults.isEmpty, "fuzzySearch(\"Barbell Squat\") should return results")
+
+            let benchResults = try await repo.fuzzySearch(query: "Dumbbell Bench Press")
+            #expect(!benchResults.isEmpty, "fuzzySearch(\"Dumbbell Bench Press\") should return results")
+
+            let pressResults = try await repo.fuzzySearch(query: "Overhead Press")
+            #expect(!pressResults.isEmpty, "fuzzySearch(\"Overhead Press\") should return results")
+        } else {
+            // exercises.json not available in test runner; use a small inline dataset
+            context.insert(TestFixtures.makeExercise(name: "Squat", externalId: "squat"))
+            context.insert(TestFixtures.makeExercise(name: "Bench Press", externalId: "bench_press"))
+            context.insert(TestFixtures.makeExercise(name: "Overhead Press", externalId: "overhead_press"))
+            context.insert(TestFixtures.makeExercise(name: "Deadlift", externalId: "deadlift"))
+            try context.save()
+
+            let repo = SwiftDataExerciseRepository(context: context)
+            let squatResults = try await repo.fuzzySearch(query: "Barbell Squat")
+            #expect(!squatResults.isEmpty)
+            let benchResults = try await repo.fuzzySearch(query: "Dumbbell Bench Press")
+            #expect(!benchResults.isEmpty)
+            let pressResults = try await repo.fuzzySearch(query: "Overhead Press")
+            #expect(!pressResults.isEmpty)
+        }
+    }
 }

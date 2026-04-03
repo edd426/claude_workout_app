@@ -40,6 +40,39 @@ final class MockExerciseRepository: ExerciseRepository {
         return searchResults
     }
 
+    func fuzzySearch(query: String) async throws -> [Exercise] {
+        if let error = errorToThrow { throw error }
+        // Try standard contains first
+        let standard = exercises.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        if !standard.isEmpty { return standard }
+
+        // Word-based fallback — union candidates across all significant words
+        let words = query.lowercased()
+            .split(separator: " ")
+            .map(String.init)
+            .filter { $0.count >= 3 }
+        guard !words.isEmpty else { return [] }
+
+        var seenIds = Set<UUID>()
+        var candidates: [Exercise] = []
+        for word in words {
+            for exercise in exercises where !seenIds.contains(exercise.id) && exercise.name.localizedCaseInsensitiveContains(word) {
+                seenIds.insert(exercise.id)
+                candidates.append(exercise)
+            }
+        }
+
+        let scored = candidates.map { exercise -> (Exercise, Int) in
+            let name = exercise.name.lowercased()
+            let matchCount = words.filter { name.contains($0) }.count
+            return (exercise, matchCount)
+        }
+        .filter { $0.1 > 0 }
+        .sorted { $0.1 > $1.1 }
+
+        return scored.map(\.0)
+    }
+
     func filter(category: String, value: String) async throws -> [Exercise] {
         if let error = errorToThrow { throw error }
         if !filterResults.isEmpty { return filterResults }

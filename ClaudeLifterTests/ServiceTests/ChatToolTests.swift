@@ -756,3 +756,173 @@ struct ModifyTemplateToolTests {
         #expect(result.lowercased().contains("confirm") || result.lowercased().contains("awaiting"))
     }
 }
+
+// MARK: - Disambiguation Tests (#38 fix)
+
+@Suite("Exercise Disambiguation Tests")
+@MainActor
+struct ExerciseDisambiguationTests {
+
+    // MARK: - AddExerciseTool disambiguation
+
+    @Test("AddExerciseTool uses exact match when available instead of first result")
+    func addExerciseUsesExactMatch() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let benchPress = TestFixtures.makeExercise(name: "Bench Press")
+        let overheadPress = TestFixtures.makeExercise(name: "Overhead Press")
+        context.insert(benchPress)
+        context.insert(overheadPress)
+
+        let workout = Workout(name: "Push Day", startedAt: .now)
+        context.insert(workout)
+        try context.save()
+
+        let toolContext = ToolContext(
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: MockTemplateRepository(),
+            activeWorkout: workout
+        )
+
+        let tool = AddExerciseTool()
+        let result = try await tool.execute(inputJSON: "{\"exercise_name\": \"Bench Press\"}", context: toolContext)
+
+        #expect(result.contains("Bench Press"))
+        #expect(workout.exercises.first?.exercise?.name == "Bench Press")
+    }
+
+    @Test("AddExerciseTool returns disambiguation message when multiple matches and no exact match")
+    func addExerciseDisambiguatesMultipleMatches() async throws {
+        let exerciseRepo = MockExerciseRepository()
+        exerciseRepo.exercises = [
+            TestFixtures.makeExercise(name: "Bench Press"),
+            TestFixtures.makeExercise(name: "Overhead Press"),
+            TestFixtures.makeExercise(name: "Incline Press")
+        ]
+
+        let workout = Workout(name: "Push Day", startedAt: .now)
+        let toolContext = ToolContext(
+            exerciseRepository: exerciseRepo,
+            workoutRepository: MockWorkoutRepository(),
+            templateRepository: MockTemplateRepository(),
+            activeWorkout: workout
+        )
+
+        let tool = AddExerciseTool()
+        let result = try await tool.execute(inputJSON: "{\"exercise_name\": \"Press\"}", context: toolContext)
+
+        // Should return disambiguation — not silently pick the first
+        #expect(result.lowercased().contains("multiple") || result.lowercased().contains("did you mean") || result.lowercased().contains("which"))
+    }
+
+    // MARK: - SuggestWeightTool disambiguation
+
+    @Test("SuggestWeightTool uses exact match when available")
+    func suggestWeightUsesExactMatch() async throws {
+        let exerciseRepo = MockExerciseRepository()
+        let benchPress = TestFixtures.makeExercise(name: "Bench Press")
+        let inclineBench = TestFixtures.makeExercise(name: "Incline Bench Press")
+        exerciseRepo.exercises = [benchPress, inclineBench]
+
+        let workoutRepo = MockWorkoutRepository()
+        workoutRepo.recentSetsResult = [
+            WorkoutSet(order: 0, weight: 100.0, weightUnit: .kg, reps: 5, isCompleted: true, completedAt: .now)
+        ]
+        workoutRepo.workouts = []
+
+        let toolContext = ToolContext(
+            exerciseRepository: exerciseRepo,
+            workoutRepository: workoutRepo,
+            templateRepository: MockTemplateRepository(),
+            activeWorkout: nil
+        )
+
+        let tool = SuggestWeightTool()
+        let result = try await tool.execute(inputJSON: "{\"exercise_name\": \"Bench Press\"}", context: toolContext)
+
+        #expect(result.contains("Bench Press"))
+        #expect(result.contains("100"))
+    }
+
+    @Test("SuggestWeightTool returns disambiguation when multiple matches and no exact match")
+    func suggestWeightDisambiguatesMultipleMatches() async throws {
+        let exerciseRepo = MockExerciseRepository()
+        exerciseRepo.exercises = [
+            TestFixtures.makeExercise(name: "Bench Press"),
+            TestFixtures.makeExercise(name: "Incline Bench Press"),
+            TestFixtures.makeExercise(name: "Decline Bench Press")
+        ]
+
+        let toolContext = ToolContext(
+            exerciseRepository: exerciseRepo,
+            workoutRepository: MockWorkoutRepository(),
+            templateRepository: MockTemplateRepository(),
+            activeWorkout: nil
+        )
+
+        let tool = SuggestWeightTool()
+        let result = try await tool.execute(inputJSON: "{\"exercise_name\": \"Bench\"}", context: toolContext)
+
+        #expect(result.lowercased().contains("multiple") || result.lowercased().contains("did you mean") || result.lowercased().contains("which"))
+    }
+
+    // MARK: - RemoveExerciseTool disambiguation
+
+    @Test("RemoveExerciseTool uses exact workout match when available")
+    func removeExerciseUsesExactWorkoutMatch() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let benchPress = TestFixtures.makeExercise(name: "Bench Press")
+        let inclineBench = TestFixtures.makeExercise(name: "Incline Bench Press")
+        context.insert(benchPress)
+        context.insert(inclineBench)
+
+        let workout = Workout(name: "Push Day", startedAt: .now)
+        let we1 = WorkoutExercise(order: 0, exercise: benchPress)
+        let we2 = WorkoutExercise(order: 1, exercise: inclineBench)
+        context.insert(we1)
+        context.insert(we2)
+        workout.exercises = [we1, we2]
+        context.insert(workout)
+        try context.save()
+
+        let toolContext = ToolContext(
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: MockTemplateRepository(),
+            activeWorkout: workout
+        )
+
+        let tool = RemoveExerciseTool()
+        let result = try await tool.execute(inputJSON: "{\"exercise_name\": \"Bench Press\"}", context: toolContext)
+
+        #expect(result.lowercased().contains("removed"))
+        #expect(workout.exercises.count == 1)
+        #expect(workout.exercises.first?.exercise?.name == "Incline Bench Press")
+    }
+
+    // MARK: - CreateTemplateTool disambiguation
+
+    @Test("CreateTemplateTool uses exact match for exercises when building template")
+    func createTemplateUsesExactMatch() async throws {
+        let exerciseRepo = MockExerciseRepository()
+        let benchPress = TestFixtures.makeExercise(name: "Bench Press")
+        let inclineBench = TestFixtures.makeExercise(name: "Incline Bench Press")
+        exerciseRepo.exercises = [benchPress, inclineBench]
+
+        let tool = CreateTemplateTool()
+        let input = """
+        {
+          "template_name": "Push Day",
+          "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]
+        }
+        """
+
+        let template = try await tool.buildTemplate(inputJSON: input, exerciseRepository: exerciseRepo)
+        #expect(template?.exercises.count == 1)
+        #expect(template?.exercises.first?.exercise?.name == "Bench Press")
+    }
+}

@@ -12,7 +12,7 @@ struct AnthropicServiceTests {
         let mock = MockAnthropicService()
         mock.stubbedEvents = [.text("Hello"), .text(" world"), .complete]
 
-        let msg = ChatMessage(role: .user, content: "Hi")
+        let msg = ChatMessage(role: .user, text: "Hi")
         var collected: [StreamingEvent] = []
 
         for try await event in mock.streamChat(messages: [msg], systemPrompt: "You are helpful.", tools: nil, model: "claude-haiku-4-5") {
@@ -31,7 +31,7 @@ struct AnthropicServiceTests {
         struct TestError: Error {}
         mock.stubbedError = TestError()
 
-        let msg = ChatMessage(role: .user, content: "Hi")
+        let msg = ChatMessage(role: .user, text: "Hi")
         var threwError = false
         do {
             for try await _ in mock.streamChat(messages: [msg], systemPrompt: "", tools: nil, model: "claude-haiku-4-5") {}
@@ -46,13 +46,13 @@ struct AnthropicServiceTests {
         let mock = MockAnthropicService()
         mock.stubbedEvents = [.complete]
 
-        let msg = ChatMessage(role: .user, content: "Tell me about squats")
+        let msg = ChatMessage(role: .user, text: "Tell me about squats")
         let tool = ToolDefinition(name: "test_tool", description: "A test tool", inputSchema: ["type": "object"])
 
         for try await _ in mock.streamChat(messages: [msg], systemPrompt: "Be helpful", tools: [tool], model: "claude-sonnet-4-6") {}
 
         #expect(mock.streamChatCallCount == 1)
-        #expect(mock.lastMessages.first?.content == "Tell me about squats")
+        #expect(mock.lastMessages.first?.textContent == "Tell me about squats")
         #expect(mock.lastSystemPrompt == "Be helpful")
         #expect(mock.lastModel == "claude-sonnet-4-6")
         #expect(mock.lastTools?.first?.name == "test_tool")
@@ -91,7 +91,7 @@ struct AnthropicServiceTests {
         // apiKey defaults to "" — do not set it
         let service = AnthropicService(settingsManager: settings)
 
-        let msg = ChatMessage(role: .user, content: "Hi")
+        let msg = ChatMessage(role: .user, text: "Hi")
         var gotError = false
         for try await event in service.streamChat(messages: [msg], systemPrompt: "", tools: nil, model: "claude-haiku-4-5-20251001") {
             if case .error = event { gotError = true }
@@ -101,27 +101,13 @@ struct AnthropicServiceTests {
 
     @Test("streamChat uses current API key from SettingsManager at call time")
     func streamChatUsesCurrentAPIKey() {
-        // This is a structural test: verify that AnthropicService reads the key
-        // from SettingsManager at call time, not at init time.
-        // We do this by confirming that an empty-key service yields missingAPIKey,
-        // while a key-set-after-init service does NOT yield missingAPIKey immediately.
         let defaults = UserDefaults(suiteName: "test_current_key_\(UUID().uuidString)")!
         let settings = SettingsManager(defaults: defaults)
-        // Key is empty at init — the old bug would have captured "" forever
         let service = AnthropicService(settingsManager: settings)
-        // Set key AFTER init
         settings.apiKey = "sk-ant-test-key"
 
-        // Call streamChat — because the key is now non-empty, the service should
-        // NOT immediately emit .error(.missingAPIKey). It will proceed to try a
-        // real network call. The stream itself is not awaited here; we just verify
-        // the guard branch is not taken (i.e., the stream is not the early-exit kind).
-        // We verify this by inspecting that setting the key changes SettingsManager state.
         #expect(settings.apiKey == "sk-ant-test-key")
-        // And that an empty-key service WOULD give missingAPIKey (proven by the
-        // sibling test). The fact that streamChat compiles and the key path is
-        // exercised via the guard is sufficient structural evidence.
-        _ = service // service holds settingsManager reference, reads key at call time
+        _ = service
     }
 
     @Test("API key change is reflected in subsequent calls")
@@ -130,7 +116,7 @@ struct AnthropicServiceTests {
         let settings = SettingsManager(defaults: defaults)
         let service = AnthropicService(settingsManager: settings)
 
-        let msg = ChatMessage(role: .user, content: "Hi")
+        let msg = ChatMessage(role: .user, text: "Hi")
 
         // First call — empty key → missingAPIKey error immediately (no network call)
         var firstCallMissingKey = false
@@ -143,15 +129,8 @@ struct AnthropicServiceTests {
         }
         #expect(firstCallMissingKey)
 
-        // Change the key — next call should read the new key from SettingsManager
         settings.apiKey = "sk-ant-new-key"
-
-        // Verify: the SettingsManager now returns the new key, which AnthropicService
-        // will read at call time (not the "" from init time).
         #expect(settings.apiKey == "sk-ant-new-key")
-        // The functional check that a non-empty key bypasses missingAPIKey is
-        // covered by the streamChatErrorsWhenAPIKeyIsEmpty test (empty → error)
-        // and the structural init test above (non-empty → no early exit).
     }
 
     // MARK: - Extended Thinking
@@ -161,7 +140,7 @@ struct AnthropicServiceTests {
         let mock = MockAnthropicService()
         mock.stubbedEvents = [.complete]
 
-        let msg = ChatMessage(role: .user, content: "Build me a 4-day program")
+        let msg = ChatMessage(role: .user, text: "Build me a 4-day program")
 
         for try await _ in mock.streamChat(
             messages: [msg],
@@ -179,7 +158,7 @@ struct AnthropicServiceTests {
         let mock = MockAnthropicService()
         mock.stubbedEvents = [.complete]
 
-        let msg = ChatMessage(role: .user, content: "Hi")
+        let msg = ChatMessage(role: .user, text: "Hi")
 
         for try await _ in mock.streamChat(
             messages: [msg],
@@ -233,7 +212,6 @@ struct AnthropicServiceTests {
         let mock = MockAnthropicService()
         mock.stubbedEvents = [.complete]
 
-        // Call the default overload (without thinkingBudget param)
         for try await _ in mock.streamChat(
             messages: [],
             systemPrompt: "",
@@ -249,7 +227,7 @@ struct AnthropicServiceTests {
     @Test("ChatMessage defaults to current timestamp")
     func chatMessageTimestamp() {
         let before = Date()
-        let msg = ChatMessage(role: .user, content: "test")
+        let msg = ChatMessage(role: .user, text: "test")
         let after = Date()
         #expect(msg.timestamp >= before)
         #expect(msg.timestamp <= after)
@@ -259,9 +237,27 @@ struct AnthropicServiceTests {
     func chatMessageIdentity() {
         let id = UUID()
         let ts = Date()
-        let m1 = ChatMessage(id: id, role: .user, content: "hello", timestamp: ts)
-        let m2 = ChatMessage(id: id, role: .user, content: "hello", timestamp: ts)
+        let m1 = ChatMessage(id: id, role: .user, content: .text("hello"), timestamp: ts)
+        let m2 = ChatMessage(id: id, role: .user, content: .text("hello"), timestamp: ts)
         #expect(m1 == m2)
+    }
+
+    @Test("ChatMessage textContent returns string for text content")
+    func chatMessageTextContent() {
+        let msg = ChatMessage(role: .user, text: "hello world")
+        #expect(msg.textContent == "hello world")
+    }
+
+    @Test("ChatMessage textContent returns tool name for toolUse content")
+    func chatMessageTextContentForToolUse() {
+        let msg = ChatMessage(role: .assistant, content: .toolUse(id: "t1", name: "get_recent_workouts", input: "{}"))
+        #expect(msg.textContent == "[Tool: get_recent_workouts]")
+    }
+
+    @Test("ChatMessage textContent returns result for toolResult content")
+    func chatMessageTextContentForToolResult() {
+        let msg = ChatMessage(role: .user, content: .toolResult(toolUseId: "t1", content: "3 recent workouts found"))
+        #expect(msg.textContent == "3 recent workouts found")
     }
 
     // MARK: - ToolDefinition

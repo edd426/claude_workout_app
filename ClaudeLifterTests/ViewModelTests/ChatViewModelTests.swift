@@ -25,7 +25,6 @@ struct ChatViewModelTests {
             templateRepository: SwiftDataTemplateRepository(context: context),
             preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
         )
-        // Return container so callers can keep it alive for the duration of the test
         return (vm, mock, container)
     }
 
@@ -48,7 +47,7 @@ struct ChatViewModelTests {
         let (vm, _, container) = try makeViewModel()
         await vm.sendMessage("How many sets should I do?")
 
-        #expect(vm.messages.contains { $0.role == .user && $0.content == "How many sets should I do?" })
+        #expect(vm.messages.contains { $0.role == .user && $0.textContent == "How many sets should I do?" })
         withExtendedLifetime(container) {}
     }
 
@@ -59,7 +58,7 @@ struct ChatViewModelTests {
 
         let assistantMsgs = vm.messages.filter { $0.role == .assistant }
         #expect(assistantMsgs.count == 1)
-        #expect(assistantMsgs.first?.content == "Do 3 sets of 8.")
+        #expect(assistantMsgs.first?.textContent == "Do 3 sets of 8.")
         withExtendedLifetime(container) {}
     }
 
@@ -121,7 +120,6 @@ struct ChatViewModelTests {
         await vm.sendMessage("Hello")
         #expect(vm.errorMessage != nil)
 
-        // Fix the mock — next call succeeds
         mock.stubbedError = nil
         mock.stubbedEvents = [.text("All good!"), .complete]
         await vm.sendMessage("Try again")
@@ -145,32 +143,117 @@ struct ChatViewModelTests {
         withExtendedLifetime(container) {}
     }
 
-    // MARK: - Tool Use
+    // MARK: - Tool Use (#29 fix: tool results correctly sent to Claude)
 
     @Test("Tool use event triggers tool execution and sends follow-up")
     func toolUseTriggersExecution() async throws {
-        let (vm, mock, container) = try makeViewModel(events: [
-            .toolUse(id: "t1", name: "get_recent_workouts", inputJSON: "{}"),
-            .complete,
-            .text("You have 3 recent workouts."),
-            .complete
-        ])
+        let (vm, mock, container) = try makeViewModel()
+        mock.stubbedEventSequences = [
+            [.toolUse(id: "t1", name: "get_recent_workouts", inputJSON: "{}"), .complete],
+            [.text("You have 3 recent workouts."), .complete]
+        ]
 
         await vm.sendMessage("Show my workouts")
 
-        // Should have called streamChat twice (first response + follow-up after tool)
         #expect(mock.streamChatCallCount == 2)
         withExtendedLifetime(container) {}
     }
 
+    @Test("Tool results are sent as user messages with tool_result content — not system messages")
+    func toolResultsSentAsUserMessages() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        mock.stubbedEventSequences = [
+            [.toolUse(id: "tool-123", name: "get_recent_workouts", inputJSON: "{}"), .complete],
+            [.text("Here are your workouts."), .complete]
+        ]
+
+        await vm.sendMessage("Show my recent workouts")
+
+        let secondCallMessages = mock.lastMessages
+        let toolResultMsg = secondCallMessages.first { msg in
+            if case .toolResult(_, _) = msg.content { return true }
+            return false
+        }
+        #expect(toolResultMsg != nil)
+        #expect(toolResultMsg?.role == .user)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Tool use messages include assistant tool_use content block in follow-up call")
+    func toolUseMessagesIncludeAssistantBlock() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        mock.stubbedEventSequences = [
+            [.toolUse(id: "tool-abc", name: "get_recent_workouts", inputJSON: "{\"limit\": 5}"), .complete],
+            [.text("You did 5 workouts."), .complete]
+        ]
+
+        await vm.sendMessage("Show workouts")
+
+        let secondCallMessages = mock.lastMessages
+        let assistantToolUseMsg = secondCallMessages.first { msg in
+            if case .toolUse(_, _, _) = msg.content { return true }
+            return false
+        }
+        #expect(assistantToolUseMsg != nil)
+        #expect(assistantToolUseMsg?.role == .assistant)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("No system-role messages appear in messages sent to API")
+    func noSystemMessagesInAPICall() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        mock.stubbedEventSequences = [
+            [.toolUse(id: "t1", name: "get_recent_workouts", inputJSON: "{}"), .complete],
+            [.text("Done."), .complete]
+        ]
+
+        await vm.sendMessage("Hello")
+
+        let hasSystemMsg = mock.lastMessages.contains { $0.role == .system }
+        #expect(!hasSystemMsg)
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Chained Tool Use (#30 fix)
+
+    @Test("Chained tool use: second tool call in follow-up is also handled")
+    func chainedToolUseIsHandled() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        mock.stubbedEventSequences = [
+            [.toolUse(id: "t1", name: "get_recent_workouts", inputJSON: "{}"), .complete],
+            [.toolUse(id: "t2", name: "suggest_weight", inputJSON: "{\"exercise_name\": \"Bench Press\"}"), .complete],
+            [.text("Based on your history, try 80kg."), .complete]
+        ]
+
+        await vm.sendMessage("What weight should I use for bench?")
+
+        #expect(mock.streamChatCallCount == 3)
+        let assistantMsgs = vm.messages.filter { $0.role == .assistant }
+        #expect(assistantMsgs.contains { $0.textContent == "Based on your history, try 80kg." })
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Tool chain stops at max depth of 5 to prevent infinite loops")
+    func toolChainStopsAtMaxDepth() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        let toolCallEvent: [StreamingEvent] = [.toolUse(id: "t1", name: "get_recent_workouts", inputJSON: "{}"), .complete]
+        mock.stubbedEventSequences = Array(repeating: toolCallEvent, count: 10)
+
+        await vm.sendMessage("Test depth limit")
+
+        #expect(mock.streamChatCallCount <= 6)
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Text chunks
+
     @Test("Text chunks are accumulated during streaming")
     func textChunksAccumulated() async throws {
         let (vm, _, container) = try makeViewModel(events: [.text("Hello"), .text(" world"), .complete])
-        // Note: streaming text is cleared after completion
         await vm.sendMessage("Hi")
 
         let assistantMsgs = vm.messages.filter { $0.role == .assistant }
-        #expect(assistantMsgs.first?.content == "Hello world")
+        #expect(assistantMsgs.first?.textContent == "Hello world")
         withExtendedLifetime(container) {}
     }
 
@@ -217,14 +300,14 @@ struct ChatViewModelTests {
         try context.save()
 
         let mock = MockAnthropicService()
-        // First call: tool use event. Second call: follow-up text after tool result.
-        mock.stubbedEvents = [
-            .toolUse(id: "t1", name: "create_template", inputJSON: """
-            {"template_name": "Push Day", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
-            """),
-            .complete,
-            .text("I've prepared a template for your review."),
-            .complete
+        mock.stubbedEventSequences = [
+            [
+                .toolUse(id: "t1", name: "create_template", inputJSON: """
+                {"template_name": "Push Day", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
+                """),
+                .complete
+            ],
+            [.text("I've prepared a template for your review."), .complete]
         ]
 
         let vm = ChatViewModel(
@@ -252,13 +335,14 @@ struct ChatViewModelTests {
         try context.save()
 
         let mock = MockAnthropicService()
-        mock.stubbedEvents = [
-            .toolUse(id: "t1", name: "create_template", inputJSON: """
-            {"template_name": "My Template", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
-            """),
-            .complete,
-            .text("Template ready."),
-            .complete
+        mock.stubbedEventSequences = [
+            [
+                .toolUse(id: "t1", name: "create_template", inputJSON: """
+                {"template_name": "My Template", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
+                """),
+                .complete
+            ],
+            [.text("Template ready."), .complete]
         ]
 
         let templateRepo = SwiftDataTemplateRepository(context: context)
@@ -291,13 +375,14 @@ struct ChatViewModelTests {
         try context.save()
 
         let mock = MockAnthropicService()
-        mock.stubbedEvents = [
-            .toolUse(id: "t1", name: "create_template", inputJSON: """
-            {"template_name": "Cancelled Template", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
-            """),
-            .complete,
-            .text("Template ready."),
-            .complete
+        mock.stubbedEventSequences = [
+            [
+                .toolUse(id: "t1", name: "create_template", inputJSON: """
+                {"template_name": "Cancelled Template", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
+                """),
+                .complete
+            ],
+            [.text("Template ready."), .complete]
         ]
 
         let templateRepo = SwiftDataTemplateRepository(context: context)
@@ -345,6 +430,35 @@ struct ChatViewModelTests {
 
         #expect(mock.lastSystemPrompt.contains("training_style"))
         #expect(mock.lastSystemPrompt.contains("hypertrophy"))
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Model Selection (#45 fix: use SettingsManager)
+
+    @Test("ChatViewModel uses SettingsManager for model selection")
+    func chatViewModelUsesSettingsManagerForModel() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let defaults = UserDefaults(suiteName: "test-model-\(UUID())")!
+        let settings = SettingsManager(defaults: defaults)
+        settings.aiModel = .sonnet
+
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [.text("Hi"), .complete]
+
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            settings: settings
+        )
+
+        await vm.sendMessage("Hello")
+
+        #expect(mock.lastModel == AIModel.sonnet.rawValue)
         withExtendedLifetime(container) {}
     }
 }

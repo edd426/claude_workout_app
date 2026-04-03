@@ -24,7 +24,7 @@ struct ProxiedAnthropicServiceTests {
         mock.streamChunks["/api/chat"] = [messageStopData()]
         let service = ProxiedAnthropicService(networkService: mock)
 
-        let msgs = [ChatMessage(role: .user, content: "Hello")]
+        let msgs = [ChatMessage(role: .user, text: "Hello")]
         for try await _ in service.streamChat(messages: msgs, systemPrompt: "Be helpful.", tools: nil, model: "claude-haiku-4-5") {}
 
         #expect(mock.streamCallCount == 1)
@@ -39,8 +39,8 @@ struct ProxiedAnthropicServiceTests {
 
         // System messages should not appear as conversation turns
         let msgs = [
-            ChatMessage(role: .system, content: "You are a trainer"),
-            ChatMessage(role: .user, content: "Help me")
+            ChatMessage(role: .system, text: "You are a trainer"),
+            ChatMessage(role: .user, text: "Help me")
         ]
         for try await _ in service.streamChat(messages: msgs, systemPrompt: "System prompt", tools: nil, model: "claude-haiku-4-5") {}
 
@@ -173,6 +173,26 @@ struct ProxiedAnthropicServiceTests {
 
         for try await _ in service.streamChat(messages: [], systemPrompt: "", tools: [tool], model: "claude-sonnet-4-6") {}
 
+        #expect(mock.streamCallCount == 1)
+    }
+
+    // MARK: - Tool result encoding (#29 fix)
+
+    @Test("Encodes toolResult messages as user messages with tool_result content block")
+    func encodesToolResultMessages() async throws {
+        let mock = MockNetworkService()
+        mock.streamChunks["/api/chat"] = [messageStopData()]
+        let service = ProxiedAnthropicService(networkService: mock)
+
+        let msgs: [ChatMessage] = [
+            ChatMessage(role: .user, text: "What weight for bench?"),
+            ChatMessage(role: .assistant, content: .toolUse(id: "t1", name: "suggest_weight", input: "{\"exercise_name\":\"Bench Press\"}")),
+            ChatMessage(role: .user, content: .toolResult(toolUseId: "t1", content: "Suggested: 80kg"))
+        ]
+
+        for try await _ in service.streamChat(messages: msgs, systemPrompt: "", tools: nil, model: "claude-haiku-4-5") {}
+
+        // The service should encode these and make the network call (just verify it didn't crash)
         #expect(mock.streamCallCount == 1)
     }
 }

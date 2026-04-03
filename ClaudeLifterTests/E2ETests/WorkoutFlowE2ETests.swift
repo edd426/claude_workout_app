@@ -487,22 +487,29 @@ struct WorkoutFlowE2ETests {
         // Send simple message
         await chatVM.sendMessage("Hello")
         #expect(mockService.streamChatCallCount >= 1)
-        #expect(chatVM.messages.contains { $0.role == .assistant && $0.content.contains("Hello") })
+        #expect(chatVM.messages.contains { $0.role == .assistant && $0.textContent.contains("Hello") })
         #expect(!chatVM.isLoading)
 
         // Configure mock to return tool_use for get_recent_workouts
         let toolInputJSON = "{\"limit\":5}"
-        mockService.stubbedEvents = [
-            .toolUse(id: "tool_1", name: "get_recent_workouts", inputJSON: toolInputJSON),
-            .complete,
-            .text("Based on your recent workouts, you're making great progress!"),
-            .complete
+        mockService.stubbedEventSequences = [
+            [
+                .toolUse(id: "tool_1", name: "get_recent_workouts", inputJSON: toolInputJSON),
+                .complete
+            ],
+            [
+                .text("Based on your recent workouts, you're making great progress!"),
+                .complete
+            ]
         ]
 
         await chatVM.sendMessage("How are my recent workouts?")
         #expect(mockService.streamChatCallCount >= 2)
-        // Tool was executed — system message should include tool name
-        #expect(chatVM.messages.contains { $0.role == .system && $0.content.contains("get_recent_workouts") })
+        // Tool result sent as user toolResult message — check for tool use content in messages
+        #expect(chatVM.messages.contains { msg in
+            if case .toolUse(_, let name, _) = msg.content { return name == "get_recent_workouts" }
+            return false
+        })
         // Follow-up response should have been received
         let assistantMessages = chatVM.messages.filter { $0.role == .assistant }
         #expect(!assistantMessages.isEmpty)
@@ -539,7 +546,7 @@ struct WorkoutFlowE2ETests {
         settings.apiKey = key
 
         let service = AnthropicService(settingsManager: settings)
-        let messages = [ChatMessage(role: .user, content: "Say hello in 5 words or less.")]
+        let messages = [ChatMessage(role: .user, text: "Say hello in 5 words or less.")]
 
         var receivedEvents: [StreamingEvent] = []
         for try await event in service.streamChat(
@@ -582,7 +589,7 @@ struct WorkoutFlowE2ETests {
         // (missingAPIKey error if key is cleared)
         settings2.apiKey = ""
         let service = AnthropicService(settingsManager: settings2)
-        let messages = [ChatMessage(role: .user, content: "Hello")]
+        let messages = [ChatMessage(role: .user, text: "Hello")]
         var errorReceived = false
         for try await event in service.streamChat(messages: messages, systemPrompt: "", tools: nil, model: "claude-haiku-4-5-20251001") {
             if case .error(let error) = event {

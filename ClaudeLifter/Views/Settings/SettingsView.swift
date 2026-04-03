@@ -51,14 +51,27 @@ struct SettingsView: View {
     @ViewBuilder
     private var apiKeySection: some View {
         Section {
-            TextField("https://func-workout-prod.azurewebsites.net", text: $vm.serverURL)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
+            HStack {
+                TextField("https://your-server.azurewebsites.net", text: $vm.serverURL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                if !vm.serverURL.isEmpty {
+                    Button {
+                        vm.serverURL = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         } header: {
             Text("Server URL")
         } footer: {
-            Text("When set, chat is routed through your Azure Function. Leave empty to use the API key below (Phase 1 mode).")
+            Text(vm.serverURL.isEmpty
+                 ? "No server configured — using API key directly (Phase 1 mode)."
+                 : "Chat and sync routed through \(vm.serverURL)")
                 .font(.caption)
         }
 

@@ -116,7 +116,7 @@ struct ChatView: View {
 
     private var streamingBubble: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            Text(viewModel.currentStreamingText)
+            markdownText(viewModel.currentStreamingText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(BrandTheme.lightGray)
@@ -125,6 +125,21 @@ struct ChatView: View {
                 .frame(maxWidth: 280, alignment: .leading)
             Spacer()
         }
+    }
+
+    // MARK: - Helpers
+
+    /// Renders a string with inline markdown. Falls back to plain text on failure.
+    private func markdownText(_ string: String) -> Text {
+        if let attributed = try? AttributedString(
+            markdown: string,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        ) {
+            return Text(attributed)
+        }
+        return Text(string)
     }
 
     private var thinkingIndicator: some View {

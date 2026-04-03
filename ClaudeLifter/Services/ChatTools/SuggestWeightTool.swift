@@ -56,16 +56,13 @@ struct SuggestWeightTool: ClaudeTool {
         let unit = lastSet.weightUnit
         let lastReps = lastSet.reps ?? 0
 
-        // Check time since last session
-        let allWorkouts = try await context.workoutRepository.fetchAll()
-        var daysSinceLast: Int? = nil
-        if let lastWorkout = allWorkouts.first(where: { workout in
-            workout.exercises.contains { we in
-                we.exercise?.id == exercise.id && we.sets.contains { $0.isCompleted }
-            }
-        }) {
-            let elapsed = Date().timeIntervalSince(lastWorkout.startedAt)
-            daysSinceLast = Int(elapsed / 86400)
+        // Check time since last session using the optimized repository method
+        // @needs: WorkoutRepository.lastWorkoutDate(for:) — added by data-models agent
+        let daysSinceLast: Int?
+        if let lastDate = try? await context.workoutRepository.lastWorkoutDate(for: exercise.id) {
+            daysSinceLast = Calendar.current.dateComponents([.day], from: lastDate, to: .now).day
+        } else {
+            daysSinceLast = nil
         }
 
         let shouldDeload = (daysSinceLast ?? 0) > 7

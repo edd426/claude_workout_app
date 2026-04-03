@@ -58,7 +58,7 @@ struct CreateTemplateTool: ClaudeTool {
         }
 
         if resolvedLines.isEmpty && !exerciseInputs.isEmpty {
-            return "Template '\(templateName)' prepared with 0 matched exercises. Awaiting confirmation."
+            return "Error: could not create template '\(templateName)' — no matching exercises found in your exercise library."
         }
 
         let exerciseSummary = resolvedLines.joined(separator: ", ")
@@ -96,6 +96,11 @@ struct CreateTemplateTool: ClaudeTool {
             )
             template.exercises.append(te)
             order += 1
+        }
+
+        // Return nil when no exercises were matched — caller must handle this case
+        if template.exercises.isEmpty {
+            return nil
         }
 
         return template

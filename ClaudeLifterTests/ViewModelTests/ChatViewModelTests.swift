@@ -405,6 +405,85 @@ struct ChatViewModelTests {
         withExtendedLifetime(container) {}
     }
 
+    // MARK: - Issue #57: No empty-template confirmation dialog
+
+    @Test("create_template with no matched exercises does NOT set pendingConfirmation")
+    func createTemplateWithNoMatchesDoesNotSetPendingConfirmation() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        // No exercises inserted — nothing will match
+
+        let mock = MockAnthropicService()
+        mock.stubbedEventSequences = [
+            [
+                .toolUse(id: "t1", name: "create_template", inputJSON: """
+                {"template_name": "Ghost Day", "exercises": [{"name": "Unknown Exercise XYZ", "sets": 3, "reps": 8}]}
+                """),
+                .complete
+            ],
+            [.text("I could not find matching exercises."), .complete]
+        ]
+
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
+        )
+
+        await vm.sendMessage("Create a push day template")
+
+        // Should NOT show a confirmation dialog when 0 exercises matched
+        #expect(vm.pendingConfirmation == nil)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("confirmPendingAction sets errorMessage when buildTemplate returns nil")
+    func confirmPendingActionSetsErrorWhenBuildTemplateReturnsNil() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        // No exercises in DB
+
+        let mock = MockAnthropicService()
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
+        )
+
+        // Manually set a pendingConfirmation whose onConfirm calls buildTemplate with no matches
+        let createTool = CreateTemplateTool()
+        let exerciseRepo = SwiftDataExerciseRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+        let inputJSON = """
+        {"template_name": "Ghost Day", "exercises": [{"name": "Unknown XYZ", "sets": 3, "reps": 8}]}
+        """
+        // Use the fixed pattern: throw ToolError.noMatchingExercises when buildTemplate returns nil
+        vm.pendingConfirmation = PendingConfirmation(
+            toolName: "create_template",
+            description: "Ghost Day",
+            onConfirm: {
+                guard let template = try await createTool.buildTemplate(
+                    inputJSON: inputJSON,
+                    exerciseRepository: exerciseRepo
+                ) else {
+                    throw ToolError.noMatchingExercises
+                }
+                try await templateRepo.save(template)
+            }
+        )
+
+        await vm.confirmPendingAction()
+
+        // After confirming, errorMessage should be set because no exercises matched
+        #expect(vm.errorMessage != nil)
+        #expect(vm.errorMessage?.lowercased().contains("no matching") == true || vm.errorMessage?.lowercased().contains("could not") == true)
+        withExtendedLifetime(container) {}
+    }
+
     // MARK: - System Prompt
 
     @Test("System prompt includes training preferences")

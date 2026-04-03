@@ -539,6 +539,55 @@ struct CreateTemplateToolTests {
         #expect(templateRepo.saveCallCount == 1)
         #expect(templateRepo.savedTemplates.first?.name == "Upper Body")
     }
+
+    // MARK: - Issue #57: 0-exercise error handling
+
+    @Test("execute returns error message when no exercises match — not awaiting confirmation")
+    func executeReturnsErrorWhenNoExercisesMatch() async throws {
+        // Arrange: empty exercise library
+        let context = makeContext(exercises: [])
+        let tool = CreateTemplateTool()
+
+        let input = """
+        {
+          "template_name": "Push Day",
+          "exercises": [
+            {"name": "Unknown Exercise A", "sets": 3, "reps": 8},
+            {"name": "Unknown Exercise B", "sets": 3, "reps": 10}
+          ]
+        }
+        """
+
+        // Act
+        let result = try await tool.execute(inputJSON: input, context: context)
+
+        // Assert: should be an error message, NOT "Awaiting confirmation"
+        #expect(!result.lowercased().contains("awaiting confirmation"))
+        #expect(result.lowercased().contains("error") || result.lowercased().contains("no matching") || result.lowercased().contains("could not"))
+    }
+
+    @Test("buildTemplate returns nil when no exercises match")
+    func buildTemplateReturnsNilWhenZeroExercises() async throws {
+        // Arrange: empty exercise library, so nothing resolves
+        let exerciseRepo = MockExerciseRepository()
+        exerciseRepo.exercises = []
+        let tool = CreateTemplateTool()
+
+        let input = """
+        {
+          "template_name": "Impossible Day",
+          "exercises": [
+            {"name": "Unknown Exercise", "sets": 3, "reps": 8}
+          ]
+        }
+        """
+
+        // Act
+        let result = try await tool.buildTemplate(inputJSON: input, exerciseRepository: exerciseRepo)
+
+        // Assert: nil when no exercises matched
+        #expect(result == nil)
+    }
 }
 
 // MARK: - CreateProgramTool Tests

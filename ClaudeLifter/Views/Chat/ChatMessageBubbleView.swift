@@ -50,7 +50,7 @@ struct ChatMessageBubbleView: View {
             switch message.content {
             case .text(let str):
                 HStack(alignment: .bottom, spacing: 8) {
-                    Text(str)
+                    markdownText(str)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(BrandTheme.lightGray)
@@ -66,5 +66,23 @@ struct ChatMessageBubbleView: View {
                 ToolActionCardView(content: content)
             }
         }
+    }
+
+    // MARK: - Helpers
+
+    /// Renders a string with inline markdown (bold, italic, code, links).
+    /// Falls back to plain text if parsing fails.
+    /// Uses inlineOnlyPreservingWhitespace to avoid block-level elements (headers, etc.)
+    /// appearing in chat bubbles.
+    private func markdownText(_ string: String) -> Text {
+        if let attributed = try? AttributedString(
+            markdown: string,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        ) {
+            return Text(attributed)
+        }
+        return Text(string)
     }
 }

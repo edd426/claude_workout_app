@@ -1,6 +1,19 @@
 import Foundation
 import Observation
 
+// MARK: - ToolError
+
+enum ToolError: LocalizedError {
+    case noMatchingExercises
+
+    var errorDescription: String? {
+        switch self {
+        case .noMatchingExercises:
+            return "Could not create template — no matching exercises found."
+        }
+    }
+}
+
 // MARK: - PendingConfirmation
 
 struct PendingConfirmation: Identifiable {
@@ -247,6 +260,10 @@ final class ChatViewModel {
             let createTool = CreateTemplateTool()
             do {
                 let summary = try await createTool.execute(inputJSON: inputJSON, context: context)
+                // If execute returned an error (e.g. 0 exercises matched), don't show confirmation
+                if summary.hasPrefix("Error:") {
+                    return summary
+                }
                 let capturedInputJSON = inputJSON
                 let capturedExerciseRepo = exerciseRepository
                 let capturedTemplateRepo = templateRepository
@@ -257,7 +274,9 @@ final class ChatViewModel {
                         guard let template = try await createTool.buildTemplate(
                             inputJSON: capturedInputJSON,
                             exerciseRepository: capturedExerciseRepo
-                        ) else { return }
+                        ) else {
+                            throw ToolError.noMatchingExercises
+                        }
                         try await capturedTemplateRepo.save(template)
                     }
                 )
@@ -271,6 +290,9 @@ final class ChatViewModel {
             let programTool = CreateProgramTool()
             do {
                 let summary = try await programTool.execute(inputJSON: inputJSON, context: context)
+                if summary.hasPrefix("Error:") {
+                    return summary
+                }
                 let capturedInputJSON = inputJSON
                 let capturedExerciseRepo = exerciseRepository
                 let capturedTemplateRepo = templateRepository
@@ -297,6 +319,9 @@ final class ChatViewModel {
             let modifyTool = ModifyTemplateTool()
             do {
                 let summary = try await modifyTool.execute(inputJSON: inputJSON, context: context)
+                if summary.hasPrefix("Error:") {
+                    return summary
+                }
                 let capturedInputJSON = inputJSON
                 let capturedExerciseRepo = exerciseRepository
                 let capturedTemplateRepo = templateRepository

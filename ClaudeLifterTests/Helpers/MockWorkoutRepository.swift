@@ -8,6 +8,7 @@ final class MockWorkoutRepository: WorkoutRepository {
     var deletedWorkouts: [Workout] = []
     var lastSessionSetsResult: [WorkoutSet] = []
     var recentSetsResult: [WorkoutSet] = []
+    var lastWorkoutDateResult: Date? = nil
     var fetchAllCallCount = 0
     var saveCallCount = 0
     var errorToThrow: Error? = nil
@@ -36,6 +37,11 @@ final class MockWorkoutRepository: WorkoutRepository {
     func lastSessionSets(for exerciseId: UUID) async throws -> [WorkoutSet] {
         if let error = errorToThrow { throw error }
         return lastSessionSetsResult
+    }
+
+    func lastWorkoutDate(for exerciseId: UUID) async throws -> Date? {
+        if let error = errorToThrow { throw error }
+        return lastWorkoutDateResult
     }
 
     func save(_ workout: Workout) async throws {

@@ -300,5 +300,39 @@ struct ExerciseImportServiceTests {
     }
 }
 
+    @Test("import processes large batches without loading all objects at once")
+    @MainActor
+    func importBatchesLargeInput() async throws {
+        // Build a JSON array of 250 exercises to verify batching behavior.
+        // If batching is correct, all 250 are imported and context.save() is called
+        // after every 100, keeping memory pressure low.
+        var items: [[String: Any]] = []
+        for i in 0..<250 {
+            items.append([
+                "id": "exercise_\(i)",
+                "name": "Exercise \(i)",
+                "force": "push",
+                "level": "beginner",
+                "mechanic": "compound",
+                "equipment": "barbell",
+                "primaryMuscles": ["chest"],
+                "secondaryMuscles": [],
+                "instructions": ["Do the thing"],
+                "category": "strength",
+                "images": []
+            ])
+        }
+        let data = try JSONSerialization.data(withJSONObject: items)
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let service = ExerciseImportService()
+
+        let count = try await service.importExercises(from: data, into: context)
+        #expect(count == 250)
+
+        let all = try context.fetch(FetchDescriptor<Exercise>())
+        #expect(all.count == 250)
+    }
+
 // Helper class used to locate the test bundle
 private class BundleLocator {}

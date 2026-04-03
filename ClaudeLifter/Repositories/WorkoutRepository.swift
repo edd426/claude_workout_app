@@ -11,6 +11,8 @@ protocol WorkoutRepository {
     func recentSets(for exerciseId: UUID, limit: Int) async throws -> [WorkoutSet]
     /// Returns completed sets from the single most recent workout containing the exercise.
     func lastSessionSets(for exerciseId: UUID) async throws -> [WorkoutSet]
+    /// Returns the startedAt date of the most recent workout that contained the given exercise.
+    func lastWorkoutDate(for exerciseId: UUID) async throws -> Date?
     func fetchPending() async throws -> [Workout]
     func fetchByDateRange(from: Date, to: Date) async throws -> [Workout]
     func save(_ workout: Workout) async throws
@@ -48,9 +50,14 @@ final class SwiftDataWorkoutRepository: WorkoutRepository {
     }
 
     func recentSets(for exerciseId: UUID, limit: Int) async throws -> [WorkoutSet] {
-        let workouts = try context.fetch(FetchDescriptor<Workout>(
+        // SwiftData cannot filter through relationship chains in #Predicate, so we fetch
+        // recent workouts with a fetchLimit instead of loading all of history.
+        var descriptor = FetchDescriptor<Workout>(
             sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
-        ))
+        )
+        // Cap at 50 recent workouts — enough for any practical limit query.
+        descriptor.fetchLimit = 50
+        let workouts = try context.fetch(descriptor)
         var results: [WorkoutSet] = []
         for workout in workouts {
             for we in workout.exercises {
@@ -66,9 +73,12 @@ final class SwiftDataWorkoutRepository: WorkoutRepository {
     }
 
     func lastSessionSets(for exerciseId: UUID) async throws -> [WorkoutSet] {
-        let workouts = try context.fetch(FetchDescriptor<Workout>(
+        // Fetch only the most recent 50 workouts to bound memory usage.
+        var descriptor = FetchDescriptor<Workout>(
             sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
-        ))
+        )
+        descriptor.fetchLimit = 50
+        let workouts = try context.fetch(descriptor)
         for workout in workouts {
             for we in workout.exercises {
                 if we.exercise?.id == exerciseId {
@@ -82,7 +92,25 @@ final class SwiftDataWorkoutRepository: WorkoutRepository {
         return []
     }
 
+    func lastWorkoutDate(for exerciseId: UUID) async throws -> Date? {
+        // Fetch recent workouts sorted descending; find the first that contains the exercise.
+        var descriptor = FetchDescriptor<Workout>(
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 50
+        let workouts = try context.fetch(descriptor)
+        for workout in workouts {
+            if workout.exercises.contains(where: { $0.exercise?.id == exerciseId }) {
+                return workout.startedAt
+            }
+        }
+        return nil
+    }
+
     func fetchPending() async throws -> [Workout] {
+        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
+        // so we use in-memory filtering. Pending workouts are always recent
+        // (created since last sync), so this set stays small in practice.
         let all = try context.fetch(FetchDescriptor<Workout>())
         return all.filter { $0.syncStatus == .pending }
     }

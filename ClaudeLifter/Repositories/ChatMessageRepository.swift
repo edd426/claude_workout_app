@@ -23,12 +23,18 @@ final class SwiftDataChatMessageRepository: ChatMessageRepository {
     }
 
     func fetch(workoutId: UUID?) async throws -> [AIChatMessage] {
-        let all = try context.fetch(FetchDescriptor<AIChatMessage>(
-            sortBy: [SortDescriptor(\.timestamp)]
-        ))
-        if let workoutId {
-            return all.filter { $0.workoutId == workoutId }
+        if let targetId = workoutId {
+            let descriptor = FetchDescriptor<AIChatMessage>(
+                predicate: #Predicate { $0.workoutId == targetId },
+                sortBy: [SortDescriptor(\.timestamp)]
+            )
+            return try context.fetch(descriptor)
         } else {
+            // workoutId == nil: filter in memory since SwiftData predicates
+            // have limitations with optional nil comparisons.
+            let all = try context.fetch(FetchDescriptor<AIChatMessage>(
+                sortBy: [SortDescriptor(\.timestamp)]
+            ))
             return all.filter { $0.workoutId == nil }
         }
     }
@@ -42,6 +48,8 @@ final class SwiftDataChatMessageRepository: ChatMessageRepository {
     }
 
     func fetchPending() async throws -> [AIChatMessage] {
+        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
+        // so we use in-memory filtering. Pending messages are always recent.
         let all = try context.fetch(FetchDescriptor<AIChatMessage>())
         return all.filter { $0.syncStatus == .pending }
     }

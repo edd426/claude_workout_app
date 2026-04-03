@@ -44,6 +44,8 @@ final class SwiftDataInsightRepository: InsightRepository {
     }
 
     func fetchPending() async throws -> [ProactiveInsight] {
+        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
+        // so we use in-memory filtering. Insights are a small, bounded set.
         let all = try context.fetch(FetchDescriptor<ProactiveInsight>())
         return all.filter { $0.syncStatus == .pending }
     }

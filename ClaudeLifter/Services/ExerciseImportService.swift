@@ -28,6 +28,8 @@ final class ExerciseImportService: ExerciseImportServiceProtocol {
 
         return try await MainActor.run {
             var imported = 0
+            let batchSize = 100
+            var batchCount = 0
 
             for json in decoded {
                 // Check for existing by externalId (idempotency)
@@ -102,9 +104,17 @@ final class ExerciseImportService: ExerciseImportServiceProtocol {
 
                 exercise.tags = tags
                 imported += 1
+                batchCount += 1
+
+                // Flush to SwiftData store every batchSize exercises to cap memory usage.
+                if batchCount >= batchSize {
+                    try context.save()
+                    batchCount = 0
+                }
             }
 
-            if imported > 0 {
+            // Save any remaining exercises in the final partial batch.
+            if batchCount > 0 {
                 try context.save()
             }
 

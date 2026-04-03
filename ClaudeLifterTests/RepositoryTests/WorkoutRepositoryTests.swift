@@ -127,6 +127,51 @@ struct WorkoutRepositoryTests {
         #expect(sets.count == 3)
     }
 
+    @Test("lastWorkoutDate returns date of most recent workout containing exercise")
+    @MainActor
+    func lastWorkoutDate() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let exercise = TestFixtures.makeExercise(name: "Deadlift")
+        context.insert(exercise)
+
+        let older = Workout(name: "Older", startedAt: Date(timeIntervalSinceNow: -7200), completedAt: Date(timeIntervalSinceNow: -6000))
+        let newer = Workout(name: "Newer", startedAt: Date(timeIntervalSinceNow: -3600), completedAt: Date(timeIntervalSinceNow: -2000))
+        context.insert(older)
+        context.insert(newer)
+
+        for workout in [older, newer] {
+            let we = WorkoutExercise(order: 0, exercise: exercise)
+            context.insert(we)
+            workout.exercises.append(we)
+            let s = WorkoutSet(order: 0, weight: 100.0, weightUnit: .kg, reps: 5, isCompleted: true, completedAt: Date())
+            context.insert(s)
+            we.sets.append(s)
+        }
+        try context.save()
+
+        let repo = SwiftDataWorkoutRepository(context: context)
+        let date = try await repo.lastWorkoutDate(for: exercise.id)
+        #expect(date != nil)
+        #expect(abs(date!.timeIntervalSince(newer.startedAt)) < 1.0)
+    }
+
+    @Test("lastWorkoutDate returns nil when exercise has never been performed")
+    @MainActor
+    func lastWorkoutDateNeverPerformed() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let exercise = TestFixtures.makeExercise(name: "Unused Exercise")
+        context.insert(exercise)
+        try context.save()
+
+        let repo = SwiftDataWorkoutRepository(context: context)
+        let date = try await repo.lastWorkoutDate(for: exercise.id)
+        #expect(date == nil)
+    }
+
     @Test("save persists a new workout")
     @MainActor
     func saveWorkout() async throws {

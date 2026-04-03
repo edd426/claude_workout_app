@@ -51,6 +51,8 @@ final class SwiftDataTrainingPreferenceRepository: TrainingPreferenceRepository 
     }
 
     func fetchPending() async throws -> [TrainingPreference] {
+        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
+        // so we use in-memory filtering. Preferences are a small, bounded set.
         let all = try context.fetch(FetchDescriptor<TrainingPreference>())
         return all.filter { $0.syncStatus == .pending }
     }

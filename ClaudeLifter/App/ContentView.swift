@@ -17,7 +17,7 @@ struct ContentView: View {
             HistoryListView()
                 .tabItem { Label("History", systemImage: "calendar") }
 
-            ExerciseLibraryView(uploadService: dependencies.imageUploadService)
+            ExerciseLibraryView()
                 .tabItem { Label("Exercises", systemImage: "dumbbell") }
 
             NavigationStack {

@@ -10,7 +10,6 @@ struct ExerciseLibraryView: View {
 
     var selectionMode: Bool = false
     var onSelect: ((Exercise) -> Void)? = nil
-    var uploadService: (any ImageUploadServiceProtocol)? = nil
 
     var body: some View {
         NavigationStack {
@@ -131,7 +130,7 @@ struct ExerciseLibraryView: View {
                 }
             } else {
                 NavigationLink {
-                    ExerciseDetailView(exercise: exercise, uploadService: uploadService)
+                    ExerciseDetailView(exercise: exercise)
                 } label: {
                     ExerciseRowView(exercise: exercise)
                 }

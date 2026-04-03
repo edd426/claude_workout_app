@@ -3,18 +3,17 @@ import PhotosUI
 
 struct PhotoCaptureView: View {
     let exercise: Exercise
-    let uploadService: any ImageUploadServiceProtocol
-    var onUploadComplete: ((String) -> Void)?
+    var onSaveComplete: ((String) -> Void)?
 
     @State private var selectedItem: PhotosPickerItem? = nil
-    @State private var isUploading = false
+    @State private var isSaving = false
     @State private var error: String? = nil
     @State private var displayImage: Image? = nil
 
     var body: some View {
         VStack(spacing: 16) {
             photoPreview
-            uploadControls
+            saveControls
             if let error {
                 Text(error)
                     .font(.caption)
@@ -26,6 +25,7 @@ struct PhotoCaptureView: View {
             guard let newItem else { return }
             Task { await handleSelection(newItem) }
         }
+        .onAppear { loadExistingPhoto() }
     }
 
     private var photoPreview: some View {
@@ -37,20 +37,6 @@ struct PhotoCaptureView: View {
                     .frame(height: 200)
                     .clipped()
                     .cornerRadius(12)
-            } else if let photoURL = exercise.photoURL, !photoURL.isEmpty {
-                AsyncImage(url: URL(string: photoURL)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .failure:
-                        placeholderImage
-                    default:
-                        ProgressView()
-                    }
-                }
-                .frame(height: 200)
-                .clipped()
-                .cornerRadius(12)
             } else {
                 placeholderImage
                     .frame(height: 200)
@@ -74,7 +60,7 @@ struct PhotoCaptureView: View {
             }
     }
 
-    private var uploadControls: some View {
+    private var saveControls: some View {
         HStack(spacing: 12) {
             PhotosPicker(
                 selection: $selectedItem,
@@ -88,13 +74,18 @@ struct PhotoCaptureView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .disabled(isUploading)
+            .disabled(isSaving)
 
-            if isUploading {
+            if isSaving {
                 ProgressView()
                     .frame(width: 44, height: 44)
             }
         }
+    }
+
+    private func loadExistingPhoto() {
+        guard let uiImage = LocalPhotoStorage.loadImage(relativePath: exercise.photoURL) else { return }
+        displayImage = Image(uiImage: uiImage)
     }
 
     private func handleSelection(_ item: PhotosPickerItem) async {
@@ -104,18 +95,22 @@ struct PhotoCaptureView: View {
             return
         }
 
-        if let uiImage = UIImage(data: data) {
-            displayImage = Image(uiImage: uiImage)
+        // Compress to JPEG before saving
+        guard let uiImage = UIImage(data: data),
+              let jpegData = uiImage.jpegData(compressionQuality: 0.8) else {
+            error = "Could not process the selected image."
+            return
         }
 
-        isUploading = true
-        defer { isUploading = false }
+        displayImage = Image(uiImage: uiImage)
+        isSaving = true
+        defer { isSaving = false }
 
         do {
-            let url = try await uploadService.uploadPhoto(exerciseId: exercise.id, imageData: data)
-            onUploadComplete?(url)
+            let relativePath = try LocalPhotoStorage.savePhoto(data: jpegData, exerciseId: exercise.id)
+            onSaveComplete?(relativePath)
         } catch {
-            self.error = error.localizedDescription
+            self.error = "Could not save photo: \(error.localizedDescription)"
         }
     }
 }

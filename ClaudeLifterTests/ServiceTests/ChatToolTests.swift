@@ -1039,3 +1039,73 @@ struct ExerciseDisambiguationTests {
         #expect(template?.exercises.first?.exercise?.name == "Bench Press")
     }
 }
+
+// MARK: - Exercise Array Normalization Tests
+
+@Suite("Exercise Array Normalization Tests")
+@MainActor
+struct ExerciseArrayNormalizationTests {
+
+    @Test("normalizeExercises handles array of objects (standard format)")
+    func normalizesObjectArray() {
+        let json: [String: Any] = [
+            "exercises": [
+                ["name": "Squat", "sets": 3, "reps": 8] as [String: Any],
+                ["name": "Bench Press", "sets": 4, "reps": 6] as [String: Any]
+            ]
+        ]
+        let result = CreateTemplateTool.normalizeExercises(from: json)
+        #expect(result.count == 2)
+        #expect(result[0]["name"] as? String == "Squat")
+        #expect(result[1]["sets"] as? Int == 4)
+    }
+
+    @Test("normalizeExercises handles array of strings (Claude's actual format)")
+    func normalizesStringArray() {
+        let json: [String: Any] = [
+            "exercises": ["Barbell Squat", "Barbell Bench Press - Medium Grip", "Barbell Deadlift"]
+        ]
+        let result = CreateTemplateTool.normalizeExercises(from: json)
+        #expect(result.count == 3)
+        #expect(result[0]["name"] as? String == "Barbell Squat")
+        #expect(result[1]["name"] as? String == "Barbell Bench Press - Medium Grip")
+        #expect(result[2]["name"] as? String == "Barbell Deadlift")
+    }
+
+    @Test("normalizeExercises returns empty for missing field")
+    func normalizesEmptyWhenMissing() {
+        let json: [String: Any] = ["template_name": "Test"]
+        let result = CreateTemplateTool.normalizeExercises(from: json)
+        #expect(result.isEmpty)
+    }
+
+    @Test("create_template works with string array exercises via execute")
+    func createTemplateWithStringArray() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let squat = TestFixtures.makeExercise(name: "Barbell Squat")
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(squat)
+        context.insert(bench)
+        try context.save()
+
+        let toolContext = ToolContext(
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            activeWorkout: nil
+        )
+
+        let tool = CreateTemplateTool()
+        // Simulate Claude sending exercises as string array (the bug!)
+        let input = """
+        {"template_name": "Test Workout", "exercises": ["Barbell Squat", "Bench Press"]}
+        """
+
+        let result = try await tool.execute(inputJSON: input, context: toolContext)
+        #expect(result.contains("2 exercise(s)"), "Should match both exercises, got: \(result)")
+        #expect(result.contains("Awaiting confirmation"))
+        #expect(!result.contains("Error"))
+    }
+}

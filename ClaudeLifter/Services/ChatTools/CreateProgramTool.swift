@@ -59,7 +59,7 @@ struct CreateProgramTool: ClaudeTool {
 
         for templateInput in templatesInput {
             guard let templateName = templateInput["template_name"] as? String else { continue }
-            let exerciseInputs = templateInput["exercises"] as? [[String: Any]] ?? []
+            let exerciseInputs = CreateTemplateTool.normalizeExercises(from: templateInput)
             var resolvedNames: [String] = []
             var unmatchedNames: [String] = []
 

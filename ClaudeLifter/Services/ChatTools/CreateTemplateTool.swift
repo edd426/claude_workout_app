@@ -33,6 +33,21 @@ struct CreateTemplateTool: ClaudeTool {
     }
     """
 
+    /// Normalize exercises from either format Claude might send:
+    /// - Array of objects: [{"name": "Squat", "sets": 3, "reps": 8}]
+    /// - Array of strings: ["Squat", "Bench Press"]
+    static func normalizeExercises(from json: [String: Any]) -> [[String: Any]] {
+        // Try array of dictionaries first (expected format)
+        if let dicts = json["exercises"] as? [[String: Any]] {
+            return dicts
+        }
+        // Fall back to array of strings (Claude often sends this)
+        if let names = json["exercises"] as? [String] {
+            return names.map { ["name": $0 as Any] }
+        }
+        return []
+    }
+
     func execute(inputJSON: String, context: ToolContext) async throws -> String {
         guard let data = inputJSON.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -40,9 +55,8 @@ struct CreateTemplateTool: ClaudeTool {
             return "Error: missing required parameter template_name"
         }
 
-        let exerciseInputs = json["exercises"] as? [[String: Any]] ?? []
+        let exerciseInputs = Self.normalizeExercises(from: json)
 
-        // Diagnostic: if exercises array is empty, report what we actually received
         if exerciseInputs.isEmpty {
             let keys = json.keys.sorted().joined(separator: ", ")
             let exercisesRaw = json["exercises"]
@@ -89,7 +103,7 @@ struct CreateTemplateTool: ClaudeTool {
         }
 
         let template = WorkoutTemplate(name: templateName)
-        let exerciseInputs = json["exercises"] as? [[String: Any]] ?? []
+        let exerciseInputs = Self.normalizeExercises(from: json)
         var order = 0
 
         for exerciseInput in exerciseInputs {

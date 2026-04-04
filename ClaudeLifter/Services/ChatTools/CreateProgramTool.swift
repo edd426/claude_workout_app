@@ -55,28 +55,52 @@ struct CreateProgramTool: ClaudeTool {
         }
 
         var templateSummaries: [String] = []
+        var emptyTemplateNames: [String] = []
 
         for templateInput in templatesInput {
             guard let templateName = templateInput["template_name"] as? String else { continue }
             let exerciseInputs = templateInput["exercises"] as? [[String: Any]] ?? []
             var resolvedNames: [String] = []
+            var unmatchedNames: [String] = []
 
             for exerciseInput in exerciseInputs {
                 guard let name = exerciseInput["name"] as? String else { continue }
                 let matches = try await context.exerciseRepository.fuzzySearch(query: name)
-                if let exercise = matches.first {
+                let exercise = matches.first(where: { $0.name.lowercased() == name.lowercased() }) ?? matches.first
+                if let exercise {
                     let sets = exerciseInput["sets"] as? Int ?? 3
                     let reps = exerciseInput["reps"] as? Int ?? 10
                     resolvedNames.append("\(exercise.name) (\(sets)×\(reps))")
+                } else {
+                    unmatchedNames.append(name)
                 }
             }
 
-            let exerciseSummary = resolvedNames.isEmpty ? "no matched exercises" : resolvedNames.joined(separator: ", ")
-            templateSummaries.append("  - \(templateName): \(exerciseSummary)")
+            if resolvedNames.isEmpty {
+                emptyTemplateNames.append(templateName)
+                templateSummaries.append("  - \(templateName): no matched exercises")
+            } else {
+                var summary = "  - \(templateName): \(resolvedNames.joined(separator: ", "))"
+                if !unmatchedNames.isEmpty {
+                    summary += " (skipped: \(unmatchedNames.joined(separator: ", ")))"
+                }
+                templateSummaries.append(summary)
+            }
+        }
+
+        // If ALL templates resolved to zero exercises, return an error
+        if emptyTemplateNames.count == templateSummaries.count {
+            let tried = emptyTemplateNames.joined(separator: ", ")
+            return "Error: could not create program '\(programName)' — no exercises matched in any template (\(tried)). Use search_exercises to find correct names first."
         }
 
         let templateList = templateSummaries.joined(separator: "\n")
-        return "Program '\(programName)' with \(templateSummaries.count) template(s):\n\(templateList)\nAwaiting confirmation."
+        var result = "Program '\(programName)' with \(templateSummaries.count) template(s):\n\(templateList)"
+        if !emptyTemplateNames.isEmpty {
+            result += "\nWARNING: These templates had no matched exercises and will be skipped: \(emptyTemplateNames.joined(separator: ", ")). Use search_exercises to find correct names."
+        }
+        result += "\nAwaiting confirmation."
+        return result
     }
 
     // Builds the WorkoutTemplate objects for saving

@@ -35,10 +35,9 @@ struct ChatMessageBubbleView: View {
                         .frame(maxWidth: 280, alignment: .trailing)
                 }
             case .toolResult(_, let content):
-                // Tool results (user role) shown as compact info cards
-                ToolActionCardView(content: content)
-            case .toolUse(_, let name, _):
-                ToolActionCardView(content: "[Tool: \(name)]")
+                CollapsibleToolResultView(content: content)
+            case .toolUse(_, let name, let inputJSON):
+                CollapsibleToolUseView(name: name, inputJSON: inputJSON)
             }
         }
     }
@@ -59,11 +58,10 @@ struct ChatMessageBubbleView: View {
                         .frame(maxWidth: 280, alignment: .leading)
                     Spacer()
                 }
-            case .toolUse(_, let name, _):
-                // Show tool-use assistant messages as compact cards
-                ToolActionCardView(content: "[Tool: \(name)]")
+            case .toolUse(_, let name, let inputJSON):
+                CollapsibleToolUseView(name: name, inputJSON: inputJSON)
             case .toolResult(_, let content):
-                ToolActionCardView(content: content)
+                CollapsibleToolResultView(content: content)
             }
         }
     }
@@ -84,5 +82,120 @@ struct ChatMessageBubbleView: View {
             return Text(attributed)
         }
         return Text(string)
+    }
+}
+
+// MARK: - CollapsibleToolUseView
+
+private struct CollapsibleToolUseView: View {
+
+    let name: String
+    let inputJSON: String
+    @State private var isExpanded = false
+
+    private var displayName: String {
+        name.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(displayName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Divider()
+                    .padding(.horizontal, 10)
+                ScrollView {
+                    Text(inputJSON)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .frame(maxHeight: 120)
+            }
+        }
+        .background(BrandTheme.lightGray)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: 280, alignment: .leading)
+    }
+}
+
+// MARK: - CollapsibleToolResultView
+
+private struct CollapsibleToolResultView: View {
+
+    let content: String
+    @State private var isExpanded = false
+
+    private var summaryLine: String {
+        let first = content.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? content
+        if first.count > 50 {
+            return String(first.prefix(50)) + "…"
+        }
+        return first
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(summaryLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Divider()
+                    .padding(.horizontal, 10)
+                ScrollView {
+                    Text(content)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .frame(maxHeight: 200)
+            }
+        }
+        .background(BrandTheme.lightGray)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: 280, alignment: .leading)
     }
 }

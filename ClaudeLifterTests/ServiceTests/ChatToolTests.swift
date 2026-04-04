@@ -692,6 +692,70 @@ struct CreateProgramToolTests {
         let result = try await tool.execute(inputJSON: input, context: context)
         #expect(result.contains("Error"))
     }
+
+    // MARK: - Issue #58: 0-exercise error handling for programs
+
+    @Test("Returns error when ALL templates have no matching exercises")
+    func returnsErrorWhenAllTemplatesHaveZeroExercises() async throws {
+        // Arrange: empty exercise library — nothing will match
+        let context = makeContext(exercises: [])
+        let tool = CreateProgramTool()
+
+        let input = """
+        {
+          "program_name": "Ghost Program",
+          "templates": [
+            {
+              "template_name": "Day A",
+              "exercises": [{"name": "Unknown Exercise A", "sets": 3, "reps": 8}]
+            },
+            {
+              "template_name": "Day B",
+              "exercises": [{"name": "Unknown Exercise B", "sets": 3, "reps": 10}]
+            }
+          ]
+        }
+        """
+
+        // Act
+        let result = try await tool.execute(inputJSON: input, context: context)
+
+        // Assert: should be an error, NOT "Awaiting confirmation"
+        #expect(!result.lowercased().contains("awaiting confirmation"))
+        #expect(result.lowercased().contains("error") || result.lowercased().contains("no exercises matched") || result.lowercased().contains("could not"))
+    }
+
+    @Test("Returns warning for empty templates but still confirms when some templates have exercises")
+    func returnsWarningForPartiallyEmptyProgram() async throws {
+        // Arrange: only exercises for one of two templates
+        let bench = TestFixtures.makeExercise(name: "Bench Press")
+        let context = makeContext(exercises: [bench])
+        let tool = CreateProgramTool()
+
+        let input = """
+        {
+          "program_name": "Partial Program",
+          "templates": [
+            {
+              "template_name": "Push Day",
+              "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]
+            },
+            {
+              "template_name": "Unknown Day",
+              "exercises": [{"name": "Totally Unknown Exercise XYZ", "sets": 3, "reps": 10}]
+            }
+          ]
+        }
+        """
+
+        // Act
+        let result = try await tool.execute(inputJSON: input, context: context)
+
+        // Assert: result should still say awaiting confirmation (partial success)
+        #expect(result.lowercased().contains("awaiting confirmation") || result.lowercased().contains("confirm"))
+        // And should warn about the empty template
+        #expect(result.lowercased().contains("warning") || result.lowercased().contains("no matched") || result.lowercased().contains("skipped"))
+    }
 }
 
 // MARK: - ModifyTemplateTool Tests

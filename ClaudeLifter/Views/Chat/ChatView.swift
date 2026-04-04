@@ -18,6 +18,26 @@ struct ChatView: View {
         }
         .navigationTitle("Coach")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        copyConversation()
+                    } label: {
+                        Label("Copy Conversation", systemImage: "doc.on.doc")
+                    }
+                    .disabled(viewModel.messages.isEmpty)
+                    Button(role: .destructive) {
+                        viewModel.clearChat()
+                    } label: {
+                        Label("Clear Chat", systemImage: "trash")
+                    }
+                    .disabled(viewModel.messages.isEmpty)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
         .confirmationDialog(
             viewModel.pendingConfirmation?.description ?? "",
             isPresented: .init(
@@ -172,6 +192,28 @@ struct ChatView: View {
     }
 
     // MARK: - Helpers
+
+    private func copyConversation() {
+        let lines = viewModel.messages.map { message -> String in
+            let role: String
+            switch message.role {
+            case .user: role = "You"
+            case .assistant: role = "Coach"
+            case .system: role = "System"
+            }
+            let text: String
+            switch message.content {
+            case .text(let str):
+                text = str
+            case .toolUse(_, let name, _):
+                text = "[Tool: \(name)]"
+            case .toolResult(_, let result):
+                text = "[Tool result] \(result)"
+            }
+            return "\(role): \(text)"
+        }
+        UIPasteboard.general.string = lines.joined(separator: "\n\n")
+    }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.2)) {

@@ -643,6 +643,7 @@ common_release['VALIDATE_PRODUCT'] = 'YES'
 app_settings = {
     'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon',
     'CODE_SIGN_STYLE': 'Automatic',
+    'DEVELOPMENT_TEAM': '738XNTWZ5K',
     'CURRENT_PROJECT_VERSION': '1',
     'GENERATE_INFOPLIST_FILE': 'YES',
     'INFOPLIST_KEY_UIApplicationSceneManifest_Generation': 'YES',
@@ -661,6 +662,7 @@ app_settings = {
 test_settings = {
     'BUNDLE_LOADER': '"$(TEST_HOST)"',
     'CODE_SIGN_STYLE': 'Automatic',
+    'DEVELOPMENT_TEAM': '738XNTWZ5K',
     'CURRENT_PROJECT_VERSION': '1',
     'GENERATE_INFOPLIST_FILE': 'YES',
     'MARKETING_VERSION': '1.0',
@@ -674,6 +676,7 @@ test_settings = {
 
 uitest_settings = {
     'CODE_SIGN_STYLE': 'Automatic',
+    'DEVELOPMENT_TEAM': '738XNTWZ5K',
     'CURRENT_PROJECT_VERSION': '1',
     'GENERATE_INFOPLIST_FILE': 'YES',
     'MARKETING_VERSION': '1.0',

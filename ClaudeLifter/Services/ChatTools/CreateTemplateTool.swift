@@ -41,6 +41,15 @@ struct CreateTemplateTool: ClaudeTool {
         }
 
         let exerciseInputs = json["exercises"] as? [[String: Any]] ?? []
+
+        // Diagnostic: if exercises array is empty, report what we actually received
+        if exerciseInputs.isEmpty {
+            let keys = json.keys.sorted().joined(separator: ", ")
+            let exercisesRaw = json["exercises"]
+            let typeDesc = exercisesRaw.map { "\(type(of: $0))" } ?? "nil"
+            return "Error: template '\(templateName)' received 0 exercises. JSON keys: [\(keys)]. exercises field type: \(typeDesc). Use search_exercises first, then pass exercise names in the exercises array."
+        }
+
         var resolvedLines: [String] = []
         var unmatchedNames: [String] = []
 
@@ -58,7 +67,7 @@ struct CreateTemplateTool: ClaudeTool {
             }
         }
 
-        if resolvedLines.isEmpty && !exerciseInputs.isEmpty {
+        if resolvedLines.isEmpty {
             let tried = unmatchedNames.joined(separator: ", ")
             return "Error: could not create template '\(templateName)' — none of these exercises were found in the library: \(tried). Use the search_exercises tool to find the correct names first."
         }

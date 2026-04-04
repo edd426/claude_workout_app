@@ -212,7 +212,8 @@ struct ChatView: View {
             }
             return "\(role): \(text)"
         }
-        UIPasteboard.general.string = lines.joined(separator: "\n\n")
+        let footer = "\n\n---\n\(BuildInfo.summary)"
+        UIPasteboard.general.string = lines.joined(separator: "\n\n") + footer
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {

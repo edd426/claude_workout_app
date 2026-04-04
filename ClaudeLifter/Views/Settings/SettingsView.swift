@@ -9,6 +9,7 @@ struct SettingsView: View {
                 weightUnitSection
                 aiModelSection
                 apiKeySection
+                buildInfoSection
             }
             .navigationTitle("Settings")
         }
@@ -79,6 +80,26 @@ struct SettingsView: View {
             SecureField("sk-ant-... or Azure function key", text: $vm.apiKey)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+        }
+    }
+
+    private var buildInfoSection: some View {
+        Section {
+            Button {
+                UIPasteboard.general.string = BuildInfo.summary
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(BuildInfo.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Tap to copy")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .buttonStyle(.plain)
+        } header: {
+            Text("About")
         }
     }
 }

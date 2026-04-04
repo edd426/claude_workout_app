@@ -61,6 +61,7 @@
 		9E26B7F9F296082858EC69A4 /* SyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AE7D363C6D2F123079F0F22 /* SyncManager.swift */; };
 		713C33F9CEAFFD78A9316763 /* SyncMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FB222B5EBDBA88E426695A /* SyncMapper.swift */; };
 		80F664C636ADC5E88A15FE50 /* BrandTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD1470883F034F7EB76AE22 /* BrandTheme.swift */; };
+		02A4027ED41C9A0AFA210291 /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D0C0EEBCAAB568D87516BCE /* BuildInfo.swift */; };
 		0B71D39860B245530CD3B22B /* LocalPhotoStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6FF0D1EB078F5CF438D6195 /* LocalPhotoStorage.swift */; };
 		39320B32AAB849DA6F4142BC /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB5C6DF96590C72CEA77BD4 /* SettingsManager.swift */; };
 		B902261B25F991B27E8726CE /* ActiveWorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB1106CAB595E0F873B0E4E /* ActiveWorkoutViewModel.swift */; };
@@ -250,6 +251,7 @@
 		4AE7D363C6D2F123079F0F22 /* SyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncManager.swift; sourceTree = "<group>"; };
 		16FB222B5EBDBA88E426695A /* SyncMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMapper.swift; sourceTree = "<group>"; };
 		5DD1470883F034F7EB76AE22 /* BrandTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandTheme.swift; sourceTree = "<group>"; };
+		0D0C0EEBCAAB568D87516BCE /* BuildInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.swift; sourceTree = "<group>"; };
 		C6FF0D1EB078F5CF438D6195 /* LocalPhotoStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPhotoStorage.swift; sourceTree = "<group>"; };
 		2BB5C6DF96590C72CEA77BD4 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		BFB1106CAB595E0F873B0E4E /* ActiveWorkoutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutViewModel.swift; sourceTree = "<group>"; };
@@ -533,6 +535,7 @@
 			isa = PBXGroup;
 			children = (
 				5DD1470883F034F7EB76AE22,
+				0D0C0EEBCAAB568D87516BCE,
 				C6FF0D1EB078F5CF438D6195,
 				2BB5C6DF96590C72CEA77BD4,
 			);
@@ -949,6 +952,7 @@
 				9E26B7F9F296082858EC69A4 /* SyncManager.swift in Sources */,
 				713C33F9CEAFFD78A9316763 /* SyncMapper.swift in Sources */,
 				80F664C636ADC5E88A15FE50 /* BrandTheme.swift in Sources */,
+				02A4027ED41C9A0AFA210291 /* BuildInfo.swift in Sources */,
 				0B71D39860B245530CD3B22B /* LocalPhotoStorage.swift in Sources */,
 				39320B32AAB849DA6F4142BC /* SettingsManager.swift in Sources */,
 				B902261B25F991B27E8726CE /* ActiveWorkoutViewModel.swift in Sources */,

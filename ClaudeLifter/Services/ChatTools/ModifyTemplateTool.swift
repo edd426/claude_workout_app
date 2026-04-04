@@ -61,7 +61,7 @@ struct ModifyTemplateTool: ClaudeTool {
             let sets = json["sets"] as? Int ?? 3
             let reps = json["reps"] as? Int ?? 10
 
-            let matches = try await context.exerciseRepository.search(query: exerciseName)
+            let matches = try await context.exerciseRepository.fuzzySearch(query: exerciseName)
             guard let exercise = matches.first else {
                 return "Error: no exercise found matching '\(exerciseName)'"
             }
@@ -114,7 +114,7 @@ struct ModifyTemplateTool: ClaudeTool {
             let sets = json["sets"] as? Int ?? 3
             let reps = json["reps"] as? Int ?? 10
 
-            let matches = try await exerciseRepository.search(query: exerciseName)
+            let matches = try await exerciseRepository.fuzzySearch(query: exerciseName)
             guard let exercise = matches.first else { return "Error: exercise not found" }
 
             let newOrder = (template.exercises.map { $0.order }.max() ?? -1) + 1

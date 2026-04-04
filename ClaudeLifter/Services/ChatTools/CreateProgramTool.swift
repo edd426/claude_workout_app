@@ -63,7 +63,7 @@ struct CreateProgramTool: ClaudeTool {
 
             for exerciseInput in exerciseInputs {
                 guard let name = exerciseInput["name"] as? String else { continue }
-                let matches = try await context.exerciseRepository.search(query: name)
+                let matches = try await context.exerciseRepository.fuzzySearch(query: name)
                 if let exercise = matches.first {
                     let sets = exerciseInput["sets"] as? Int ?? 3
                     let reps = exerciseInput["reps"] as? Int ?? 10

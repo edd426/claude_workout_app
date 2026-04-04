@@ -48,7 +48,7 @@ struct CreateTemplateTool: ClaudeTool {
             let sets = exerciseInput["sets"] as? Int ?? 3
             let reps = exerciseInput["reps"] as? Int ?? 10
 
-            let matches = try await context.exerciseRepository.search(query: name)
+            let matches = try await context.exerciseRepository.fuzzySearch(query: name)
             // (#38 fix) Prefer exact match
             let exercise = matches.first(where: { $0.name.lowercased() == name.lowercased() }) ?? matches.first
             if let exercise {
@@ -83,7 +83,7 @@ struct CreateTemplateTool: ClaudeTool {
             let reps = exerciseInput["reps"] as? Int ?? 10
             let weight = exerciseInput["weight"] as? Double
 
-            let matches = try await exerciseRepository.search(query: name)
+            let matches = try await exerciseRepository.fuzzySearch(query: name)
             // (#38 fix) Prefer exact match
             guard let exercise = matches.first(where: { $0.name.lowercased() == name.lowercased() }) ?? matches.first else { continue }
 

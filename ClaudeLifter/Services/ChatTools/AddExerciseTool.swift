@@ -30,7 +30,7 @@ struct AddExerciseTool: ClaudeTool {
             return "No active workout session. Start a workout first."
         }
 
-        let exercises = try await context.exerciseRepository.search(query: exerciseName)
+        let exercises = try await context.exerciseRepository.fuzzySearch(query: exerciseName)
         guard !exercises.isEmpty else {
             return "No exercise found matching '\(exerciseName)'"
         }

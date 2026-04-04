@@ -26,7 +26,7 @@ struct SuggestWeightTool: ClaudeTool {
             return "Error: missing required parameter exercise_name"
         }
 
-        let exercises = try await context.exerciseRepository.search(query: exerciseName)
+        let exercises = try await context.exerciseRepository.fuzzySearch(query: exerciseName)
         guard !exercises.isEmpty else {
             return "No exercise found matching '\(exerciseName)'"
         }

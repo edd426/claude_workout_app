@@ -104,6 +104,7 @@
 		A0EBEA4DB39721D54E3397C5 /* TemplateManagementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6741CCA4E7B10ED8D3C5520 /* TemplateManagementTests.swift */; };
 		A18AFE68B9F7A6C5DA63C7B7 /* HistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83B65EEC4D65C7299EC739E6 /* HistoryViewModel.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* CoachTemplateE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A4B5C6D /* CoachTemplateE2ETests.swift */; };
+		D4E5F6A7B8C9D0E1F2A3B4C5 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F6A7B8C9D0E1F2A3B4 /* IntegrationTests.swift */; };
 		A33185412F2C4E95FC30AAEA /* LocalPhotoStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D73573975324D705EA5F691F /* LocalPhotoStorageTests.swift */; };
 		A4185EDB9DCD5A912D2D98DC /* EnumTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9150AD6C3A49822BCFA93004 /* EnumTests.swift */; };
 		A5147B46731B2F78F2A3F97D /* SyncDTOTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063A59D9339A3ED9F05E1365 /* SyncDTOTests.swift */; };
@@ -308,6 +309,7 @@
 		AF120BA1C6658854FDBD55B4 /* GetExerciseHistoryTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GetExerciseHistoryTool.swift; sourceTree = "<group>"; };
 		AF9E610DA69697073FA94F75 /* MockInsightGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockInsightGenerationService.swift; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A4B5C6D /* CoachTemplateE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachTemplateE2ETests.swift; sourceTree = "<group>"; };
+		C3D4E5F6A7B8C9D0E1F2A3B4 /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
 		B5A37442BD01F482A5FA2B78 /* ClaudeLifterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeLifterTests.swift; sourceTree = "<group>"; };
 		B8700759E0BEF9D81F22B0BA /* BrandThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandThemeTests.swift; sourceTree = "<group>"; };
 		BC30A61797E98CE80A83F037 /* CalendarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViewModelTests.swift; sourceTree = "<group>"; };
@@ -415,6 +417,7 @@
 			children = (
 				F9FAEEF2FF181E02E96BA99C /* WorkoutFlowE2ETests.swift */,
 				B2C3D4E5F60718293A4B5C6D /* CoachTemplateE2ETests.swift */,
+				C3D4E5F6A7B8C9D0E1F2A3B4 /* IntegrationTests.swift */,
 			);
 			path = E2ETests;
 			sourceTree = "<group>";
@@ -912,6 +915,7 @@
 				6B13333443AEDD7615DC85AA /* ClaudeLifterTests.swift in Sources */,
 				CB68982469DAD1772819C0D1 /* WorkoutFlowE2ETests.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* CoachTemplateE2ETests.swift in Sources */,
+				D4E5F6A7B8C9D0E1F2A3B4C5 /* IntegrationTests.swift in Sources */,
 				67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */,
 				ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */,
 				EF0190BDBED8D17D8409E895 /* MockChatMessageRepository.swift in Sources */,
@@ -1091,6 +1095,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifterUITests;
@@ -1130,6 +1135,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifterTests;
@@ -1177,6 +1183,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifterTests;
@@ -1246,6 +1253,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifterUITests;

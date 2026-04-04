@@ -4,16 +4,17 @@ struct HomeView: View {
     @Environment(\.dependencies) private var deps
     @Environment(AppState.self) private var appState
     @State private var vm: HomeViewModel?
-    @State private var selectedTemplate: WorkoutTemplate? = nil
     @State private var showTemplateEditor = false
-    @State private var showAdHocWorkout = false
     @State private var unreadInsights: [ProactiveInsight] = []
 
     var body: some View {
         NavigationStack {
             Group {
-                if appState.isWorkoutActive, let workoutId = appState.activeWorkoutId {
-                    activeWorkoutView(workoutId: workoutId)
+                if let activeVM = appState.activeWorkoutVM {
+                    ActiveWorkoutView(vm: activeVM, onDismiss: {
+                        appState.endWorkout()
+                        Task { await vm?.loadTemplates() }
+                    })
                 } else {
                     templatePickerView
                 }
@@ -36,30 +37,6 @@ struct HomeView: View {
         .onAppear {
             Task { await vm?.loadTemplates() }
         }
-        .fullScreenCover(item: $selectedTemplate) { template in
-            if let deps {
-                ActiveWorkoutView(
-                    vm: ActiveWorkoutViewModel(
-                        template: template,
-                        workoutRepository: deps.workoutRepository,
-                        autoFillService: deps.autoFillService,
-                        templateRepository: deps.templateRepository
-                    )
-                )
-                .onDisappear { Task { await vm?.loadTemplates() } }
-            }
-        }
-        .fullScreenCover(isPresented: $showAdHocWorkout) {
-            if let deps {
-                ActiveWorkoutView(
-                    vm: ActiveWorkoutViewModel(
-                        adHocName: "Quick Workout",
-                        workoutRepository: deps.workoutRepository,
-                        autoFillService: deps.autoFillService
-                    )
-                )
-            }
-        }
         .sheet(isPresented: $showTemplateEditor) {
             if let deps {
                 TemplateEditorView(
@@ -70,14 +47,6 @@ struct HomeView: View {
                 )
                 .onDisappear { Task { await vm?.loadTemplates() } }
             }
-        }
-    }
-
-    private func activeWorkoutView(workoutId: UUID) -> some View {
-        VStack {
-            Text("Workout in progress")
-                .font(.headline)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -134,8 +103,7 @@ struct HomeView: View {
             ForEach(vm.templates, id: \.id) { template in
                 NavigationLink {
                     TemplatePreviewView(template: template) {
-                        appState.startWorkout(id: UUID())
-                        selectedTemplate = template
+                        startWorkout(from: template)
                     }
                 } label: {
                     TemplateRowView(template: template)
@@ -149,10 +117,33 @@ struct HomeView: View {
         .refreshable { await vm.loadTemplates() }
     }
 
+    private func startWorkout(from template: WorkoutTemplate) {
+        guard let deps else { return }
+        let workoutVM = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: deps.workoutRepository,
+            autoFillService: deps.autoFillService,
+            templateRepository: deps.templateRepository
+        )
+        let workoutId = UUID()
+        appState.startWorkout(id: workoutId, vm: workoutVM)
+    }
+
+    private func startAdHocWorkout() {
+        guard let deps else { return }
+        let workoutVM = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: deps.workoutRepository,
+            autoFillService: deps.autoFillService
+        )
+        let workoutId = UUID()
+        appState.startWorkout(id: workoutId, vm: workoutVM)
+    }
+
     private var actionButtons: some View {
         VStack(spacing: 12) {
             Button {
-                showAdHocWorkout = true
+                startAdHocWorkout()
             } label: {
                 Label("Start Empty Workout", systemImage: "play.fill")
                     .frame(maxWidth: .infinity)

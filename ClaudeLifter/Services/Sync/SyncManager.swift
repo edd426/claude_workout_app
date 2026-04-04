@@ -16,6 +16,7 @@ final class SyncManager {
     private let insightRepository: any InsightRepository
     private let preferenceRepository: any TrainingPreferenceRepository
     private let networkService: any NetworkServiceProtocol
+    private let exerciseRepository: (any ExerciseRepository)?
     private let settings: SettingsManager
 
     private var pathMonitor: NWPathMonitor?
@@ -28,6 +29,7 @@ final class SyncManager {
         insightRepository: any InsightRepository,
         preferenceRepository: any TrainingPreferenceRepository,
         networkService: any NetworkServiceProtocol,
+        exerciseRepository: (any ExerciseRepository)? = nil,
         settings: SettingsManager
     ) {
         self.workoutRepository = workoutRepository
@@ -36,6 +38,7 @@ final class SyncManager {
         self.insightRepository = insightRepository
         self.preferenceRepository = preferenceRepository
         self.networkService = networkService
+        self.exerciseRepository = exerciseRepository
         self.settings = settings
         self.lastSyncDate = settings.lastSyncTimestamp
     }
@@ -105,11 +108,16 @@ final class SyncManager {
         for dto in response.workouts {
             if let local = workoutsById[dto.id] {
                 if dto.lastModified > local.lastModified {
-                    SyncMapper.applyDTO(dto, to: local)
+                    if let exerciseRepo = exerciseRepository {
+                        try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepo)
+                    } else {
+                        SyncMapper.applyDTO(dto, to: local)
+                    }
                 }
+            } else if let exerciseRepo = exerciseRepository {
+                let workout = try await SyncMapper.createWorkout(from: dto, exerciseRepository: exerciseRepo)
+                try await workoutRepository.save(workout)
             }
-            // New workouts from server are not inserted here — full merge requires
-            // creating the model graph which is complex; skip for MVP pull-only-updates
         }
 
         // Merge templates
@@ -118,8 +126,15 @@ final class SyncManager {
         for dto in response.templates {
             if let local = templatesById[dto.id] {
                 if dto.lastModified > local.lastModified {
-                    SyncMapper.applyDTO(dto, to: local)
+                    if let exerciseRepo = exerciseRepository {
+                        try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepo)
+                    } else {
+                        SyncMapper.applyDTO(dto, to: local)
+                    }
                 }
+            } else if let exerciseRepo = exerciseRepository {
+                let template = try await SyncMapper.createTemplate(from: dto, exerciseRepository: exerciseRepo)
+                try await templateRepository.save(template)
             }
         }
 
@@ -131,6 +146,9 @@ final class SyncManager {
                 if dto.lastModified > local.lastModified {
                     SyncMapper.applyDTO(dto, to: local)
                 }
+            } else {
+                let insight = SyncMapper.createInsight(from: dto)
+                try await insightRepository.save(insight)
             }
         }
 
@@ -142,6 +160,12 @@ final class SyncManager {
                 if dto.lastModified > local.lastModified {
                     SyncMapper.applyDTO(dto, to: local)
                 }
+            } else {
+                try await preferenceRepository.upsert(
+                    key: dto.key,
+                    value: dto.value,
+                    source: dto.source
+                )
             }
         }
     }

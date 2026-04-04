@@ -233,6 +233,121 @@ struct SyncManagerTests {
         #expect(network.postCallCount == 0)
     }
 
+    // MARK: - Pull inserts new records
+
+    @Test("pull inserts new workouts from server")
+    func pullInsertsNewWorkouts() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        try context.save()
+
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+        let chatRepo = SwiftDataChatMessageRepository(context: context)
+        let insightRepo = SwiftDataInsightRepository(context: context)
+        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
+        let exerciseRepo = SwiftDataExerciseRepository(context: context)
+
+        let setDTO = WorkoutSetDTO(
+            id: UUID(), order: 0, weight: 80.0, weightUnit: "kg",
+            reps: 5, isCompleted: true, completedAt: Date(), notes: nil
+        )
+        let weDTO = WorkoutExerciseDTO(
+            id: UUID(), exerciseId: exercise.id, order: 0,
+            notes: nil, restSeconds: 90, sets: [setDTO]
+        )
+        let workoutDTO = WorkoutDTO(
+            id: UUID(), templateId: nil, name: "Server Workout",
+            startedAt: Date(), completedAt: Date(), notes: nil,
+            lastModified: Date(), exercises: [weDTO]
+        )
+
+        let network = MockNetworkService()
+        let pullResponse = SyncPullResponse(
+            workouts: [workoutDTO],
+            templates: [],
+            chat: [],
+            insights: [],
+            preferences: [],
+            serverTimestamp: Date()
+        )
+        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
+
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-pull-insert-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+
+        let manager = SyncManager(
+            workoutRepository: workoutRepo,
+            templateRepository: templateRepo,
+            chatRepository: chatRepo,
+            insightRepository: insightRepo,
+            preferenceRepository: prefRepo,
+            networkService: network,
+            exerciseRepository: exerciseRepo,
+            settings: settings
+        )
+
+        try await manager.pull()
+
+        let workouts = try await workoutRepo.fetchAll()
+        #expect(workouts.count == 1)
+        #expect(workouts[0].name == "Server Workout")
+        #expect(workouts[0].exercises.count == 1)
+        #expect(workouts[0].exercises[0].sets.count == 1)
+    }
+
+    @Test("pull inserts new insights from server")
+    func pullInsertsNewInsights() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+        let chatRepo = SwiftDataChatMessageRepository(context: context)
+        let insightRepo = SwiftDataInsightRepository(context: context)
+        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
+        let exerciseRepo = SwiftDataExerciseRepository(context: context)
+
+        let insightDTO = InsightDTO(
+            id: UUID(), content: "Train legs!", type: "warning",
+            generatedAt: Date(), isRead: false, lastModified: Date()
+        )
+
+        let network = MockNetworkService()
+        let pullResponse = SyncPullResponse(
+            workouts: [],
+            templates: [],
+            chat: [],
+            insights: [insightDTO],
+            preferences: [],
+            serverTimestamp: Date()
+        )
+        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
+
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-pull-insight-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+
+        let manager = SyncManager(
+            workoutRepository: workoutRepo,
+            templateRepository: templateRepo,
+            chatRepository: chatRepo,
+            insightRepository: insightRepo,
+            preferenceRepository: prefRepo,
+            networkService: network,
+            exerciseRepository: exerciseRepo,
+            settings: settings
+        )
+
+        try await manager.pull()
+
+        let insights = try await insightRepo.fetchAll()
+        #expect(insights.count == 1)
+        #expect(insights[0].content == "Train legs!")
+    }
+
     // MARK: - Error handling
 
     @Test("syncError is set when network throws")

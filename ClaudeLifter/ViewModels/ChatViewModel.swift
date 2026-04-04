@@ -47,6 +47,7 @@ final class ChatViewModel {
     private let workoutRepository: any WorkoutRepository
     private let templateRepository: any TemplateRepository
     private let preferenceRepository: any TrainingPreferenceRepository
+    private let chatRepository: (any ChatMessageRepository)?
     private let tools: [any ClaudeTool]
     private let settings: SettingsManager?
 
@@ -74,6 +75,7 @@ final class ChatViewModel {
         workoutRepository: any WorkoutRepository,
         templateRepository: any TemplateRepository,
         preferenceRepository: any TrainingPreferenceRepository,
+        chatRepository: (any ChatMessageRepository)? = nil,
         tools: [any ClaudeTool]? = nil,
         settings: SettingsManager? = nil
     ) {
@@ -82,6 +84,7 @@ final class ChatViewModel {
         self.workoutRepository = workoutRepository
         self.templateRepository = templateRepository
         self.preferenceRepository = preferenceRepository
+        self.chatRepository = chatRepository
         self.settings = settings
         self.tools = tools ?? [
             SearchExercisesTool(),
@@ -103,6 +106,7 @@ final class ChatViewModel {
 
         let userMessage = ChatMessage(role: .user, text: text)
         messages.append(userMessage)
+        persistMessage(userMessage)
         isLoading = true
         errorMessage = nil
         thinkingText = ""
@@ -120,6 +124,16 @@ final class ChatViewModel {
         currentStreamingText = ""
         errorMessage = nil
         isLoading = false
+        Task { try? await chatRepository?.deleteAll(workoutId: activeWorkout?.id) }
+    }
+
+    func loadHistory() async {
+        guard messages.isEmpty else { return }
+        guard let repo = chatRepository else { return }
+        let saved = (try? await repo.fetch(workoutId: activeWorkout?.id)) ?? []
+        messages = saved.suffix(50).map {
+            ChatMessage(role: $0.role, text: $0.content, timestamp: $0.timestamp)
+        }
     }
 
     func confirmPendingAction() async {
@@ -188,6 +202,7 @@ final class ChatViewModel {
                 if !accumulatedText.isEmpty {
                     let assistantMsg = ChatMessage(role: .assistant, text: accumulatedText)
                     messages.append(assistantMsg)
+                    persistMessage(assistantMsg)
                     accumulatedText = ""
                     currentStreamingText = ""
                 }
@@ -200,6 +215,7 @@ final class ChatViewModel {
                 if !accumulatedText.isEmpty {
                     let assistantMsg = ChatMessage(role: .assistant, text: accumulatedText)
                     messages.append(assistantMsg)
+                    persistMessage(assistantMsg)
                     accumulatedText = ""
                     currentStreamingText = ""
                 }
@@ -348,6 +364,18 @@ final class ChatViewModel {
         } catch {
             return "Tool error: \(error.localizedDescription)"
         }
+    }
+
+    /// Persist a text message to the chat repository. Tool-use and tool-result messages are transient.
+    private func persistMessage(_ message: ChatMessage) {
+        guard case .text(let text) = message.content else { return }
+        let dbMessage = AIChatMessage(
+            role: message.role,
+            content: text,
+            workoutId: activeWorkout?.id,
+            timestamp: message.timestamp
+        )
+        Task { try? await chatRepository?.save(dbMessage) }
     }
 
     private var cachedPreferences: [TrainingPreference] = []

@@ -24,6 +24,7 @@ enum AIModel: String, CaseIterable, Sendable {
 
 final class SettingsManager {
     private let defaults: UserDefaults
+    private let keychainKey: String
 
     private enum Key {
         static let weightUnit = "weightUnit"
@@ -33,8 +34,17 @@ final class SettingsManager {
         static let lastSyncTimestamp = "lastSyncTimestamp"
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, keychainKey: String? = nil) {
         self.defaults = defaults
+        // Use provided key, or derive from defaults suite for test isolation
+        if let keychainKey {
+            self.keychainKey = keychainKey
+        } else if defaults === UserDefaults.standard {
+            self.keychainKey = "anthropic_api_key"
+        } else {
+            // Non-standard UserDefaults (test) — use UserDefaults for backward compatibility
+            self.keychainKey = ""
+        }
     }
 
     var weightUnit: WeightUnit {
@@ -56,8 +66,25 @@ final class SettingsManager {
     }
 
     var apiKey: String {
-        get { defaults.string(forKey: Key.apiKey) ?? "" }
-        set { defaults.set(newValue, forKey: Key.apiKey) }
+        get {
+            // Test mode: use UserDefaults (backward compatible)
+            guard !keychainKey.isEmpty else {
+                return defaults.string(forKey: Key.apiKey) ?? ""
+            }
+            // Production: migrate from UserDefaults to Keychain on first read
+            if let legacy = defaults.string(forKey: Key.apiKey), !legacy.isEmpty {
+                KeychainHelper.write(key: keychainKey, value: legacy)
+                defaults.removeObject(forKey: Key.apiKey)
+            }
+            return KeychainHelper.read(key: keychainKey) ?? ""
+        }
+        set {
+            guard !keychainKey.isEmpty else {
+                defaults.set(newValue, forKey: Key.apiKey)
+                return
+            }
+            KeychainHelper.write(key: keychainKey, value: newValue)
+        }
     }
 
     var serverURL: String {

@@ -514,6 +514,107 @@ struct ChatViewModelTests {
 
     // MARK: - Model Selection (#45 fix: use SettingsManager)
 
+    // MARK: - Issue #56: Chat History Persistence
+
+    @Test("Sending a message persists it to chatRepository")
+    func sendMessagePersistsToChatRepository() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let mockChat = MockChatMessageRepository()
+
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [.text("Reply"), .complete]
+
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            chatRepository: mockChat
+        )
+
+        await vm.sendMessage("Hello coach")
+
+        // User message + assistant message should be persisted
+        let saved = try await mockChat.fetch(workoutId: nil)
+        let userMessages = saved.filter { $0.role == .user }
+        let assistantMessages = saved.filter { $0.role == .assistant }
+        #expect(userMessages.count == 1)
+        #expect(userMessages.first?.content == "Hello coach")
+        #expect(assistantMessages.count == 1)
+        #expect(assistantMessages.first?.content == "Reply")
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("loadHistory populates messages from repository")
+    func loadHistoryPopulatesMessages() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let mockChat = MockChatMessageRepository()
+
+        // Pre-populate repository with saved messages
+        let msg1 = AIChatMessage(role: .user, content: "Previous question")
+        let msg2 = AIChatMessage(role: .assistant, content: "Previous answer")
+        mockChat.messages = [msg1, msg2]
+
+        let mock = MockAnthropicService()
+
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            chatRepository: mockChat
+        )
+
+        await vm.loadHistory()
+
+        #expect(vm.messages.count == 2)
+        #expect(vm.messages[0].role == .user)
+        #expect(vm.messages[0].textContent == "Previous question")
+        #expect(vm.messages[1].role == .assistant)
+        #expect(vm.messages[1].textContent == "Previous answer")
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("clearChat deletes messages from repository")
+    func clearChatDeletesFromRepository() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let mockChat = MockChatMessageRepository()
+
+        // Pre-populate repository
+        mockChat.messages = [
+            AIChatMessage(role: .user, content: "Old message"),
+            AIChatMessage(role: .assistant, content: "Old reply")
+        ]
+
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [.text("Hi"), .complete]
+
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            chatRepository: mockChat
+        )
+
+        vm.clearChat()
+
+        // Wait briefly for the background Task to execute
+        try await Task.sleep(for: .milliseconds(50))
+
+        let remaining = try await mockChat.fetch(workoutId: nil)
+        #expect(remaining.isEmpty)
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Model Selection (#45 fix: use SettingsManager)
+
     @Test("ChatViewModel uses SettingsManager for model selection")
     func chatViewModelUsesSettingsManagerForModel() async throws {
         let container = try makeTestContainer()

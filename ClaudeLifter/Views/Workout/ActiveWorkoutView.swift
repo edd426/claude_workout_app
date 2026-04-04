@@ -3,34 +3,33 @@ import SwiftData
 
 struct ActiveWorkoutView: View {
     @State var vm: ActiveWorkoutViewModel
+    var onDismiss: (() -> Void)? = nil
+
     @State private var showRestTimer = false
     @State private var restDuration = 90
     @State private var showSummary = false
     @State private var showExercisePicker = false
     @State private var showCancelDialog = false
     @Environment(AppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if vm.workout != nil {
-                    workoutContent
-                } else {
-                    ProgressView("Starting workout...")
-                }
+        Group {
+            if vm.workout != nil {
+                workoutContent
+            } else {
+                ProgressView("Starting workout...")
             }
-            .navigationTitle(vm.workout?.name ?? "Workout")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { toolbarContent }
         }
+        .navigationTitle(vm.workout?.name ?? "Workout")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
         .task { await vm.startWorkout() }
         .sheet(isPresented: $showSummary) {
             if let workout = vm.workout {
                 WorkoutSummaryView(workout: workout, personalRecords: vm.detectedPRs) {
                     showSummary = false
                     appState.endWorkout()
-                    dismiss()
+                    onDismiss?()
                 }
             }
         }
@@ -47,14 +46,14 @@ struct ActiveWorkoutView: View {
                 Task {
                     await vm.saveDraft()
                     appState.endWorkout()
-                    dismiss()
+                    onDismiss?()
                 }
             }
             Button("Discard Workout", role: .destructive) {
                 Task {
                     await vm.cancelWorkout()
                     appState.endWorkout()
-                    dismiss()
+                    onDismiss?()
                 }
             }
             Button("Keep Going", role: .cancel) {}

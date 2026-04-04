@@ -38,6 +38,9 @@ struct ChatView: View {
                 }
             }
         }
+        .task {
+            await viewModel.loadHistory()
+        }
         .confirmationDialog(
             viewModel.pendingConfirmation?.description ?? "",
             isPresented: .init(

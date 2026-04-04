@@ -21,20 +21,20 @@ struct ExerciseCardView: View {
                         Button {
                             onRemoveSet(set)
                         } label: {
-                            Image(systemName: "minus.circle")
+                            Label("Remove", systemImage: "minus.circle")
                                 .font(.caption)
-                                .foregroundStyle(BrandTheme.accent)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.bordered)
+                        .tint(.secondary)
                     }
                 }
             }
             Button(action: onAddSet) {
                 Label("Add Set", systemImage: "plus.circle")
                     .font(.caption)
-                    .foregroundStyle(BrandTheme.accent)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
+            .tint(.secondary)
             .padding(.top, 4)
         }
         .padding()

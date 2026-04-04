@@ -84,6 +84,7 @@ final class ChatViewModel {
         self.preferenceRepository = preferenceRepository
         self.settings = settings
         self.tools = tools ?? [
+            SearchExercisesTool(),
             GetExerciseHistoryTool(),
             GetRecentWorkoutsTool(),
             SuggestWeightTool(),
@@ -369,6 +370,7 @@ final class ChatViewModel {
         - When modifying the active workout, use the available tools directly — no confirmation needed
         - When suggesting new templates, summarize what you'd create and ask for confirmation before saving
         - Do not delete templates under any circumstances
+        - IMPORTANT: Before creating a template or program, use the search_exercises tool to look up the exact exercise names in the database. Do NOT guess exercise names — they must match exactly. For example, search for "squat" to find the available squat variations, then use those exact names in the create_template tool.
         """)
 
         // Training preferences

@@ -42,6 +42,7 @@ struct CreateTemplateTool: ClaudeTool {
 
         let exerciseInputs = json["exercises"] as? [[String: Any]] ?? []
         var resolvedLines: [String] = []
+        var unmatchedNames: [String] = []
 
         for exerciseInput in exerciseInputs {
             guard let name = exerciseInput["name"] as? String else { continue }
@@ -49,20 +50,25 @@ struct CreateTemplateTool: ClaudeTool {
             let reps = exerciseInput["reps"] as? Int ?? 10
 
             let matches = try await context.exerciseRepository.fuzzySearch(query: name)
-            // (#38 fix) Prefer exact match
             let exercise = matches.first(where: { $0.name.lowercased() == name.lowercased() }) ?? matches.first
             if let exercise {
                 resolvedLines.append("\(exercise.name) (\(sets)×\(reps))")
+            } else {
+                unmatchedNames.append(name)
             }
-            // If not found, skip gracefully
         }
 
         if resolvedLines.isEmpty && !exerciseInputs.isEmpty {
-            return "Error: could not create template '\(templateName)' — no matching exercises found in your exercise library."
+            let tried = unmatchedNames.joined(separator: ", ")
+            return "Error: could not create template '\(templateName)' — none of these exercises were found in the library: \(tried). Use the search_exercises tool to find the correct names first."
         }
 
-        let exerciseSummary = resolvedLines.joined(separator: ", ")
-        return "Template '\(templateName)' with \(resolvedLines.count) exercise(s): \(exerciseSummary). Awaiting confirmation."
+        var result = "Template '\(templateName)' with \(resolvedLines.count) exercise(s): \(resolvedLines.joined(separator: ", "))."
+        if !unmatchedNames.isEmpty {
+            result += " WARNING: These exercises were NOT found and were skipped: \(unmatchedNames.joined(separator: ", ")). Use search_exercises to find correct names."
+        }
+        result += " Awaiting confirmation."
+        return result
     }
 
     // Builds the actual WorkoutTemplate + TemplateExercise objects for saving

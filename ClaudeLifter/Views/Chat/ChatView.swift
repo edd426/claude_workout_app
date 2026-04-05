@@ -152,10 +152,15 @@ struct ChatView: View {
 
     // MARK: - Helpers
 
-    /// Renders a string with full markdown (headers, bold, italic, code, links).
-    /// Falls back to plain text on failure.
+    /// Renders a string with markdown. Pre-processes single newlines to hard
+    /// line breaks (two trailing spaces) since Claude uses \n for line breaks
+    /// but CommonMark treats them as spaces.
     private func markdownText(_ string: String) -> Text {
-        if let attributed = try? AttributedString(markdown: string) {
+        let processed = string
+            .replacingOccurrences(of: "\n\n", with: "\u{0000}")
+            .replacingOccurrences(of: "\n", with: "  \n")
+            .replacingOccurrences(of: "\u{0000}", with: "\n\n")
+        if let attributed = try? AttributedString(markdown: processed) {
             return Text(attributed)
         }
         return Text(string)

@@ -68,10 +68,17 @@ struct ChatMessageBubbleView: View {
 
     // MARK: - Helpers
 
-    /// Renders a string with full markdown (headers, bold, italic, code, links).
-    /// Falls back to plain text if parsing fails.
+    /// Renders a string with markdown (bold, italic, code, links, headers).
+    /// Pre-processes to convert single newlines to paragraph breaks since
+    /// CommonMark treats single \n as spaces but Claude uses them for line breaks.
     private func markdownText(_ string: String) -> Text {
-        if let attributed = try? AttributedString(markdown: string) {
+        // Convert single newlines to double (paragraph breaks) for CommonMark
+        // But preserve existing double newlines (don't quadruple them)
+        let processed = string
+            .replacingOccurrences(of: "\n\n", with: "\u{0000}") // protect double newlines
+            .replacingOccurrences(of: "\n", with: "  \n") // trailing spaces = hard line break in CommonMark
+            .replacingOccurrences(of: "\u{0000}", with: "\n\n") // restore double newlines
+        if let attributed = try? AttributedString(markdown: processed) {
             return Text(attributed)
         }
         return Text(string)

@@ -23,7 +23,11 @@ struct ActiveWorkoutView: View {
         .navigationTitle(vm.workout?.name ?? "Workout")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
-        .task { await vm.startWorkout() }
+        .task {
+            if vm.workout == nil {
+                await vm.startWorkout()
+            }
+        }
         .sheet(isPresented: $showSummary) {
             if let workout = vm.workout {
                 WorkoutSummaryView(workout: workout, personalRecords: vm.detectedPRs) {

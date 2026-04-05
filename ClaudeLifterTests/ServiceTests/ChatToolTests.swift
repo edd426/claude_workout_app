@@ -482,14 +482,24 @@ struct CreateTemplateToolTests {
         #expect(templateRepo.savedTemplates.first?.exercises.count == 1)
     }
 
-    @Test("confirmPendingAction saves template via repository")
-    func confirmPendingActionSavesTemplate() async throws {
+    @Test("create_template auto-saves template via ChatViewModel executeTool")
+    func createTemplateAutoSavesViaViewModel() async throws {
         let bench = TestFixtures.makeExercise(name: "Bench Press")
         let exerciseRepo = MockExerciseRepository()
         exerciseRepo.exercises = [bench]
         let templateRepo = MockTemplateRepository()
 
         let anthropicService = MockAnthropicService()
+        anthropicService.stubbedEventSequences = [
+            [
+                .toolUse(id: "t1", name: "create_template", inputJSON: """
+                {"template_name": "Upper Body", "exercises": [{"name": "Bench Press", "sets": 4, "reps": 6}]}
+                """),
+                .complete
+            ],
+            [.text("Template created."), .complete]
+        ]
+
         let vm = ChatViewModel(
             anthropicService: anthropicService,
             exerciseRepository: exerciseRepo,
@@ -498,44 +508,9 @@ struct CreateTemplateToolTests {
             preferenceRepository: MockTrainingPreferenceRepository()
         )
 
-        let input = """
-        {
-          "template_name": "Upper Body",
-          "exercises": [
-            {"name": "Bench Press", "sets": 4, "reps": 6}
-          ]
-        }
-        """
+        await vm.sendMessage("Create an upper body template")
 
-        // Simulate the tool execution that sets pendingConfirmation
-        let toolContext = ToolContext(
-            exerciseRepository: exerciseRepo,
-            workoutRepository: MockWorkoutRepository(),
-            templateRepository: templateRepo,
-            activeWorkout: nil
-        )
-        let createTool = CreateTemplateTool()
-        let summary = try await createTool.execute(inputJSON: input, context: toolContext)
-        let capturedInput = input
-        let capturedExerciseRepo = exerciseRepo
-        let capturedTemplateRepo = templateRepo
-        vm.pendingConfirmation = PendingConfirmation(
-            toolName: CreateTemplateTool.toolName,
-            description: summary,
-            onConfirm: {
-                guard let template = try await createTool.buildTemplate(
-                    inputJSON: capturedInput,
-                    exerciseRepository: capturedExerciseRepo
-                ) else { return }
-                try await capturedTemplateRepo.save(template)
-            }
-        )
-
-        #expect(vm.pendingConfirmation != nil)
-
-        await vm.confirmPendingAction()
-
-        #expect(vm.pendingConfirmation == nil)
+        // Template should be auto-saved without any confirmation step
         #expect(templateRepo.saveCallCount == 1)
         #expect(templateRepo.savedTemplates.first?.name == "Upper Body")
     }

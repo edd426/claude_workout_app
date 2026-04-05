@@ -5,6 +5,7 @@ import SwiftUI
 struct ChatView: View {
 
     @State var viewModel: ChatViewModel
+    @State private var showConversationList = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +22,17 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button {
+                        viewModel.startNewConversation()
+                    } label: {
+                        Label("New Chat", systemImage: "plus.message")
+                    }
+                    Button {
+                        showConversationList = true
+                    } label: {
+                        Label("Past Chats", systemImage: "clock.arrow.circlepath")
+                    }
+                    Divider()
                     Button {
                         copyConversation()
                     } label: {
@@ -41,20 +53,8 @@ struct ChatView: View {
         .task {
             await viewModel.loadHistory()
         }
-        .confirmationDialog(
-            viewModel.pendingConfirmation?.description ?? "",
-            isPresented: .init(
-                get: { viewModel.pendingConfirmation != nil },
-                set: { if !$0 { viewModel.cancelPendingAction() } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Save") {
-                Task { await viewModel.confirmPendingAction() }
-            }
-            Button("Cancel", role: .cancel) {
-                viewModel.cancelPendingAction()
-            }
+        .sheet(isPresented: $showConversationList) {
+            ConversationListView(viewModel: viewModel, isPresented: $showConversationList)
         }
     }
 
@@ -152,14 +152,10 @@ struct ChatView: View {
 
     // MARK: - Helpers
 
-    /// Renders a string with inline markdown. Falls back to plain text on failure.
+    /// Renders a string with full markdown (headers, bold, italic, code, links).
+    /// Falls back to plain text on failure.
     private func markdownText(_ string: String) -> Text {
-        if let attributed = try? AttributedString(
-            markdown: string,
-            options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace
-            )
-        ) {
+        if let attributed = try? AttributedString(markdown: string) {
             return Text(attributed)
         }
         return Text(string)

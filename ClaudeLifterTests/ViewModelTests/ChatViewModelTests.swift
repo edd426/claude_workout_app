@@ -288,10 +288,10 @@ struct ChatViewModelTests {
         withExtendedLifetime(vmContainer) {}
     }
 
-    // MARK: - Confirmation Flow
+    // MARK: - Auto-Save (replaces confirmation flow)
 
-    @Test("create_template tool triggers confirmation flow")
-    func createTemplateToolTriggersPendingConfirmation() async throws {
+    @Test("create_template tool auto-saves the template directly")
+    func createTemplateToolAutoSaves() async throws {
         let container = try makeTestContainer()
         let context = container.mainContext
 
@@ -307,108 +307,28 @@ struct ChatViewModelTests {
                 """),
                 .complete
             ],
-            [.text("I've prepared a template for your review."), .complete]
+            [.text("I've created a Push Day template for you."), .complete]
         ]
 
+        let templateRepo = SwiftDataTemplateRepository(context: context)
         let vm = ChatViewModel(
             anthropicService: mock,
             exerciseRepository: SwiftDataExerciseRepository(context: context),
             workoutRepository: SwiftDataWorkoutRepository(context: context),
-            templateRepository: SwiftDataTemplateRepository(context: context),
+            templateRepository: templateRepo,
             preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
         )
 
         await vm.sendMessage("Create a push day template")
 
-        #expect(vm.pendingConfirmation != nil)
-        #expect(vm.pendingConfirmation?.toolName == "create_template")
-        withExtendedLifetime(container) {}
-    }
-
-    @Test("Confirming pending action saves the template")
-    func confirmPendingActionSavesTemplate() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let bench = TestFixtures.makeExercise(name: "Bench Press")
-        context.insert(bench)
-        try context.save()
-
-        let mock = MockAnthropicService()
-        mock.stubbedEventSequences = [
-            [
-                .toolUse(id: "t1", name: "create_template", inputJSON: """
-                {"template_name": "My Template", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
-                """),
-                .complete
-            ],
-            [.text("Template ready."), .complete]
-        ]
-
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let vm = ChatViewModel(
-            anthropicService: mock,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            workoutRepository: SwiftDataWorkoutRepository(context: context),
-            templateRepository: templateRepo,
-            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
-        )
-
-        await vm.sendMessage("Create a template")
-        #expect(vm.pendingConfirmation != nil)
-
-        await vm.confirmPendingAction()
-
+        // Template should be saved directly without confirmation
         let saved = try await templateRepo.fetchAll()
-        #expect(saved.contains { $0.name == "My Template" })
-        #expect(vm.pendingConfirmation == nil)
+        #expect(saved.contains { $0.name == "Push Day" })
         withExtendedLifetime(container) {}
     }
 
-    @Test("Canceling pending action does not save template")
-    func cancelPendingActionDoesNotSave() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let bench = TestFixtures.makeExercise(name: "Bench Press")
-        context.insert(bench)
-        try context.save()
-
-        let mock = MockAnthropicService()
-        mock.stubbedEventSequences = [
-            [
-                .toolUse(id: "t1", name: "create_template", inputJSON: """
-                {"template_name": "Cancelled Template", "exercises": [{"name": "Bench Press", "sets": 3, "reps": 8}]}
-                """),
-                .complete
-            ],
-            [.text("Template ready."), .complete]
-        ]
-
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let vm = ChatViewModel(
-            anthropicService: mock,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            workoutRepository: SwiftDataWorkoutRepository(context: context),
-            templateRepository: templateRepo,
-            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
-        )
-
-        await vm.sendMessage("Create a template")
-        #expect(vm.pendingConfirmation != nil)
-
-        vm.cancelPendingAction()
-
-        let saved = try await templateRepo.fetchAll()
-        #expect(saved.isEmpty)
-        #expect(vm.pendingConfirmation == nil)
-        withExtendedLifetime(container) {}
-    }
-
-    // MARK: - Issue #57: No empty-template confirmation dialog
-
-    @Test("create_template with no matched exercises does NOT set pendingConfirmation")
-    func createTemplateWithNoMatchesDoesNotSetPendingConfirmation() async throws {
+    @Test("create_template with no matched exercises does NOT save a template")
+    func createTemplateWithNoMatchesDoesNotSave() async throws {
         let container = try makeTestContainer()
         let context = container.mainContext
         // No exercises inserted — nothing will match
@@ -424,63 +344,20 @@ struct ChatViewModelTests {
             [.text("I could not find matching exercises."), .complete]
         ]
 
+        let templateRepo = SwiftDataTemplateRepository(context: context)
         let vm = ChatViewModel(
             anthropicService: mock,
             exerciseRepository: SwiftDataExerciseRepository(context: context),
             workoutRepository: SwiftDataWorkoutRepository(context: context),
-            templateRepository: SwiftDataTemplateRepository(context: context),
+            templateRepository: templateRepo,
             preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
         )
 
         await vm.sendMessage("Create a push day template")
 
-        // Should NOT show a confirmation dialog when 0 exercises matched
-        #expect(vm.pendingConfirmation == nil)
-        withExtendedLifetime(container) {}
-    }
-
-    @Test("confirmPendingAction sets errorMessage when buildTemplate returns nil")
-    func confirmPendingActionSetsErrorWhenBuildTemplateReturnsNil() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-        // No exercises in DB
-
-        let mock = MockAnthropicService()
-        let vm = ChatViewModel(
-            anthropicService: mock,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            workoutRepository: SwiftDataWorkoutRepository(context: context),
-            templateRepository: SwiftDataTemplateRepository(context: context),
-            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context)
-        )
-
-        // Manually set a pendingConfirmation whose onConfirm calls buildTemplate with no matches
-        let createTool = CreateTemplateTool()
-        let exerciseRepo = SwiftDataExerciseRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let inputJSON = """
-        {"template_name": "Ghost Day", "exercises": [{"name": "Unknown XYZ", "sets": 3, "reps": 8}]}
-        """
-        // Use the fixed pattern: throw ToolError.noMatchingExercises when buildTemplate returns nil
-        vm.pendingConfirmation = PendingConfirmation(
-            toolName: "create_template",
-            description: "Ghost Day",
-            onConfirm: {
-                guard let template = try await createTool.buildTemplate(
-                    inputJSON: inputJSON,
-                    exerciseRepository: exerciseRepo
-                ) else {
-                    throw ToolError.noMatchingExercises
-                }
-                try await templateRepo.save(template)
-            }
-        )
-
-        await vm.confirmPendingAction()
-
-        // After confirming, errorMessage should be set because no exercises matched
-        #expect(vm.errorMessage != nil)
-        #expect(vm.errorMessage?.lowercased().contains("no matching") == true || vm.errorMessage?.lowercased().contains("could not") == true)
+        // No template should be saved when 0 exercises matched
+        let saved = try await templateRepo.fetchAll()
+        #expect(saved.isEmpty)
         withExtendedLifetime(container) {}
     }
 
@@ -537,7 +414,7 @@ struct ChatViewModelTests {
         await vm.sendMessage("Hello coach")
 
         // User message + assistant message should be persisted
-        let saved = try await mockChat.fetch(workoutId: nil)
+        let saved = mockChat.messages
         let userMessages = saved.filter { $0.role == .user }
         let assistantMessages = saved.filter { $0.role == .assistant }
         #expect(userMessages.count == 1)
@@ -553,13 +430,7 @@ struct ChatViewModelTests {
         let context = container.mainContext
         let mockChat = MockChatMessageRepository()
 
-        // Pre-populate repository with saved messages
-        let msg1 = AIChatMessage(role: .user, content: "Previous question")
-        let msg2 = AIChatMessage(role: .assistant, content: "Previous answer")
-        mockChat.messages = [msg1, msg2]
-
         let mock = MockAnthropicService()
-
         let vm = ChatViewModel(
             anthropicService: mock,
             exerciseRepository: SwiftDataExerciseRepository(context: context),
@@ -568,6 +439,12 @@ struct ChatViewModelTests {
             preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
             chatRepository: mockChat
         )
+
+        // Pre-populate repository with saved messages matching the VM's conversationId
+        let convoId = vm.currentConversationId
+        let msg1 = AIChatMessage(role: .user, content: "Previous question", conversationId: convoId)
+        let msg2 = AIChatMessage(role: .assistant, content: "Previous answer", conversationId: convoId)
+        mockChat.messages = [msg1, msg2]
 
         await vm.loadHistory()
 
@@ -639,6 +516,118 @@ struct ChatViewModelTests {
         await vm.sendMessage("Hello")
 
         #expect(mock.lastModel == AIModel.sonnet.rawValue)
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Conversation Management
+
+    @Test("startNewConversation generates new ID and clears messages")
+    func startNewConversationClearsState() async throws {
+        let (vm, _, container) = try makeViewModel(events: [.text("Hi"), .complete])
+        await vm.sendMessage("Hello")
+        let oldConvoId = vm.currentConversationId
+
+        vm.startNewConversation()
+
+        #expect(vm.messages.isEmpty)
+        #expect(vm.currentConversationId != oldConvoId)
+        #expect(vm.currentStreamingText == "")
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Persisted messages include conversationId")
+    func persistedMessagesIncludeConversationId() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let mockChat = MockChatMessageRepository()
+
+        let mock = MockAnthropicService()
+        mock.stubbedEvents = [.text("Reply"), .complete]
+
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            chatRepository: mockChat
+        )
+
+        await vm.sendMessage("Hello")
+
+        // Wait for background Task persistence
+        try await Task.sleep(for: .milliseconds(50))
+
+        let saved = mockChat.messages
+        #expect(!saved.isEmpty)
+        for msg in saved {
+            #expect(msg.conversationId == vm.currentConversationId)
+        }
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("loadConversation loads messages for a specific conversation")
+    func loadConversationLoadsSpecificMessages() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let mockChat = MockChatMessageRepository()
+
+        let convoA = UUID()
+        let convoB = UUID()
+        mockChat.messages = [
+            AIChatMessage(role: .user, content: "Message A", conversationId: convoA),
+            AIChatMessage(role: .user, content: "Message B", conversationId: convoB)
+        ]
+
+        let mock = MockAnthropicService()
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            chatRepository: mockChat
+        )
+
+        await vm.loadConversation(id: convoA)
+
+        #expect(vm.messages.count == 1)
+        #expect(vm.messages.first?.textContent == "Message A")
+        #expect(vm.currentConversationId == convoA)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("listConversations returns grouped conversations sorted by date")
+    func listConversationsReturnsGrouped() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let mockChat = MockChatMessageRepository()
+
+        let convoA = UUID()
+        let convoB = UUID()
+        let olderDate = Date.now.addingTimeInterval(-3600)
+        let newerDate = Date.now
+
+        mockChat.messages = [
+            AIChatMessage(role: .user, content: "Old question", conversationId: convoA, timestamp: olderDate),
+            AIChatMessage(role: .user, content: "New question", conversationId: convoB, timestamp: newerDate)
+        ]
+
+        let mock = MockAnthropicService()
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            chatRepository: mockChat
+        )
+
+        let convos = await vm.listConversations()
+
+        #expect(convos.count == 2)
+        // Most recent first
+        #expect(convos.first?.preview == "New question")
         withExtendedLifetime(container) {}
     }
 }

@@ -113,18 +113,7 @@ struct IntegrationTests {
         // User sends message
         await chatVM.sendMessage("Create a push day workout for me")
 
-        // The first tool call should have produced a pending confirmation
-        #expect(chatVM.pendingConfirmation != nil, "Should have a pending confirmation for create_template")
-
-        // Description should reference matched exercises (not 0)
-        let desc = chatVM.pendingConfirmation?.description ?? ""
-        #expect(!desc.contains("0 exercise"), "Should have matched exercises, got: \(desc)")
-        #expect(desc.contains("Push Day"), "Description should mention the template name")
-
-        // User confirms — triggers the onConfirm closure which saves the template
-        await chatVM.confirmPendingAction()
-
-        // Template should be persisted in the repository
+        // Template should be auto-saved directly (no confirmation step needed)
         let templates = try await templateRepo.fetchAll()
         let pushDay = templates.first(where: { $0.name == "Push Day" })
         #expect(pushDay != nil, "Push Day template should be saved after confirmation")
@@ -408,17 +397,7 @@ struct IntegrationTests {
 
         await chatVM.sendMessage("Create a 3-day push pull legs program")
 
-        // Should have a pending confirmation for the program
-        #expect(chatVM.pendingConfirmation != nil, "Should have pending confirmation for create_program")
-
-        let desc = chatVM.pendingConfirmation?.description ?? ""
-        #expect(desc.contains("PPL Program"), "Description should mention the program name")
-        #expect(!desc.contains("no matched exercises"), "At least some exercises should be matched: \(desc)")
-
-        // User confirms — saves all 3 templates
-        await chatVM.confirmPendingAction()
-
-        // Verify all 3 templates are saved
+        // Templates should be auto-saved directly (no confirmation step needed)
         let allTemplates = try await templateRepo.fetchAll()
         #expect(allTemplates.count == 3, "Should have saved 3 templates, found \(allTemplates.count)")
 

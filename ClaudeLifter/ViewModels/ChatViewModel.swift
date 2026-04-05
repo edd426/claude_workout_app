@@ -14,15 +14,6 @@ enum ToolError: LocalizedError {
     }
 }
 
-// MARK: - PendingConfirmation
-
-struct PendingConfirmation: Identifiable {
-    let id = UUID()
-    let toolName: String
-    let description: String
-    let onConfirm: () async throws -> Void
-}
-
 // MARK: - ChatViewModel
 
 @Observable
@@ -37,8 +28,8 @@ final class ChatViewModel {
     var isLoading: Bool = false
     var errorMessage: String?
     var activeWorkoutContext: String?
-    var pendingConfirmation: PendingConfirmation?
     var useExtendedThinking: Bool = false
+    var currentConversationId: UUID = UUID()
 
     // MARK: - Dependencies
 
@@ -131,23 +122,50 @@ final class ChatViewModel {
         guard messages.isEmpty else { return }
         guard let repo = chatRepository else { return }
         let saved = (try? await repo.fetch(workoutId: activeWorkout?.id)) ?? []
-        messages = saved.suffix(50).map {
+        let filtered = saved.filter { $0.conversationId == currentConversationId }
+        messages = filtered.suffix(50).map {
             ChatMessage(role: $0.role, text: $0.content, timestamp: $0.timestamp)
         }
     }
 
-    func confirmPendingAction() async {
-        guard let confirmation = pendingConfirmation else { return }
-        pendingConfirmation = nil
-        do {
-            try await confirmation.onConfirm()
-        } catch {
-            errorMessage = error.localizedDescription
+    // MARK: - Conversation Management
+
+    func startNewConversation() {
+        currentConversationId = UUID()
+        messages = []
+        currentStreamingText = ""
+        errorMessage = nil
+        isLoading = false
+    }
+
+    func loadConversation(id: UUID) async {
+        currentConversationId = id
+        messages = []
+        guard let repo = chatRepository else { return }
+        let all = (try? await repo.fetch(workoutId: activeWorkout?.id)) ?? []
+        let filtered = all.filter { $0.conversationId == id }
+        messages = filtered.suffix(50).map {
+            ChatMessage(role: $0.role, text: $0.content, timestamp: $0.timestamp)
         }
     }
 
-    func cancelPendingAction() {
-        pendingConfirmation = nil
+    func listConversations() async -> [(id: UUID, preview: String, date: Date)] {
+        guard let repo = chatRepository else { return [] }
+        let all = (try? await repo.fetch(workoutId: activeWorkout?.id)) ?? []
+        // Group by conversationId
+        var grouped: [UUID: [AIChatMessage]] = [:]
+        for msg in all {
+            let convoId = msg.conversationId ?? UUID()
+            grouped[convoId, default: []].append(msg)
+        }
+        // Build summaries, sorted by most recent first
+        return grouped.compactMap { convoId, msgs in
+            guard let first = msgs.sorted(by: { $0.timestamp < $1.timestamp }).first else { return nil }
+            let preview = String(first.content.prefix(80))
+            let latestDate = msgs.map(\.timestamp).max() ?? first.timestamp
+            return (id: convoId, preview: preview, date: latestDate)
+        }
+        .sorted { $0.date > $1.date }
     }
 
     // MARK: - Private
@@ -272,31 +290,16 @@ final class ChatViewModel {
             return "Error: unknown tool '\(name)'"
         }
 
-        // Confirmation-gated tools: execute for summary, then set pendingConfirmation
+        // Auto-save tools: execute for summary, then build and save directly
         if name == CreateTemplateTool.toolName {
             let createTool = CreateTemplateTool()
             do {
                 let summary = try await createTool.execute(inputJSON: inputJSON, context: context)
-                // If execute returned an error (e.g. 0 exercises matched), don't show confirmation
-                if summary.hasPrefix("Error:") {
-                    return summary
+                if summary.hasPrefix("Error:") { return summary }
+                if let template = try await createTool.buildTemplate(inputJSON: inputJSON, exerciseRepository: exerciseRepository) {
+                    try await templateRepository.save(template)
+                    return summary.replacingOccurrences(of: "Awaiting confirmation.", with: "Template saved successfully!")
                 }
-                let capturedInputJSON = inputJSON
-                let capturedExerciseRepo = exerciseRepository
-                let capturedTemplateRepo = templateRepository
-                pendingConfirmation = PendingConfirmation(
-                    toolName: name,
-                    description: summary,
-                    onConfirm: {
-                        guard let template = try await createTool.buildTemplate(
-                            inputJSON: capturedInputJSON,
-                            exerciseRepository: capturedExerciseRepo
-                        ) else {
-                            throw ToolError.noMatchingExercises
-                        }
-                        try await capturedTemplateRepo.save(template)
-                    }
-                )
                 return summary
             } catch {
                 return "Tool error: \(error.localizedDescription)"
@@ -307,26 +310,12 @@ final class ChatViewModel {
             let programTool = CreateProgramTool()
             do {
                 let summary = try await programTool.execute(inputJSON: inputJSON, context: context)
-                if summary.hasPrefix("Error:") {
-                    return summary
+                if summary.hasPrefix("Error:") { return summary }
+                let templates = try await programTool.buildTemplates(inputJSON: inputJSON, exerciseRepository: exerciseRepository)
+                for template in templates {
+                    try await templateRepository.save(template)
                 }
-                let capturedInputJSON = inputJSON
-                let capturedExerciseRepo = exerciseRepository
-                let capturedTemplateRepo = templateRepository
-                pendingConfirmation = PendingConfirmation(
-                    toolName: name,
-                    description: summary,
-                    onConfirm: {
-                        let templates = try await programTool.buildTemplates(
-                            inputJSON: capturedInputJSON,
-                            exerciseRepository: capturedExerciseRepo
-                        )
-                        for template in templates {
-                            try await capturedTemplateRepo.save(template)
-                        }
-                    }
-                )
-                return summary
+                return summary.replacingOccurrences(of: "Awaiting confirmation.", with: "Program saved successfully!")
             } catch {
                 return "Tool error: \(error.localizedDescription)"
             }
@@ -336,24 +325,13 @@ final class ChatViewModel {
             let modifyTool = ModifyTemplateTool()
             do {
                 let summary = try await modifyTool.execute(inputJSON: inputJSON, context: context)
-                if summary.hasPrefix("Error:") {
-                    return summary
-                }
-                let capturedInputJSON = inputJSON
-                let capturedExerciseRepo = exerciseRepository
-                let capturedTemplateRepo = templateRepository
-                pendingConfirmation = PendingConfirmation(
-                    toolName: name,
-                    description: summary,
-                    onConfirm: {
-                        _ = try await modifyTool.applyAndSave(
-                            inputJSON: capturedInputJSON,
-                            templateRepository: capturedTemplateRepo,
-                            exerciseRepository: capturedExerciseRepo
-                        )
-                    }
+                if summary.hasPrefix("Error:") { return summary }
+                _ = try await modifyTool.applyAndSave(
+                    inputJSON: inputJSON,
+                    templateRepository: templateRepository,
+                    exerciseRepository: exerciseRepository
                 )
-                return summary
+                return summary.replacingOccurrences(of: "Awaiting confirmation.", with: "Template updated successfully!")
             } catch {
                 return "Tool error: \(error.localizedDescription)"
             }
@@ -375,6 +353,7 @@ final class ChatViewModel {
             workoutId: activeWorkout?.id,
             timestamp: message.timestamp
         )
+        dbMessage.conversationId = currentConversationId
         Task { try? await chatRepository?.save(dbMessage) }
     }
 
@@ -396,7 +375,7 @@ final class ChatViewModel {
         - Use metric units by default (kg) unless the user's data shows lbs
         - Be encouraging but honest about progress
         - When modifying the active workout, use the available tools directly — no confirmation needed
-        - When suggesting new templates, summarize what you'd create and ask for confirmation before saving
+        - When creating templates or programs, save them directly — no need to ask for confirmation
         - Do not delete templates under any circumstances
         - IMPORTANT: Before creating a template or program, use the search_exercises tool to look up the exact exercise names in the database. Do NOT guess exercise names — they must match exactly. For example, search for "squat" to find the available squat variations, then use those exact names in the create_template tool.
         """)

@@ -68,17 +68,10 @@ struct ChatMessageBubbleView: View {
 
     // MARK: - Helpers
 
-    /// Renders a string with inline markdown (bold, italic, code, links).
+    /// Renders a string with full markdown (headers, bold, italic, code, links).
     /// Falls back to plain text if parsing fails.
-    /// Uses inlineOnlyPreservingWhitespace to avoid block-level elements (headers, etc.)
-    /// appearing in chat bubbles.
     private func markdownText(_ string: String) -> Text {
-        if let attributed = try? AttributedString(
-            markdown: string,
-            options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace
-            )
-        ) {
+        if let attributed = try? AttributedString(markdown: string) {
             return Text(attributed)
         }
         return Text(string)

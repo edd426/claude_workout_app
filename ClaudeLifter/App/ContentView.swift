@@ -44,5 +44,15 @@ struct ContentView: View {
                 )
             }
         }
+        .onChange(of: appState.isWorkoutActive) { _, isActive in
+            if isActive, let workoutVM = appState.activeWorkoutVM {
+                Task {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    chatViewModel?.activeWorkout = workoutVM.workout
+                }
+            } else {
+                chatViewModel?.activeWorkout = nil
+            }
+        }
     }
 }

@@ -14,7 +14,7 @@ final class EdgeCaseTests: XCTestCase {
     }
 
     func testFinishWorkoutWithNoSetsCompleted() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         XCTAssertTrue(app.buttons["finishWorkout"].waitForExistence(timeout: 5))
         app.buttons["finishWorkout"].tap()
         // Should show summary (0 sets completed is valid)

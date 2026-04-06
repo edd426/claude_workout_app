@@ -19,8 +19,7 @@ final class FullUserSessionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Push Day"].waitForExistence(timeout: 5))
 
         // 2. Start a workout from Push Day template
-        app.staticTexts["Push Day"].tap()
-        XCTAssertTrue(app.navigationBars["Push Day"].waitForExistence(timeout: 5))
+        app.startWorkoutFromTemplate("Push Day")
         XCTAssertTrue(app.staticTexts["Bench Press"].waitForExistence(timeout: 5))
 
         // 3. Complete first set (firstMatch avoids ambiguity when multiple exercises share set order 0)

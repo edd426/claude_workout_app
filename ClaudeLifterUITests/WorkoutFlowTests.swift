@@ -25,22 +25,22 @@ final class WorkoutFlowTests: XCTestCase {
     }
 
     func testActiveWorkoutShowsExercises() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         XCTAssertTrue(app.staticTexts["Bench Press"].waitForExistence(timeout: 5))
     }
 
     func testActiveWorkoutShowsFinishButton() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         XCTAssertTrue(app.buttons["finishWorkout"].waitForExistence(timeout: 5))
     }
 
     func testActiveWorkoutShowsAddExerciseButton() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         XCTAssertTrue(app.buttons["addExerciseToWorkout"].waitForExistence(timeout: 5))
     }
 
     func testCompleteASet() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         // Scope to first match to avoid ambiguity when multiple exercises each have set order 0
         let completeButton = app.buttons.matching(identifier: "completeSet_0").firstMatch
         XCTAssertTrue(completeButton.waitForExistence(timeout: 5))
@@ -50,26 +50,26 @@ final class WorkoutFlowTests: XCTestCase {
     }
 
     func testWeightFieldIsAccessible() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         let weightField = app.textFields["weight_0"]
         XCTAssertTrue(weightField.waitForExistence(timeout: 5))
     }
 
     func testRepsFieldIsAccessible() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         let repsField = app.textFields["reps_0"]
         XCTAssertTrue(repsField.waitForExistence(timeout: 5))
     }
 
     func testFinishWorkoutShowsSummary() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         XCTAssertTrue(app.buttons["finishWorkout"].waitForExistence(timeout: 5))
         app.buttons["finishWorkout"].tap()
         XCTAssertTrue(app.staticTexts["Workout Complete!"].waitForExistence(timeout: 5))
     }
 
     func testWorkoutSummaryDoneButtonDismisses() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         XCTAssertTrue(app.buttons["finishWorkout"].waitForExistence(timeout: 5))
         app.buttons["finishWorkout"].tap()
         XCTAssertTrue(app.buttons["summaryDone"].waitForExistence(timeout: 5))

@@ -9,7 +9,11 @@ final class AIChatMessage {
     var role: MessageRole
     var content: String
     var timestamp: Date
-    var syncStatus: SyncStatus
+    var syncStatusRaw: String
+    var syncStatus: SyncStatus {
+        get { SyncStatus(rawValue: syncStatusRaw) ?? .pending }
+        set { syncStatusRaw = newValue.rawValue }
+    }
 
     init(
         id: UUID = UUID(),
@@ -26,6 +30,6 @@ final class AIChatMessage {
         self.role = role
         self.content = content
         self.timestamp = timestamp
-        self.syncStatus = syncStatus
+        self.syncStatusRaw = syncStatus.rawValue
     }
 }

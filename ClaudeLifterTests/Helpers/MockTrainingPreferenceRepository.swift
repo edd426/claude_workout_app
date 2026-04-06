@@ -4,11 +4,18 @@ import Foundation
 @MainActor
 final class MockTrainingPreferenceRepository: TrainingPreferenceRepository {
     var preferences: [TrainingPreference] = []
+    var fetchAllCallCount = 0
     var errorToThrow: Error? = nil
 
     func fetchAll() async throws -> [TrainingPreference] {
+        fetchAllCallCount += 1
         if let error = errorToThrow { throw error }
         return preferences
+    }
+
+    func fetch(id: UUID) async throws -> TrainingPreference? {
+        if let error = errorToThrow { throw error }
+        return preferences.first { $0.id == id }
     }
 
     func upsert(key: String, value: String, source: String?) async throws {

@@ -12,6 +12,9 @@ final class MockWorkoutRepository: WorkoutRepository {
     var fetchAllCallCount = 0
     var saveCallCount = 0
     var errorToThrow: Error? = nil
+    var fetchByDateRangeCallCount = 0
+    var lastDateRangeFrom: Date?
+    var lastDateRangeTo: Date?
 
     func fetchAll() async throws -> [Workout] {
         fetchAllCallCount += 1
@@ -59,6 +62,9 @@ final class MockWorkoutRepository: WorkoutRepository {
     }
 
     func fetchByDateRange(from: Date, to: Date) async throws -> [Workout] {
+        fetchByDateRangeCallCount += 1
+        lastDateRangeFrom = from
+        lastDateRangeTo = to
         if let error = errorToThrow { throw error }
         return workouts.filter { $0.startedAt >= from && $0.startedAt <= to }
     }

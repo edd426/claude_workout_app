@@ -22,6 +22,7 @@ enum SyncMapper {
         WorkoutExerciseDTO(
             id: we.id,
             exerciseId: we.exercise?.id ?? UUID(),
+            exerciseName: we.exercise?.name,
             order: we.order,
             notes: we.notes,
             restSeconds: we.restSeconds,
@@ -64,6 +65,7 @@ enum SyncMapper {
         TemplateExerciseDTO(
             id: te.id,
             exerciseId: te.exercise?.id ?? UUID(),
+            exerciseName: te.exercise?.name,
             order: te.order,
             defaultSets: te.defaultSets,
             defaultReps: te.defaultReps,
@@ -143,7 +145,11 @@ enum SyncMapper {
             if let local = localExercisesById[exerciseDTO.id] {
                 applyDTO(exerciseDTO, to: local)
             } else {
-                if let exercise = try await exerciseRepository.fetch(id: exerciseDTO.exerciseId) {
+                var exercise = try await exerciseRepository.fetch(id: exerciseDTO.exerciseId)
+                if exercise == nil, let name = exerciseDTO.exerciseName {
+                    exercise = try await exerciseRepository.fuzzySearch(query: name).first
+                }
+                if let exercise {
                     let we = WorkoutExercise(
                         id: exerciseDTO.id,
                         order: exerciseDTO.order,
@@ -209,7 +215,11 @@ enum SyncMapper {
             if let local = localExercisesById[teDTO.id] {
                 applyDTO(teDTO, to: local)
             } else {
-                if let exercise = try await exerciseRepository.fetch(id: teDTO.exerciseId) {
+                var exercise = try await exerciseRepository.fetch(id: teDTO.exerciseId)
+                if exercise == nil, let name = teDTO.exerciseName {
+                    exercise = try await exerciseRepository.fuzzySearch(query: name).first
+                }
+                if let exercise {
                     let te = TemplateExercise(
                         id: teDTO.id,
                         order: teDTO.order,
@@ -312,9 +322,12 @@ enum SyncMapper {
         )
 
         for weDTO in dto.exercises {
-            guard let exercise = try await exerciseRepository.fetch(id: weDTO.exerciseId) else {
-                continue
+            // Try fetch by ID first, then fall back to fuzzy name search
+            var exercise = try await exerciseRepository.fetch(id: weDTO.exerciseId)
+            if exercise == nil, let name = weDTO.exerciseName {
+                exercise = try await exerciseRepository.fuzzySearch(query: name).first
             }
+            guard let exercise else { continue }
             let we = WorkoutExercise(
                 id: weDTO.id,
                 order: weDTO.order,
@@ -359,9 +372,12 @@ enum SyncMapper {
         )
 
         for teDTO in dto.exercises {
-            guard let exercise = try await exerciseRepository.fetch(id: teDTO.exerciseId) else {
-                continue
+            // Try fetch by ID first, then fall back to fuzzy name search
+            var exercise = try await exerciseRepository.fetch(id: teDTO.exerciseId)
+            if exercise == nil, let name = teDTO.exerciseName {
+                exercise = try await exerciseRepository.fuzzySearch(query: name).first
             }
+            guard let exercise else { continue }
             let te = TemplateExercise(
                 id: teDTO.id,
                 order: teDTO.order,

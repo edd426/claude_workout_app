@@ -175,6 +175,8 @@ final class ChatViewModel {
             return (id: convoId, preview: preview, date: latestDate)
         }
         .sorted { $0.date > $1.date }
+        .prefix(50)
+        .map { $0 }
     }
 
     // MARK: - Private
@@ -191,7 +193,16 @@ final class ChatViewModel {
             depth: 0
         )
 
+        trimMessagesIfNeeded()
         isLoading = false
+    }
+
+    /// Keep only the last 100 messages to bound memory growth during long sessions (#71).
+    private func trimMessagesIfNeeded() {
+        let maxMessages = 100
+        if messages.count > maxMessages {
+            messages = Array(messages.suffix(maxMessages))
+        }
     }
 
     /// Streams one Claude response, executes any tool, and recurses if needed.

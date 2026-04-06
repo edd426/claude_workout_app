@@ -108,11 +108,11 @@ final class SwiftDataWorkoutRepository: WorkoutRepository {
     }
 
     func fetchPending() async throws -> [Workout] {
-        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
-        // so we use in-memory filtering. Pending workouts are always recent
-        // (created since last sync), so this set stays small in practice.
-        let all = try context.fetch(FetchDescriptor<Workout>())
-        return all.filter { $0.syncStatus == .pending }
+        let pendingRaw = SyncStatus.pending.rawValue
+        let descriptor = FetchDescriptor<Workout>(
+            predicate: #Predicate { $0.syncStatusRaw == pendingRaw }
+        )
+        return try context.fetch(descriptor)
     }
 
     func fetchByDateRange(from: Date, to: Date) async throws -> [Workout] {

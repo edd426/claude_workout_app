@@ -463,6 +463,103 @@ struct SyncManagerTests {
         #expect(workouts[0].exercises[0].sets.count == 1)
     }
 
+    // MARK: - mergePullResponse uses per-ID lookups (Task 4)
+
+    @Test("mergePullResponse uses fetch(id:) not fetchAll for workouts")
+    func mergePullUsesPerIdLookupForWorkouts() async throws {
+        let mockWorkoutRepo = MockWorkoutRepository()
+        let mockTemplateRepo = MockTemplateRepository()
+        let mockChatRepo = MockChatMessageRepository()
+        let mockInsightRepo = MockInsightRepository()
+        let mockPrefRepo = MockTrainingPreferenceRepository()
+        let mockExerciseRepo = MockExerciseRepository()
+
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        mockExerciseRepo.exercises = [exercise]
+
+        let network = MockNetworkService()
+        let workoutDTO = WorkoutDTO(
+            id: UUID(), templateId: nil, name: "Server Workout",
+            startedAt: Date(), completedAt: nil, notes: nil,
+            lastModified: Date(), exercises: []
+        )
+        let pullResponse = SyncPullResponse(
+            workouts: [workoutDTO],
+            templates: [],
+            chat: [],
+            insights: [],
+            preferences: [],
+            serverTimestamp: Date()
+        )
+        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
+
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-perid-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+
+        let manager = SyncManager(
+            workoutRepository: mockWorkoutRepo,
+            templateRepository: mockTemplateRepo,
+            chatRepository: mockChatRepo,
+            insightRepository: mockInsightRepo,
+            preferenceRepository: mockPrefRepo,
+            networkService: network,
+            exerciseRepository: mockExerciseRepo,
+            settings: settings
+        )
+
+        try await manager.pull()
+
+        // Should NOT have called fetchAll on workout repo during merge
+        #expect(mockWorkoutRepo.fetchAllCallCount == 0)
+        // Should have saved the new workout
+        #expect(mockWorkoutRepo.saveCallCount == 1)
+    }
+
+    @Test("mergePullResponse uses fetch(id:) not fetchAll for templates")
+    func mergePullUsesPerIdLookupForTemplates() async throws {
+        let mockWorkoutRepo = MockWorkoutRepository()
+        let mockTemplateRepo = MockTemplateRepository()
+        let mockChatRepo = MockChatMessageRepository()
+        let mockInsightRepo = MockInsightRepository()
+        let mockPrefRepo = MockTrainingPreferenceRepository()
+        let mockExerciseRepo = MockExerciseRepository()
+
+        let network = MockNetworkService()
+        let templateDTO = TemplateDTO(
+            id: UUID(), name: "Server Template", notes: nil,
+            createdAt: Date(), updatedAt: Date(), lastPerformedAt: nil,
+            timesPerformed: 0, lastModified: Date(), exercises: []
+        )
+        let pullResponse = SyncPullResponse(
+            workouts: [],
+            templates: [templateDTO],
+            chat: [],
+            insights: [],
+            preferences: [],
+            serverTimestamp: Date()
+        )
+        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
+
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-perid-tmpl-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+
+        let manager = SyncManager(
+            workoutRepository: mockWorkoutRepo,
+            templateRepository: mockTemplateRepo,
+            chatRepository: mockChatRepo,
+            insightRepository: mockInsightRepo,
+            preferenceRepository: mockPrefRepo,
+            networkService: network,
+            exerciseRepository: mockExerciseRepo,
+            settings: settings
+        )
+
+        try await manager.pull()
+
+        #expect(mockTemplateRepo.fetchAllCallCount == 0)
+        #expect(mockTemplateRepo.saveCallCount == 1)
+    }
+
     // MARK: - Error handling
 
     @Test("syncError is set when network throws")

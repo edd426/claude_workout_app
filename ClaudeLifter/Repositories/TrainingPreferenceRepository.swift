@@ -4,6 +4,7 @@ import SwiftData
 @MainActor
 protocol TrainingPreferenceRepository {
     func fetchAll() async throws -> [TrainingPreference]
+    func fetch(id: UUID) async throws -> TrainingPreference?
     func upsert(key: String, value: String, source: String?) async throws
     func delete(key: String) async throws
     func fetchPending() async throws -> [TrainingPreference]
@@ -22,6 +23,13 @@ final class SwiftDataTrainingPreferenceRepository: TrainingPreferenceRepository 
             sortBy: [SortDescriptor(\.key)]
         )
         return try context.fetch(descriptor)
+    }
+
+    func fetch(id: UUID) async throws -> TrainingPreference? {
+        let descriptor = FetchDescriptor<TrainingPreference>(
+            predicate: #Predicate { $0.id == id }
+        )
+        return try context.fetch(descriptor).first
     }
 
     func upsert(key: String, value: String, source: String?) async throws {
@@ -51,9 +59,10 @@ final class SwiftDataTrainingPreferenceRepository: TrainingPreferenceRepository 
     }
 
     func fetchPending() async throws -> [TrainingPreference] {
-        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
-        // so we use in-memory filtering. Preferences are a small, bounded set.
-        let all = try context.fetch(FetchDescriptor<TrainingPreference>())
-        return all.filter { $0.syncStatus == .pending }
+        let pendingRaw = SyncStatus.pending.rawValue
+        let descriptor = FetchDescriptor<TrainingPreference>(
+            predicate: #Predicate { $0.syncStatusRaw == pendingRaw }
+        )
+        return try context.fetch(descriptor)
     }
 }

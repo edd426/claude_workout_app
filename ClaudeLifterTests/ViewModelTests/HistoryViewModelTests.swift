@@ -122,6 +122,43 @@ struct HistoryViewModelTests {
         #expect(vm.errorMessage != nil)
     }
 
+    // MARK: - Date Range Tests
+
+    @Test("loadWorkouts uses fetchByDateRange instead of fetchAll")
+    func testLoadWorkoutsUsesDateRange() async {
+        let repo = MockWorkoutRepository()
+        repo.workouts = [TestFixtures.makeWorkout(name: "Push Day")]
+        let vm = HistoryViewModel(workoutRepository: repo)
+
+        await vm.loadWorkouts()
+
+        #expect(repo.fetchAllCallCount == 0, "Should not call fetchAll")
+        #expect(repo.fetchByDateRangeCallCount == 1, "Should call fetchByDateRange")
+        // Should request ~90 days back
+        let expectedFrom = Calendar.current.date(byAdding: .day, value: -90, to: Date())!
+        let actualFrom = try! #require(repo.lastDateRangeFrom)
+        let diff = abs(actualFrom.timeIntervalSince(expectedFrom))
+        #expect(diff < 5, "From date should be ~90 days ago")
+    }
+
+    @Test("loadOlder extends date range further back")
+    func testLoadOlderExtendsDateRange() async {
+        let repo = MockWorkoutRepository()
+        let vm = HistoryViewModel(workoutRepository: repo)
+
+        await vm.loadWorkouts()
+        let firstCallCount = repo.fetchByDateRangeCallCount
+
+        await vm.loadOlder()
+
+        #expect(repo.fetchByDateRangeCallCount == firstCallCount + 1)
+        // Should now reach 180 days back
+        let expectedFrom = Calendar.current.date(byAdding: .day, value: -180, to: Date())!
+        let actualFrom = try! #require(repo.lastDateRangeFrom)
+        let diff = abs(actualFrom.timeIntervalSince(expectedFrom))
+        #expect(diff < 5, "From date should be ~180 days ago after loadOlder")
+    }
+
     // MARK: - #69: Empty workout filtering
 
     @Test("completedWorkouts filters out workouts with no exercises")

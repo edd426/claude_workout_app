@@ -8,7 +8,11 @@ final class ProactiveInsight {
     var generatedAt: Date
     var isRead: Bool
     var type: InsightType
-    var syncStatus: SyncStatus = SyncStatus.pending
+    var syncStatusRaw: String = "pending"
+    var syncStatus: SyncStatus {
+        get { SyncStatus(rawValue: syncStatusRaw) ?? .pending }
+        set { syncStatusRaw = newValue.rawValue }
+    }
     var lastModified: Date = Date.now
 
     init(
@@ -25,7 +29,7 @@ final class ProactiveInsight {
         self.type = type
         self.generatedAt = generatedAt
         self.isRead = isRead
-        self.syncStatus = syncStatus
+        self.syncStatusRaw = syncStatus.rawValue
         self.lastModified = lastModified
     }
 }

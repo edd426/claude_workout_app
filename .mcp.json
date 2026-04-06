@@ -6,7 +6,8 @@
       "cwd": "infra/mcp",
       "env": {
         "COSMOS_DB_ENDPOINT": "https://cosmos-workout-prod.documents.azure.com",
-        "COSMOS_DB_DATABASE": "workout-db"
+        "COSMOS_DB_DATABASE": "workout-db",
+        "AZURE_STORAGE_ACCOUNT_URL": "https://stworkoutprod.blob.core.windows.net"
       }
     }
   }

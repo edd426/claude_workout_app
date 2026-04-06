@@ -13,6 +13,13 @@ final class MockExerciseRepository: ExerciseRepository {
     var errorToThrow: Error? = nil
     var distinctCategories: [String] = []
     var distinctValuesByCategory: [String: [String]] = [:]
+    var fetchPageCallCount = 0
+    var lastFetchPageOffset: Int?
+    var lastFetchPageLimit: Int?
+    var fetchCountCallCount = 0
+    var filterCallCount = 0
+    var lastFilterCategory: String?
+    var lastFilterValue: String?
 
     func fetchAll() async throws -> [Exercise] {
         fetchAllCallCount += 1
@@ -74,11 +81,31 @@ final class MockExerciseRepository: ExerciseRepository {
     }
 
     func filter(category: String, value: String) async throws -> [Exercise] {
+        filterCallCount += 1
+        lastFilterCategory = category
+        lastFilterValue = value
         if let error = errorToThrow { throw error }
         if !filterResults.isEmpty { return filterResults }
         return exercises.filter { ex in
             ex.tags.contains { $0.category == category && $0.value == value }
         }
+    }
+
+    func fetchPage(offset: Int, limit: Int) async throws -> [Exercise] {
+        fetchPageCallCount += 1
+        lastFetchPageOffset = offset
+        lastFetchPageLimit = limit
+        if let error = errorToThrow { throw error }
+        let sorted = exercises.sorted { $0.name < $1.name }
+        let start = min(offset, sorted.count)
+        let end = min(start + limit, sorted.count)
+        return Array(sorted[start..<end])
+    }
+
+    func fetchCount() async throws -> Int {
+        fetchCountCallCount += 1
+        if let error = errorToThrow { throw error }
+        return exercises.count
     }
 
     func save(_ exercise: Exercise) async throws {

@@ -8,9 +8,17 @@ final class MockInsightRepository: InsightRepository {
     var markedReadInsights: [ProactiveInsight] = []
     var errorToThrow: Error? = nil
 
+    var fetchAllCallCount = 0
+
     func fetchAll() async throws -> [ProactiveInsight] {
+        fetchAllCallCount += 1
         if let error = errorToThrow { throw error }
         return insights
+    }
+
+    func fetch(id: UUID) async throws -> ProactiveInsight? {
+        if let error = errorToThrow { throw error }
+        return insights.first { $0.id == id }
     }
 
     func fetchUnread() async throws -> [ProactiveInsight] {

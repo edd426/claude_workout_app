@@ -109,6 +109,26 @@ struct FetchPendingTests {
         #expect(results[0].content == "Pending")
     }
 
+    // MARK: - InsightRepository
+
+    @Test("InsightRepository fetchPending returns only pending insights")
+    @MainActor
+    func insightFetchPending() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let repo = SwiftDataInsightRepository(context: context)
+
+        let pending = ProactiveInsight(content: "Pending insight", type: .suggestion, syncStatus: .pending)
+        let synced = ProactiveInsight(content: "Synced insight", type: .warning, syncStatus: .synced)
+        context.insert(pending)
+        context.insert(synced)
+        try context.save()
+
+        let results = try await repo.fetchPending()
+        #expect(results.count == 1)
+        #expect(results[0].content == "Pending insight")
+    }
+
     // MARK: - TrainingPreferenceRepository
 
     @Test("TrainingPreferenceRepository fetchPending returns only pending preferences")

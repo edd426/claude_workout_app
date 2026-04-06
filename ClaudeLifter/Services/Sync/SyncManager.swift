@@ -101,12 +101,11 @@ final class SyncManager {
 
     private func mergePullResponse(_ response: SyncPullResponse) async throws {
         // Last-write-wins by lastModified date
+        // Uses per-ID lookups instead of fetchAll() to avoid loading entire tables
 
         // Merge workouts
-        let allWorkouts = try await workoutRepository.fetchAll()
-        let workoutsById = Dictionary(uniqueKeysWithValues: allWorkouts.map { ($0.id, $0) })
         for dto in response.workouts {
-            if let local = workoutsById[dto.id] {
+            if let local = try await workoutRepository.fetch(id: dto.id) {
                 if dto.lastModified > local.lastModified {
                     if let exerciseRepo = exerciseRepository {
                         try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepo)
@@ -121,10 +120,8 @@ final class SyncManager {
         }
 
         // Merge templates
-        let allTemplates = try await templateRepository.fetchAll()
-        let templatesById = Dictionary(uniqueKeysWithValues: allTemplates.map { ($0.id, $0) })
         for dto in response.templates {
-            if let local = templatesById[dto.id] {
+            if let local = try await templateRepository.fetch(id: dto.id) {
                 if dto.lastModified > local.lastModified {
                     if let exerciseRepo = exerciseRepository {
                         try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepo)
@@ -139,10 +136,8 @@ final class SyncManager {
         }
 
         // Merge insights
-        let allInsights = try await insightRepository.fetchAll()
-        let insightsById = Dictionary(uniqueKeysWithValues: allInsights.map { ($0.id, $0) })
         for dto in response.insights {
-            if let local = insightsById[dto.id] {
+            if let local = try await insightRepository.fetch(id: dto.id) {
                 if dto.lastModified > local.lastModified {
                     SyncMapper.applyDTO(dto, to: local)
                 }
@@ -153,10 +148,8 @@ final class SyncManager {
         }
 
         // Merge preferences
-        let allPrefs = try await preferenceRepository.fetchAll()
-        let prefsById = Dictionary(uniqueKeysWithValues: allPrefs.map { ($0.id, $0) })
         for dto in response.preferences {
-            if let local = prefsById[dto.id] {
+            if let local = try await preferenceRepository.fetch(id: dto.id) {
                 if dto.lastModified > local.lastModified {
                     SyncMapper.applyDTO(dto, to: local)
                 }

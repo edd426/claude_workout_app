@@ -13,6 +13,8 @@ protocol ExerciseRepository {
     func filter(category: String, value: String) async throws -> [Exercise]
     func fetchDistinctTagCategories() async throws -> [String]
     func fetchDistinctTagValues(for category: String) async throws -> [String]
+    func fetchPage(offset: Int, limit: Int) async throws -> [Exercise]
+    func fetchCount() async throws -> Int
     func save(_ exercise: Exercise) async throws
     func delete(_ exercise: Exercise) async throws
 }
@@ -92,12 +94,35 @@ final class SwiftDataExerciseRepository: ExerciseRepository {
     }
 
     func filter(category: String, value: String) async throws -> [Exercise] {
-        let all = try context.fetch(FetchDescriptor<Exercise>(sortBy: [SortDescriptor(\.name)]))
-        return all.filter { exercise in
-            exercise.tags.contains { tag in
-                tag.category == category && tag.value == value
+        // Fetch matching tags first, then collect their parent exercises
+        let tagDescriptor = FetchDescriptor<ExerciseTag>(
+            predicate: #Predicate { $0.category == category && $0.value == value }
+        )
+        let matchingTags = try context.fetch(tagDescriptor)
+
+        // Deduplicate exercises referenced by matching tags
+        var seenIds = Set<UUID>()
+        var results: [Exercise] = []
+        for tag in matchingTags {
+            if let exercise = tag.exercise, !seenIds.contains(exercise.id) {
+                seenIds.insert(exercise.id)
+                results.append(exercise)
             }
         }
+        return results.sorted { $0.name < $1.name }
+    }
+
+    func fetchPage(offset: Int, limit: Int) async throws -> [Exercise] {
+        var descriptor = FetchDescriptor<Exercise>(
+            sortBy: [SortDescriptor(\.name)]
+        )
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = limit
+        return try context.fetch(descriptor)
+    }
+
+    func fetchCount() async throws -> Int {
+        try context.fetchCount(FetchDescriptor<Exercise>())
     }
 
     func fetchDistinctTagCategories() async throws -> [String] {

@@ -84,6 +84,36 @@ describe("Template Tools", () => {
     expect(created.timesPerformed).toBe(0);
   });
 
+  // Test: create_template sets lastModified and syncStatus
+  it("should set lastModified and syncStatus on created template", async () => {
+    mockCreate.mockResolvedValue({ resource: sampleTemplate });
+
+    await createTemplate("Push Day", [sampleExercise]);
+
+    const created = mockCreate.mock.calls[0][0];
+    expect(created.lastModified).toBeDefined();
+    expect(typeof created.lastModified).toBe("string");
+    // Verify it's a valid ISO date string
+    expect(new Date(created.lastModified).toISOString()).toBe(created.lastModified);
+    expect(created.syncStatus).toBe("synced");
+  });
+
+  // Test: update_template sets lastModified and syncStatus
+  it("should set lastModified and syncStatus on updated template", async () => {
+    mockRead.mockResolvedValue({ resource: sampleTemplate });
+    mockReplace.mockResolvedValue({
+      resource: { ...sampleTemplate, name: "Updated" },
+    });
+
+    await updateTemplate("tmpl-1", { name: "Updated" });
+
+    const replaced = mockReplace.mock.calls[0][0];
+    expect(replaced.lastModified).toBeDefined();
+    expect(typeof replaced.lastModified).toBe("string");
+    expect(new Date(replaced.lastModified).toISOString()).toBe(replaced.lastModified);
+    expect(replaced.syncStatus).toBe("synced");
+  });
+
   // Test 4: update_template
   it("should update an existing template", async () => {
     mockRead.mockResolvedValue({ resource: sampleTemplate });

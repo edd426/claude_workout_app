@@ -48,9 +48,10 @@ final class SwiftDataChatMessageRepository: ChatMessageRepository {
     }
 
     func fetchPending() async throws -> [AIChatMessage] {
-        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
-        // so we use in-memory filtering. Pending messages are always recent.
-        let all = try context.fetch(FetchDescriptor<AIChatMessage>())
-        return all.filter { $0.syncStatus == .pending }
+        let pendingRaw = SyncStatus.pending.rawValue
+        let descriptor = FetchDescriptor<AIChatMessage>(
+            predicate: #Predicate { $0.syncStatusRaw == pendingRaw }
+        )
+        return try context.fetch(descriptor)
     }
 }

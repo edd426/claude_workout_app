@@ -179,6 +179,59 @@ struct ExerciseLibraryViewModelTests {
         #expect(vm.errorMessage != nil)
     }
 
+    // MARK: - Pagination Tests
+
+    @Test("loadExercises uses fetchPage instead of fetchAll")
+    func testLoadExercisesUsesPagination() async {
+        let repo = MockExerciseRepository()
+        repo.exercises = [
+            TestFixtures.makeExercise(name: "Bench Press"),
+            TestFixtures.makeExercise(name: "Squat")
+        ]
+        let vm = ExerciseLibraryViewModel(exerciseRepository: repo)
+
+        await vm.loadExercises()
+
+        #expect(repo.fetchAllCallCount == 0, "Should not call fetchAll")
+        #expect(repo.fetchPageCallCount == 1, "Should call fetchPage")
+        #expect(repo.lastFetchPageOffset == 0)
+        #expect(repo.lastFetchPageLimit == 50)
+        #expect(repo.fetchCountCallCount == 1, "Should fetch total count")
+    }
+
+    @Test("loadMore appends results from next page")
+    func testLoadMoreAppendsResults() async {
+        let repo = MockExerciseRepository()
+        // Create 60 exercises so first page gets 50, second page gets 10
+        for i in 0..<60 {
+            repo.exercises.append(TestFixtures.makeExercise(name: "Exercise \(String(format: "%02d", i))"))
+        }
+        let vm = ExerciseLibraryViewModel(exerciseRepository: repo)
+
+        await vm.loadExercises()
+        let initialCount = vm.exercises.count
+        #expect(initialCount == 50)
+
+        await vm.loadMore()
+        #expect(vm.exercises.count == 60, "loadMore should append remaining exercises")
+        #expect(repo.fetchPageCallCount == 2, "Should have called fetchPage twice")
+    }
+
+    @Test("filter uses repository filter method")
+    func testFilterUsesRepositoryFilter() async {
+        let repo = MockExerciseRepository()
+        let barbellExercise = TestFixtures.makeExercise(name: "Bench Press")
+        repo.exercises = [barbellExercise]
+        repo.filterResults = [barbellExercise]
+        let vm = ExerciseLibraryViewModel(exerciseRepository: repo)
+        vm.selectFilter(category: "equipment", value: "barbell")
+
+        await vm.loadExercises()
+
+        #expect(repo.filterCallCount >= 1, "Should call repository filter")
+        #expect(repo.fetchAllCallCount == 0, "Should not call fetchAll when filtering")
+    }
+
     @Test("loadFilterOptions populates filterCategories and categoryValues from database")
     func loadFilterOptionsPopulatesFromDatabase() async {
         let repo = MockExerciseRepository()

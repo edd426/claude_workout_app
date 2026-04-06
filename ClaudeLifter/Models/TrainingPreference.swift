@@ -9,7 +9,11 @@ final class TrainingPreference {
     var createdAt: Date
     var updatedAt: Date
     var source: String?
-    var syncStatus: SyncStatus = SyncStatus.pending
+    var syncStatusRaw: String = "pending"
+    var syncStatus: SyncStatus {
+        get { SyncStatus(rawValue: syncStatusRaw) ?? .pending }
+        set { syncStatusRaw = newValue.rawValue }
+    }
     var lastModified: Date = Date.now
 
     init(
@@ -28,7 +32,7 @@ final class TrainingPreference {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.source = source
-        self.syncStatus = syncStatus
+        self.syncStatusRaw = syncStatus.rawValue
         self.lastModified = lastModified
     }
 }

@@ -11,8 +11,11 @@ final class ExerciseLibraryViewModel {
     var errorMessage: String? = nil
     var filterCategories: [String] = []
     var categoryValues: [String: [String]] = [:]
+    var totalCount = 0
 
     private let exerciseRepository: any ExerciseRepository
+    private let pageSize = 50
+    private var currentOffset = 0
 
     init(exerciseRepository: any ExerciseRepository) {
         self.exerciseRepository = exerciseRepository
@@ -30,19 +33,36 @@ final class ExerciseLibraryViewModel {
     func loadExercises() async {
         isLoading = true
         errorMessage = nil
+        currentOffset = 0
         defer { isLoading = false }
         do {
             if activeFilters.isEmpty {
-                exercises = try await exerciseRepository.fetchAll()
+                exercises = try await exerciseRepository.fetchPage(offset: 0, limit: pageSize)
+                totalCount = try await exerciseRepository.fetchCount()
             } else {
-                var all = try await exerciseRepository.fetchAll()
-                for (category, value) in activeFilters {
-                    all = all.filter { exercise in
+                let filters = Array(activeFilters)
+                // Use repository filter for first filter, then apply remaining in-memory
+                var result = try await exerciseRepository.filter(category: filters[0].key, value: filters[0].value)
+                for (category, value) in filters.dropFirst() {
+                    result = result.filter { exercise in
                         exercise.tags.contains { $0.category == category && $0.value == value }
                     }
                 }
-                exercises = all
+                exercises = result
+                totalCount = result.count
             }
+            currentOffset = exercises.count
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadMore() async {
+        guard activeFilters.isEmpty, currentOffset < totalCount else { return }
+        do {
+            let page = try await exerciseRepository.fetchPage(offset: currentOffset, limit: pageSize)
+            exercises.append(contentsOf: page)
+            currentOffset = exercises.count
         } catch {
             errorMessage = error.localizedDescription
         }

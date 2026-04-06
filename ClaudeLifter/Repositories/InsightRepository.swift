@@ -4,6 +4,7 @@ import SwiftData
 @MainActor
 protocol InsightRepository {
     func fetchAll() async throws -> [ProactiveInsight]
+    func fetch(id: UUID) async throws -> ProactiveInsight?
     func fetchUnread() async throws -> [ProactiveInsight]
     func save(_ insight: ProactiveInsight) async throws
     func markAsRead(_ insight: ProactiveInsight) async throws
@@ -25,6 +26,13 @@ final class SwiftDataInsightRepository: InsightRepository {
         return try context.fetch(descriptor)
     }
 
+    func fetch(id: UUID) async throws -> ProactiveInsight? {
+        let descriptor = FetchDescriptor<ProactiveInsight>(
+            predicate: #Predicate { $0.id == id }
+        )
+        return try context.fetch(descriptor).first
+    }
+
     func fetchUnread() async throws -> [ProactiveInsight] {
         let descriptor = FetchDescriptor<ProactiveInsight>(
             predicate: #Predicate { $0.isRead == false },
@@ -44,9 +52,10 @@ final class SwiftDataInsightRepository: InsightRepository {
     }
 
     func fetchPending() async throws -> [ProactiveInsight] {
-        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
-        // so we use in-memory filtering. Insights are a small, bounded set.
-        let all = try context.fetch(FetchDescriptor<ProactiveInsight>())
-        return all.filter { $0.syncStatus == .pending }
+        let pendingRaw = SyncStatus.pending.rawValue
+        let descriptor = FetchDescriptor<ProactiveInsight>(
+            predicate: #Predicate { $0.syncStatusRaw == pendingRaw }
+        )
+        return try context.fetch(descriptor)
     }
 }

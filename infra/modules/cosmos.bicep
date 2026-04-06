@@ -62,6 +62,10 @@ var containers = [
     name: 'insights'
     partitionKeyPath: '/id'
   }
+  {
+    name: 'preferences'
+    partitionKeyPath: '/id'
+  }
 ]
 
 resource cosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = [

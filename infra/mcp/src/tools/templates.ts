@@ -35,6 +35,8 @@ export async function createTemplate(
     updatedAt: now,
     timesPerformed: 0,
     exercises: exercises.map((e, i) => ({ ...e, order: i })),
+    lastModified: now,
+    syncStatus: "synced",
   };
   const { resource } = await container.items.create(template);
   return resource as WorkoutTemplate;
@@ -47,10 +49,13 @@ export async function updateTemplate(
   const existing = await getTemplate(id);
   if (!existing) return null;
 
+  const now = new Date().toISOString();
   const updated: WorkoutTemplate = {
     ...existing,
     ...updates,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
+    lastModified: now,
+    syncStatus: "synced",
   };
   if (updates.exercises) {
     updated.exercises = updates.exercises.map((e, i) => ({ ...e, order: i }));

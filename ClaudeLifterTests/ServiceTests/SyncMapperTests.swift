@@ -315,6 +315,72 @@ struct SyncMapperTests {
         #expect(pref.syncStatus == .synced)
     }
 
+    // MARK: - Name-based fallback for MCP-created templates
+
+    @Test("createTemplate uses exerciseName fallback when ID not found")
+    @MainActor
+    func createTemplateUsesNameFallbackWhenIdNotFound() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        // Insert an exercise with a known name but different ID than the DTO will reference
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        try context.save()
+
+        let exerciseRepo = SwiftDataExerciseRepository(context: context)
+
+        // DTO references a random UUID that doesn't exist locally, but includes exerciseName
+        let teDTO = TemplateExerciseDTO(
+            id: UUID(), exerciseId: UUID(), exerciseName: "Bench Press", order: 0,
+            defaultSets: 3, defaultReps: 10, defaultWeight: 60.0,
+            defaultRestSeconds: 90, notes: nil
+        )
+        let templateDTO = TemplateDTO(
+            id: UUID(), name: "MCP Template", notes: nil,
+            createdAt: Date(), updatedAt: Date(), lastPerformedAt: nil,
+            timesPerformed: 0, lastModified: Date(), exercises: [teDTO]
+        )
+
+        let template = try await SyncMapper.createTemplate(from: templateDTO, exerciseRepository: exerciseRepo)
+
+        // Should have resolved via name fallback
+        #expect(template.exercises.count == 1)
+        #expect(template.exercises[0].exercise?.name == "Bench Press")
+    }
+
+    @Test("createWorkout uses exerciseName fallback when ID not found")
+    @MainActor
+    func createWorkoutUsesNameFallbackWhenIdNotFound() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let exercise = TestFixtures.makeExercise(name: "Squat")
+        context.insert(exercise)
+        try context.save()
+
+        let exerciseRepo = SwiftDataExerciseRepository(context: context)
+
+        let setDTO = WorkoutSetDTO(
+            id: UUID(), order: 0, weight: 100.0, weightUnit: "kg",
+            reps: 5, isCompleted: true, completedAt: Date(), notes: nil
+        )
+        let weDTO = WorkoutExerciseDTO(
+            id: UUID(), exerciseId: UUID(), exerciseName: "Squat", order: 0,
+            notes: nil, restSeconds: 120, sets: [setDTO]
+        )
+        let workoutDTO = WorkoutDTO(
+            id: UUID(), templateId: nil, name: "MCP Workout",
+            startedAt: Date(), completedAt: nil, notes: nil,
+            lastModified: Date(), exercises: [weDTO]
+        )
+
+        let workout = try await SyncMapper.createWorkout(from: workoutDTO, exerciseRepository: exerciseRepo)
+
+        #expect(workout.exercises.count == 1)
+        #expect(workout.exercises[0].exercise?.name == "Squat")
+    }
+
     // MARK: - Nested merge (applyDTO with exercises)
 
     @Test("applyDTO merges workout exercises: inserts new, updates existing, removes deleted")

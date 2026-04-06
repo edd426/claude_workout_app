@@ -630,4 +630,67 @@ struct ChatViewModelTests {
         #expect(convos.first?.preview == "New question")
         withExtendedLifetime(container) {}
     }
+
+    // MARK: - Memory Bounds (#71 fix)
+
+    @Test("Messages are trimmed after tool chain completes")
+    func messagesAreTrimmedAfterToolChain() async throws {
+        let (vm, mock, container) = try makeViewModel()
+
+        // Pre-populate messages array with >100 entries to simulate a long session
+        for i in 0..<120 {
+            let role: MessageRole = i.isMultiple(of: 2) ? .user : .assistant
+            vm.messages.append(ChatMessage(role: role, text: "Message \(i)"))
+        }
+        #expect(vm.messages.count == 120)
+
+        // Now trigger a tool chain that completes with a final text response
+        mock.stubbedEventSequences = [
+            [.toolUse(id: "t1", name: "get_recent_workouts", inputJSON: "{}"), .complete],
+            [.text("Here are your workouts."), .complete]
+        ]
+
+        await vm.sendMessage("Show workouts")
+
+        // After tool chain completes, messages should be trimmed to <= 100
+        #expect(vm.messages.count <= 100)
+        // The most recent messages should be preserved (including the final assistant response)
+        let lastMsg = vm.messages.last
+        #expect(lastMsg?.role == .assistant)
+        #expect(lastMsg?.textContent == "Here are your workouts.")
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("listConversations limits results to recent conversations")
+    func listConversationsLimitsResults() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let mockChat = MockChatMessageRepository()
+
+        // Create 60 conversations, some older than 30 days
+        for i in 0..<60 {
+            let convoId = UUID()
+            let daysAgo = Double(i) // 0 days ago, 1 day ago, ... 59 days ago
+            let date = Date.now.addingTimeInterval(-daysAgo * 86400)
+            mockChat.messages.append(
+                AIChatMessage(role: .user, content: "Question \(i)", conversationId: convoId, timestamp: date)
+            )
+        }
+
+        let mock = MockAnthropicService()
+        let vm = ChatViewModel(
+            anthropicService: mock,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            chatRepository: mockChat
+        )
+
+        let convos = await vm.listConversations()
+
+        // Should not return all 60 — should be bounded (e.g., last 30 days or max 50)
+        #expect(convos.count <= 50)
+        withExtendedLifetime(container) {}
+    }
 }

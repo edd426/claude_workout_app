@@ -30,6 +30,8 @@ export interface WorkoutTemplate {
   lastPerformedAt?: string;
   timesPerformed: number;
   exercises: TemplateExercise[];
+  lastModified?: string;
+  syncStatus?: string;
 }
 
 export interface TemplateExercise {
@@ -52,6 +54,8 @@ export interface Workout {
   completedAt?: string;
   notes?: string;
   exercises: WorkoutExercise[];
+  lastModified?: string;
+  syncStatus?: string;
 }
 
 export interface WorkoutExercise {

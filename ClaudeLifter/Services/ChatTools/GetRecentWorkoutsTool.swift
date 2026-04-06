@@ -29,8 +29,9 @@ struct GetRecentWorkoutsTool: ClaudeTool {
             limit = 5
         }
 
-        let allWorkouts = try await context.workoutRepository.fetchAll()
-        let workouts = Array(allWorkouts.prefix(limit))
+        let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        let recentWorkouts = try await context.workoutRepository.fetchByDateRange(from: cutoff, to: Date())
+        let workouts = Array(recentWorkouts.prefix(limit))
 
         if workouts.isEmpty {
             return "No workouts recorded yet."

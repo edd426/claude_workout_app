@@ -18,7 +18,7 @@ final class Exercise {
     var imageURL: String?
     var photoURL: String?
 
-    @Relationship(deleteRule: .cascade)
+    @Relationship(deleteRule: .cascade, inverse: \ExerciseTag.exercise)
     var tags: [ExerciseTag]
 
     init(

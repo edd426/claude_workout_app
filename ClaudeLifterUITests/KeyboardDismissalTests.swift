@@ -14,7 +14,7 @@ final class KeyboardDismissalTests: XCTestCase {
     }
 
     func testKeyboardDismissesInWorkout() throws {
-        app.staticTexts["Push Day"].tap()
+        app.startWorkoutFromTemplate("Push Day")
         // Use firstMatch to avoid ambiguity when multiple exercises each have set order 0
         let weightField = app.textFields.matching(identifier: "weight_0").firstMatch
         XCTAssertTrue(weightField.waitForExistence(timeout: 5))

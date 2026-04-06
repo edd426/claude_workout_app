@@ -196,6 +196,67 @@ struct ProgressChartsViewModelTests {
         #expect(backDist != nil)
     }
 
+    // MARK: - Date Range Tests
+
+    @Test("loadVolumeOverTime uses fetchByDateRange instead of fetchAll")
+    func testLoadVolumeUsesDateRange() async {
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ProgressChartsViewModel(workoutRepository: workoutRepo, exerciseRepository: MockExerciseRepository())
+
+        await vm.loadVolumeOverTime(days: 30)
+
+        #expect(workoutRepo.fetchAllCallCount == 0, "Should not call fetchAll")
+        #expect(workoutRepo.fetchByDateRangeCallCount == 1, "Should call fetchByDateRange")
+        let expectedFrom = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        let actualFrom = try! #require(workoutRepo.lastDateRangeFrom)
+        let diff = abs(actualFrom.timeIntervalSince(expectedFrom))
+        #expect(diff < 5, "From date should be ~30 days ago")
+    }
+
+    @Test("load1RMProgression uses fetchByDateRange instead of fetchAll")
+    func testLoad1RMUsesDateRange() async {
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ProgressChartsViewModel(workoutRepository: workoutRepo, exerciseRepository: MockExerciseRepository())
+
+        await vm.load1RMProgression(exerciseId: UUID())
+
+        #expect(workoutRepo.fetchAllCallCount == 0, "Should not call fetchAll")
+        #expect(workoutRepo.fetchByDateRangeCallCount == 1, "Should call fetchByDateRange")
+        let expectedFrom = Calendar.current.date(byAdding: .day, value: -365, to: Date())!
+        let actualFrom = try! #require(workoutRepo.lastDateRangeFrom)
+        let diff = abs(actualFrom.timeIntervalSince(expectedFrom))
+        #expect(diff < 5, "From date should be ~365 days ago for 1RM")
+    }
+
+    @Test("loadMuscleDistribution uses fetchByDateRange instead of fetchAll")
+    func testLoadMuscleDistributionUsesDateRange() async {
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ProgressChartsViewModel(workoutRepository: workoutRepo, exerciseRepository: MockExerciseRepository())
+
+        await vm.loadMuscleDistribution(days: 30)
+
+        #expect(workoutRepo.fetchAllCallCount == 0, "Should not call fetchAll")
+        #expect(workoutRepo.fetchByDateRangeCallCount == 1, "Should call fetchByDateRange")
+        let expectedFrom = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        let actualFrom = try! #require(workoutRepo.lastDateRangeFrom)
+        let diff = abs(actualFrom.timeIntervalSince(expectedFrom))
+        #expect(diff < 5, "From date should be ~30 days ago")
+    }
+
+    @Test("loadExercises in ProgressCharts uses fetchPage instead of fetchAll")
+    func testLoadExercisesUsesPagination() async {
+        let exerciseRepo = MockExerciseRepository()
+        exerciseRepo.exercises = [TestFixtures.makeExercise(name: "Bench")]
+        let vm = ProgressChartsViewModel(workoutRepository: MockWorkoutRepository(), exerciseRepository: exerciseRepo)
+
+        await vm.loadExercises()
+
+        #expect(exerciseRepo.fetchAllCallCount == 0, "Should not call fetchAll")
+        #expect(exerciseRepo.fetchPageCallCount == 1, "Should call fetchPage")
+        #expect(exerciseRepo.lastFetchPageOffset == 0)
+        #expect(exerciseRepo.lastFetchPageLimit == 50)
+    }
+
     @Test("Muscle distribution percentages sum to approximately 100")
     func muscleDistributionPercentagesSumTo100() async throws {
         let workoutRepo = MockWorkoutRepository()

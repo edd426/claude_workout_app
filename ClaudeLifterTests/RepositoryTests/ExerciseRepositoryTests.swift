@@ -220,6 +220,80 @@ struct ExerciseRepositoryTests {
         #expect(values == values.sorted())
     }
 
+    // MARK: - Pagination Tests
+
+    @Test("fetchPage returns limited results")
+    @MainActor
+    func fetchPageReturnsLimitedResults() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        for i in 0..<10 {
+            context.insert(TestFixtures.makeExercise(name: "Exercise \(String(format: "%02d", i))", externalId: "ex_\(i)"))
+        }
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let page = try await repo.fetchPage(offset: 0, limit: 5)
+        #expect(page.count == 5)
+    }
+
+    @Test("fetchPage with offset returns correct slice")
+    @MainActor
+    func fetchPageWithOffset() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        for i in 0..<10 {
+            context.insert(TestFixtures.makeExercise(name: "Exercise \(String(format: "%02d", i))", externalId: "ex_\(i)"))
+        }
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let firstPage = try await repo.fetchPage(offset: 0, limit: 5)
+        let secondPage = try await repo.fetchPage(offset: 5, limit: 5)
+        #expect(secondPage.count == 5)
+        // No overlap between pages
+        let firstIds = Set(firstPage.map(\.id))
+        let secondIds = Set(secondPage.map(\.id))
+        #expect(firstIds.isDisjoint(with: secondIds))
+    }
+
+    @Test("fetchPage beyond data returns empty")
+    @MainActor
+    func fetchPageBeyondData() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        context.insert(TestFixtures.makeExercise(name: "Only One"))
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let page = try await repo.fetchPage(offset: 10, limit: 5)
+        #expect(page.isEmpty)
+    }
+
+    @Test("fetchCount returns total number of exercises")
+    @MainActor
+    func fetchCountReturnsTotal() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        for i in 0..<7 {
+            context.insert(TestFixtures.makeExercise(name: "Exercise \(i)", externalId: "ex_\(i)"))
+        }
+        try context.save()
+
+        let repo = SwiftDataExerciseRepository(context: context)
+        let count = try await repo.fetchCount()
+        #expect(count == 7)
+    }
+
+    @Test("fetchCount returns zero when empty")
+    @MainActor
+    func fetchCountReturnsZeroWhenEmpty() async throws {
+        let container = try makeTestContainer()
+        let repo = SwiftDataExerciseRepository(context: container.mainContext)
+        let count = try await repo.fetchCount()
+        #expect(count == 0)
+    }
+
     // MARK: - fuzzySearch Tests
 
     @Test("fuzzySearch finds Squat when querying Barbell Squat")

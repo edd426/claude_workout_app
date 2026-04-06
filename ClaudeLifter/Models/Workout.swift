@@ -9,7 +9,11 @@ final class Workout {
     var startedAt: Date
     var completedAt: Date?
     var notes: String?
-    var syncStatus: SyncStatus
+    var syncStatusRaw: String
+    var syncStatus: SyncStatus {
+        get { SyncStatus(rawValue: syncStatusRaw) ?? .pending }
+        set { syncStatusRaw = newValue.rawValue }
+    }
     var lastModified: Date
 
     @Relationship(deleteRule: .cascade)
@@ -31,7 +35,7 @@ final class Workout {
         self.startedAt = startedAt
         self.completedAt = completedAt
         self.notes = notes
-        self.syncStatus = syncStatus
+        self.syncStatusRaw = syncStatus.rawValue
         self.lastModified = lastModified
         self.exercises = []
     }

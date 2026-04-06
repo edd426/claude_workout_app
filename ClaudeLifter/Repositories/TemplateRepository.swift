@@ -33,10 +33,11 @@ final class SwiftDataTemplateRepository: TemplateRepository {
     }
 
     func fetchPending() async throws -> [WorkoutTemplate] {
-        // SwiftData #Predicate cannot traverse enum .rawValue at runtime,
-        // so we use in-memory filtering. Templates are a small, bounded set.
-        let all = try context.fetch(FetchDescriptor<WorkoutTemplate>())
-        return all.filter { $0.syncStatus == .pending }
+        let pendingRaw = SyncStatus.pending.rawValue
+        let descriptor = FetchDescriptor<WorkoutTemplate>(
+            predicate: #Predicate { $0.syncStatusRaw == pendingRaw }
+        )
+        return try context.fetch(descriptor)
     }
 
     func save(_ template: WorkoutTemplate) async throws {

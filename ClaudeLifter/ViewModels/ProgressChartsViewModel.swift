@@ -39,8 +39,7 @@ final class ProgressChartsViewModel {
 
     func loadVolumeOverTime(days: Int = 30) async {
         let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        let workouts = (try? await workoutRepository.fetchAll()) ?? []
-        let recent = workouts.filter { ($0.completedAt ?? $0.startedAt) >= cutoff }
+        let recent = (try? await workoutRepository.fetchByDateRange(from: cutoff, to: Date())) ?? []
 
         // Group volume by calendar day
         var volumeByDay: [Date: Double] = [:]
@@ -64,7 +63,8 @@ final class ProgressChartsViewModel {
     }
 
     func load1RMProgression(exerciseId: UUID) async {
-        let workouts = (try? await workoutRepository.fetchAll()) ?? []
+        let cutoff = Calendar.current.date(byAdding: .day, value: -365, to: Date()) ?? Date()
+        let workouts = (try? await workoutRepository.fetchByDateRange(from: cutoff, to: Date())) ?? []
         var points: [OneRMDataPoint] = []
         for workout in workouts {
             guard let completedAt = workout.completedAt else { continue }
@@ -87,8 +87,7 @@ final class ProgressChartsViewModel {
 
     func loadMuscleDistribution(days: Int = 30) async {
         let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        let workouts = (try? await workoutRepository.fetchAll()) ?? []
-        let recent = workouts.filter { ($0.completedAt ?? $0.startedAt) >= cutoff }
+        let recent = (try? await workoutRepository.fetchByDateRange(from: cutoff, to: Date())) ?? []
 
         var setsByMuscle: [String: Int] = [:]
         for workout in recent {
@@ -113,6 +112,6 @@ final class ProgressChartsViewModel {
     }
 
     func loadExercises() async {
-        exercises = (try? await exerciseRepository.fetchAll()) ?? []
+        exercises = (try? await exerciseRepository.fetchPage(offset: 0, limit: 50)) ?? []
     }
 }

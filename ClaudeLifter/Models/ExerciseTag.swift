@@ -7,6 +7,8 @@ final class ExerciseTag {
     var category: String
     var value: String
 
+    var exercise: Exercise?
+
     init(id: UUID = UUID(), category: String, value: String) {
         self.id = id
         self.category = category

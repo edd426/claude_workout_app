@@ -16,10 +16,29 @@ struct WorkoutSetDTO: Codable, Sendable {
 struct WorkoutExerciseDTO: Codable, Sendable {
     let id: UUID
     let exerciseId: UUID
+    let exerciseName: String?
     let order: Int
     let notes: String?
     let restSeconds: Int
     let sets: [WorkoutSetDTO]
+
+    init(
+        id: UUID,
+        exerciseId: UUID,
+        exerciseName: String? = nil,
+        order: Int,
+        notes: String?,
+        restSeconds: Int,
+        sets: [WorkoutSetDTO]
+    ) {
+        self.id = id
+        self.exerciseId = exerciseId
+        self.exerciseName = exerciseName
+        self.order = order
+        self.notes = notes
+        self.restSeconds = restSeconds
+        self.sets = sets
+    }
 }
 
 struct WorkoutDTO: Codable, Sendable {
@@ -36,12 +55,35 @@ struct WorkoutDTO: Codable, Sendable {
 struct TemplateExerciseDTO: Codable, Sendable {
     let id: UUID
     let exerciseId: UUID
+    let exerciseName: String?
     let order: Int
     let defaultSets: Int
     let defaultReps: Int
     let defaultWeight: Double?
     let defaultRestSeconds: Int
     let notes: String?
+
+    init(
+        id: UUID,
+        exerciseId: UUID,
+        exerciseName: String? = nil,
+        order: Int,
+        defaultSets: Int,
+        defaultReps: Int,
+        defaultWeight: Double?,
+        defaultRestSeconds: Int,
+        notes: String?
+    ) {
+        self.id = id
+        self.exerciseId = exerciseId
+        self.exerciseName = exerciseName
+        self.order = order
+        self.defaultSets = defaultSets
+        self.defaultReps = defaultReps
+        self.defaultWeight = defaultWeight
+        self.defaultRestSeconds = defaultRestSeconds
+        self.notes = notes
+    }
 }
 
 struct TemplateDTO: Codable, Sendable {

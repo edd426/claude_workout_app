@@ -3,13 +3,12 @@ import Combine
 
 struct RestTimerOverlayView: View {
     @State private var vm: RestTimerViewModel
-    private var timerService: RestTimerService
+    @State private var timerService = RestTimerService()
     @State private var cancellable: AnyCancellable?
     let onDismiss: () -> Void
 
     init(durationSeconds: Int, onDismiss: @escaping () -> Void) {
         _vm = State(initialValue: RestTimerViewModel(durationSeconds: durationSeconds))
-        timerService = RestTimerService()
         self.onDismiss = onDismiss
     }
 

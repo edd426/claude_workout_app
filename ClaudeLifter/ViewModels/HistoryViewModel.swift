@@ -9,7 +9,7 @@ final class HistoryViewModel {
     var errorMessage: String? = nil
 
     var completedWorkouts: [Workout] {
-        workouts.filter { $0.completedAt != nil }
+        workouts.filter { $0.completedAt != nil && !$0.exercises.isEmpty }
     }
 
     private let workoutRepository: any WorkoutRepository

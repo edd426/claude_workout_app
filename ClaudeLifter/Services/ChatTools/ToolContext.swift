@@ -10,4 +10,6 @@ struct ToolContext: @unchecked Sendable {
     let templateRepository: any TemplateRepository
     /// The active workout session, if any. Used by add/remove exercise tools.
     let activeWorkout: Workout?
+    /// Callback to start a workout from a template. Provided by ChatViewModel when AppState is available.
+    var onStartWorkout: (@MainActor @Sendable (WorkoutTemplate) async -> Void)?
 }

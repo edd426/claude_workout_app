@@ -40,7 +40,9 @@ struct ContentView: View {
                     workoutRepository: dependencies.workoutRepository,
                     templateRepository: dependencies.templateRepository,
                     preferenceRepository: dependencies.preferenceRepository,
-                    chatRepository: dependencies.chatRepository
+                    chatRepository: dependencies.chatRepository,
+                    appState: appState,
+                    autoFillService: dependencies.autoFillService
                 )
             }
         }

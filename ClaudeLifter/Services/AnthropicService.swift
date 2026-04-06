@@ -16,6 +16,10 @@ enum AnthropicError: LocalizedError {
 
 // MARK: - AnthropicService
 
+// @unchecked Sendable is safe here because:
+// 1. Both stored properties (sdkService, settingsManager) are immutable `let` after init
+// 2. SettingsManager reads from UserDefaults (thread-safe)
+// 3. streamChat() resolves the SDK service before entering its Task, avoiding races (#47)
 final class AnthropicService: AnthropicServiceProtocol, @unchecked Sendable {
 
     private let sdkService: (any SwiftAnthropic.AnthropicService)?

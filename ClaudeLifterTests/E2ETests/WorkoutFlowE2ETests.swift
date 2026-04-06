@@ -243,6 +243,130 @@ struct WorkoutFlowE2ETests {
         #expect(updatedTemplate.timesPerformed == 1)
     }
 
+    // MARK: - Test 4b: Template Stats (#50)
+
+    @Test("templateStats: lastPerformedAt is updated after finishing workout")
+    func templateStatsLastPerformedAtUpdated() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+
+        let benchPress = TestFixtures.makeExercise(name: "Bench Press", equipment: "barbell")
+        context.insert(benchPress)
+
+        let template = WorkoutTemplate(name: "Stats Test")
+        let te = TemplateExercise(order: 0, exercise: benchPress, defaultSets: 2, defaultReps: 8)
+        template.exercises.append(te)
+        try await templateRepo.save(template)
+        #expect(template.lastPerformedAt == nil)
+
+        let beforeFinish = Date()
+        let autoFill = AutoFillService(workoutRepository: workoutRepo)
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: autoFill,
+            templateRepository: templateRepo
+        )
+        await vm.startWorkout()
+
+        for exercise in vm.workout!.exercises {
+            for set in exercise.sets {
+                vm.completeSet(set)
+            }
+        }
+        await vm.finishWorkout()
+
+        #expect(template.lastPerformedAt != nil)
+        let lastPerformed = try #require(template.lastPerformedAt)
+        #expect(lastPerformed >= beforeFinish)
+        #expect(lastPerformed.timeIntervalSinceNow > -5)
+    }
+
+    @Test("templateStats: second workout increments timesPerformed to 2")
+    func templateStatsSecondWorkoutIncrementsCount() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+
+        let squat = TestFixtures.makeSquat()
+        context.insert(squat)
+
+        let template = WorkoutTemplate(name: "Double Session")
+        let te = TemplateExercise(order: 0, exercise: squat, defaultSets: 2, defaultReps: 5)
+        template.exercises.append(te)
+        try await templateRepo.save(template)
+        #expect(template.timesPerformed == 0)
+
+        // First workout
+        let autoFill1 = AutoFillService(workoutRepository: workoutRepo)
+        let vm1 = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: autoFill1,
+            templateRepository: templateRepo
+        )
+        await vm1.startWorkout()
+        for exercise in vm1.workout!.exercises {
+            for set in exercise.sets { vm1.completeSet(set) }
+        }
+        await vm1.finishWorkout()
+        #expect(template.timesPerformed == 1)
+
+        // Second workout
+        let autoFill2 = AutoFillService(workoutRepository: workoutRepo)
+        let vm2 = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: autoFill2,
+            templateRepository: templateRepo
+        )
+        await vm2.startWorkout()
+        for exercise in vm2.workout!.exercises {
+            for set in exercise.sets { vm2.completeSet(set) }
+        }
+        await vm2.finishWorkout()
+        #expect(template.timesPerformed == 2)
+    }
+
+    @Test("templateStats: stats persist when fetched fresh from repository")
+    func templateStatsPersistAcrossFetch() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+
+        let deadlift = TestFixtures.makeDeadlift()
+        context.insert(deadlift)
+
+        let template = WorkoutTemplate(name: "Persist Test")
+        let te = TemplateExercise(order: 0, exercise: deadlift, defaultSets: 2, defaultReps: 5)
+        template.exercises.append(te)
+        try await templateRepo.save(template)
+        let templateId = template.id
+
+        let autoFill = AutoFillService(workoutRepository: workoutRepo)
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: autoFill,
+            templateRepository: templateRepo
+        )
+        await vm.startWorkout()
+        for exercise in vm.workout!.exercises {
+            for set in exercise.sets { vm.completeSet(set) }
+        }
+        await vm.finishWorkout()
+
+        // Fetch fresh from repository
+        let allTemplates = try await templateRepo.fetchAll()
+        let fetched = try #require(allTemplates.first { $0.id == templateId })
+        #expect(fetched.timesPerformed == 1)
+        #expect(fetched.lastPerformedAt != nil)
+    }
+
     // MARK: - Test 5: Multiple Filters
 
     @Test("multipleFilters: apply chest + barbell filters, verify narrowed results, remove equipment filter expands")

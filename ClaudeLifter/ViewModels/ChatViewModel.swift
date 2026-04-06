@@ -41,6 +41,8 @@ final class ChatViewModel {
     private let chatRepository: (any ChatMessageRepository)?
     private let tools: [any ClaudeTool]
     private let settings: SettingsManager?
+    private let appState: AppState?
+    private let autoFillService: (any AutoFillServiceProtocol)?
 
     /// The active workout session used by tools. Set externally when a workout is in progress.
     var activeWorkout: Workout? {
@@ -68,7 +70,9 @@ final class ChatViewModel {
         preferenceRepository: any TrainingPreferenceRepository,
         chatRepository: (any ChatMessageRepository)? = nil,
         tools: [any ClaudeTool]? = nil,
-        settings: SettingsManager? = nil
+        settings: SettingsManager? = nil,
+        appState: AppState? = nil,
+        autoFillService: (any AutoFillServiceProtocol)? = nil
     ) {
         self.anthropicService = anthropicService
         self.exerciseRepository = exerciseRepository
@@ -77,6 +81,8 @@ final class ChatViewModel {
         self.preferenceRepository = preferenceRepository
         self.chatRepository = chatRepository
         self.settings = settings
+        self.appState = appState
+        self.autoFillService = autoFillService
         self.tools = tools ?? [
             SearchExercisesTool(),
             GetExerciseHistoryTool(),
@@ -84,6 +90,9 @@ final class ChatViewModel {
             SuggestWeightTool(),
             AddExerciseTool(),
             RemoveExerciseTool(),
+            SetExerciseTargetsTool(),
+            LogSetTool(),
+            StartWorkoutTool(),
             CreateTemplateTool(),
             CreateProgramTool(),
             ModifyTemplateTool()
@@ -284,7 +293,19 @@ final class ChatViewModel {
             exerciseRepository: exerciseRepository,
             workoutRepository: workoutRepository,
             templateRepository: templateRepository,
-            activeWorkout: activeWorkout
+            activeWorkout: activeWorkout,
+            onStartWorkout: { [weak self] template in
+                guard let self, let appState = self.appState, let autoFillService = self.autoFillService else { return }
+                let vm = ActiveWorkoutViewModel(
+                    template: template,
+                    workoutRepository: self.workoutRepository,
+                    autoFillService: autoFillService,
+                    templateRepository: self.templateRepository
+                )
+                await vm.startWorkout()
+                appState.startWorkout(id: vm.workout?.id ?? UUID(), vm: vm)
+                self.activeWorkout = vm.workout
+            }
         )
         guard let tool = tools.first(where: { type(of: $0).toolName == name }) else {
             return "Error: unknown tool '\(name)'"

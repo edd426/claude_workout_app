@@ -107,6 +107,8 @@ struct ActiveWorkoutViewModelTests {
             autoFillService: MockAutoFillService()
         )
         await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
         await vm.finishWorkout()
 
         #expect(vm.workout?.completedAt != nil)
@@ -329,6 +331,77 @@ struct ActiveWorkoutViewModelTests {
 
         #expect(vm.workout?.templateId == nil)
     }
+
+    // MARK: - #69: Empty workout prevention
+
+    @Test("finishWorkout with empty exercises deletes workout instead of saving")
+    func finishWorkout_emptyExercises_deletesWorkout() async throws {
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: workoutRepo,
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        #expect(vm.workout != nil)
+        #expect(vm.workout?.exercises.isEmpty == true)
+
+        await vm.finishWorkout()
+
+        #expect(workoutRepo.deletedWorkouts.count == 1, "Empty workout should be deleted")
+        #expect(vm.isFinished == true, "UI should still dismiss")
+    }
+
+    @Test("finishWorkout with no completed sets deletes workout instead of saving")
+    func finishWorkout_noCompletedSets_deletesWorkout() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        #expect(vm.workout?.exercises.isEmpty == false)
+        #expect(vm.hasCompletedSets == false)
+
+        await vm.finishWorkout()
+
+        #expect(workoutRepo.deletedWorkouts.count == 1, "Workout with no completed sets should be deleted")
+        #expect(vm.isFinished == true, "UI should still dismiss")
+    }
+
+    @Test("finishWorkout with completed sets saves normally (regression)")
+    func finishWorkout_withCompletedSets_savesNormally() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let workoutRepo = MockWorkoutRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepo,
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
+
+        await vm.finishWorkout()
+
+        #expect(vm.workout?.completedAt != nil, "Completed workout should have completedAt set")
+        #expect(vm.isFinished == true)
+        #expect(workoutRepo.deletedWorkouts.isEmpty, "Should NOT delete a workout with completed sets")
+    }
 }
 
 extension ActiveWorkoutViewModelTests {
@@ -362,6 +435,8 @@ extension ActiveWorkoutViewModelTests {
             prDetectionService: prService
         )
         await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
         await vm.finishWorkout()
 
         #expect(vm.detectedPRs.count == 1)
@@ -389,6 +464,8 @@ extension ActiveWorkoutViewModelTests {
             prDetectionService: prService
         )
         await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
         await vm.finishWorkout()
 
         #expect(vm.detectedPRs.count == 2)
@@ -490,6 +567,8 @@ extension ActiveWorkoutViewModelTests {
             templateRepository: templateRepo
         )
         await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
         await vm.finishWorkout()
 
         #expect(template.timesPerformed == initialCount + 1,
@@ -514,6 +593,8 @@ extension ActiveWorkoutViewModelTests {
             templateRepository: templateRepo
         )
         await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
         let beforeFinish = Date.now
         await vm.finishWorkout()
 
@@ -540,6 +621,8 @@ extension ActiveWorkoutViewModelTests {
             // no templateRepository
         )
         await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
         await vm.finishWorkout()
 
         // Without a templateRepository the template should be untouched

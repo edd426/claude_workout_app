@@ -43,6 +43,8 @@ struct HistoryViewModelTests {
         let container = try makeTestContainer()
         let context = container.mainContext
         let complete = TestFixtures.makeWorkout(name: "Done", completedAt: Date())
+        let we = WorkoutExercise(order: 0, exercise: TestFixtures.makeExercise())
+        complete.exercises.append(we)
         let incomplete = TestFixtures.makeWorkout(name: "In progress", completedAt: nil)
         context.insert(complete)
         context.insert(incomplete)
@@ -118,5 +120,26 @@ struct HistoryViewModelTests {
         await vm.updateWorkout(workout)
 
         #expect(vm.errorMessage != nil)
+    }
+
+    // MARK: - #69: Empty workout filtering
+
+    @Test("completedWorkouts filters out workouts with no exercises")
+    func completedWorkouts_filtersEmptyWorkouts() async throws {
+        let withExercises = TestFixtures.makeWorkout(name: "Push Day", completedAt: Date())
+        let we = WorkoutExercise(order: 0, exercise: TestFixtures.makeExercise())
+        withExercises.exercises.append(we)
+
+        let empty = TestFixtures.makeWorkout(name: "Empty Quick", completedAt: Date())
+        // empty has no exercises
+
+        let repo = MockWorkoutRepository()
+        repo.workouts = [withExercises, empty]
+        let vm = HistoryViewModel(workoutRepository: repo)
+
+        await vm.loadWorkouts()
+
+        #expect(vm.completedWorkouts.count == 1, "Empty workouts should be filtered from history")
+        #expect(vm.completedWorkouts.first?.name == "Push Day")
     }
 }

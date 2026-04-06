@@ -348,6 +348,121 @@ struct SyncManagerTests {
         #expect(insights[0].content == "Train legs!")
     }
 
+    // MARK: - First-sync nil timestamp (#54)
+
+    @Test("pull with nil lastSyncTimestamp sends request and succeeds")
+    func pullWithNilLastSyncTimestampSendsRequestAndSucceeds() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+        let chatRepo = SwiftDataChatMessageRepository(context: context)
+        let insightRepo = SwiftDataInsightRepository(context: context)
+        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
+
+        let network = MockNetworkService()
+        let serverTime = Date(timeIntervalSinceReferenceDate: 50000)
+        let pullResponse = SyncPullResponse(
+            workouts: [],
+            templates: [],
+            chat: [],
+            insights: [],
+            preferences: [],
+            serverTimestamp: serverTime
+        )
+        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
+
+        // Fresh SettingsManager — lastSyncTimestamp is nil (simulates first install)
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-nil-timestamp-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+        #expect(settings.lastSyncTimestamp == nil)
+
+        let manager = SyncManager(
+            workoutRepository: workoutRepo,
+            templateRepository: templateRepo,
+            chatRepository: chatRepo,
+            insightRepository: insightRepo,
+            preferenceRepository: prefRepo,
+            networkService: network,
+            settings: settings
+        )
+
+        try await manager.pull()
+
+        #expect(network.postCallCount == 1)
+        #expect(network.lastPostEndpoint == "/api/sync/pull")
+        #expect(manager.lastSyncDate == serverTime)
+        #expect(settings.lastSyncTimestamp == serverTime)
+    }
+
+    @Test("pull with nil timestamp merges new workouts from server")
+    func pullWithNilTimestampMergesNewWorkouts() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        // Insert an exercise so the workout can reference it
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        try context.save()
+
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+        let chatRepo = SwiftDataChatMessageRepository(context: context)
+        let insightRepo = SwiftDataInsightRepository(context: context)
+        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
+        let exerciseRepo = SwiftDataExerciseRepository(context: context)
+
+        let setDTO = WorkoutSetDTO(
+            id: UUID(), order: 0, weight: 100.0, weightUnit: "kg",
+            reps: 5, isCompleted: true, completedAt: Date(), notes: nil
+        )
+        let weDTO = WorkoutExerciseDTO(
+            id: UUID(), exerciseId: exercise.id, order: 0,
+            notes: nil, restSeconds: 90, sets: [setDTO]
+        )
+        let workoutDTO = WorkoutDTO(
+            id: UUID(), templateId: nil, name: "First Sync Workout",
+            startedAt: Date(), completedAt: Date(), notes: nil,
+            lastModified: Date(), exercises: [weDTO]
+        )
+
+        let network = MockNetworkService()
+        let pullResponse = SyncPullResponse(
+            workouts: [workoutDTO],
+            templates: [],
+            chat: [],
+            insights: [],
+            preferences: [],
+            serverTimestamp: Date()
+        )
+        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
+
+        // Fresh settings — nil lastSyncTimestamp
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-nil-merge-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+        #expect(settings.lastSyncTimestamp == nil)
+
+        let manager = SyncManager(
+            workoutRepository: workoutRepo,
+            templateRepository: templateRepo,
+            chatRepository: chatRepo,
+            insightRepository: insightRepo,
+            preferenceRepository: prefRepo,
+            networkService: network,
+            exerciseRepository: exerciseRepo,
+            settings: settings
+        )
+
+        try await manager.pull()
+
+        let workouts = try await workoutRepo.fetchAll()
+        #expect(workouts.count == 1)
+        #expect(workouts[0].name == "First Sync Workout")
+        #expect(workouts[0].exercises.count == 1)
+        #expect(workouts[0].exercises[0].sets.count == 1)
+    }
+
     // MARK: - Error handling
 
     @Test("syncError is set when network throws")

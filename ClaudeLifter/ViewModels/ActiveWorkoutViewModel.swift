@@ -154,6 +154,14 @@ final class ActiveWorkoutViewModel {
 
     func finishWorkout() async {
         guard let workout else { return }
+
+        // Delete empty/unused workouts instead of saving them (#69)
+        if workout.exercises.isEmpty || !hasCompletedSets {
+            await cancelWorkout()
+            isFinished = true
+            return
+        }
+
         workout.completedAt = .now
         workout.lastModified = .now
         do {

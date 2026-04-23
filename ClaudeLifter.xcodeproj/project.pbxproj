@@ -141,6 +141,7 @@
 		3964D5C914488F04E75D655B /* TemplateRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7EE1295A5618F1CB529E80 /* TemplateRepositoryTests.swift */; };
 		95E59E908F03B06E2746936F /* TrainingPreferenceRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D163A10789E205B502C4F36E /* TrainingPreferenceRepositoryTests.swift */; };
 		9CD9913215A03960D38689CB /* WorkoutRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F7907E999B5764AE58C64DE /* WorkoutRepositoryTests.swift */; };
+		F3A8D1C2E60B74985A12CDEF /* PaginationBoundsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9E2C4A18D5306F42BA89CE /* PaginationBoundsTests.swift */; };
 		C7A29B57895E849549875600 /* AnthropicServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57DB3D4B96160AF45FD47402 /* AnthropicServiceTests.swift */; };
 		55D0200296DD90E01C7C109D /* AutoFillServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B422702EA79DDE8866C5B1 /* AutoFillServiceTests.swift */; };
 		F6103383559FD5F2FC1F941C /* ChatToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D8413498DFA6B11B17332D /* ChatToolTests.swift */; };
@@ -344,6 +345,7 @@
 		4C7EE1295A5618F1CB529E80 /* TemplateRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateRepositoryTests.swift; sourceTree = "<group>"; };
 		D163A10789E205B502C4F36E /* TrainingPreferenceRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingPreferenceRepositoryTests.swift; sourceTree = "<group>"; };
 		1F7907E999B5764AE58C64DE /* WorkoutRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRepositoryTests.swift; sourceTree = "<group>"; };
+		7B9E2C4A18D5306F42BA89CE /* PaginationBoundsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaginationBoundsTests.swift; sourceTree = "<group>"; };
 		57DB3D4B96160AF45FD47402 /* AnthropicServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicServiceTests.swift; sourceTree = "<group>"; };
 		39B422702EA79DDE8866C5B1 /* AutoFillServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillServiceTests.swift; sourceTree = "<group>"; };
 		C8D8413498DFA6B11B17332D /* ChatToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatToolTests.swift; sourceTree = "<group>"; };
@@ -753,6 +755,7 @@
 				4C7EE1295A5618F1CB529E80,
 				D163A10789E205B502C4F36E,
 				1F7907E999B5764AE58C64DE,
+				7B9E2C4A18D5306F42BA89CE,
 			);
 			path = RepositoryTests;
 			sourceTree = "<group>";
@@ -1078,6 +1081,7 @@
 				3964D5C914488F04E75D655B /* TemplateRepositoryTests.swift in Sources */,
 				95E59E908F03B06E2746936F /* TrainingPreferenceRepositoryTests.swift in Sources */,
 				9CD9913215A03960D38689CB /* WorkoutRepositoryTests.swift in Sources */,
+				F3A8D1C2E60B74985A12CDEF /* PaginationBoundsTests.swift in Sources */,
 				C7A29B57895E849549875600 /* AnthropicServiceTests.swift in Sources */,
 				55D0200296DD90E01C7C109D /* AutoFillServiceTests.swift in Sources */,
 				F6103383559FD5F2FC1F941C /* ChatToolTests.swift in Sources */,

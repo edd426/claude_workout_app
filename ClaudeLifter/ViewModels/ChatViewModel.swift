@@ -103,6 +103,10 @@ final class ChatViewModel {
 
     func sendMessage(_ text: String) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // Refuse a second send while one is already streaming — otherwise two
+        // handleToolChain loops race, duplicate the user message, and may
+        // produce interleaved assistant text that never finalises.
+        guard !isLoading else { return }
 
         let userMessage = ChatMessage(role: .user, text: text)
         messages.append(userMessage)
@@ -393,7 +397,16 @@ final class ChatViewModel {
             timestamp: message.timestamp
         )
         dbMessage.conversationId = currentConversationId
-        Task { try? await chatRepository?.save(dbMessage) }
+        Task {
+            do {
+                try await chatRepository?.save(dbMessage)
+            } catch {
+                // Don't silently drop the user's chat — at least make the
+                // failure visible in logs so we can diagnose "chat history
+                // disappeared" reports, instead of discarding the error.
+                print("⚠️ ChatViewModel.persistMessage failed: \(error)")
+            }
+        }
     }
 
     private var cachedPreferences: [TrainingPreference] = []

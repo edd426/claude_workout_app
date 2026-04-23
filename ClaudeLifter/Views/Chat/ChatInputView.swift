@@ -5,9 +5,16 @@ import SwiftUI
 struct ChatInputView: View {
 
     let onSend: (String) -> Void
+    /// Drive disabled state from the ViewModel so the button also locks out
+    /// while a response is streaming, not just when the input is empty.
+    var isLoading: Bool = false
 
     @State private var inputText: String = ""
     @FocusState private var isTextFieldFocused: Bool
+
+    private var isSendDisabled: Bool {
+        isLoading || inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -27,9 +34,9 @@ struct ChatInputView: View {
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color(.systemGray3) : BrandTheme.terracotta)
+                    .foregroundStyle(isSendDisabled ? Color(.systemGray3) : BrandTheme.terracotta)
             }
-            .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(isSendDisabled)
             .accessibilityIdentifier("sendMessage")
         }
         .padding(.horizontal, 16)
@@ -38,7 +45,7 @@ struct ChatInputView: View {
 
     private func sendMessage() {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, !isLoading else { return }
         onSend(trimmed)
         inputText = ""
     }

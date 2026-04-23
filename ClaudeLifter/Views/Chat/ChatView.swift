@@ -13,9 +13,12 @@ struct ChatView: View {
             errorBanner
             messageList
             Divider()
-            ChatInputView(onSend: { text in
-                Task { await viewModel.sendMessage(text) }
-            })
+            ChatInputView(
+                onSend: { text in
+                    Task { await viewModel.sendMessage(text) }
+                },
+                isLoading: viewModel.isLoading
+            )
         }
         .navigationTitle("Coach")
         .navigationBarTitleDisplayMode(.inline)

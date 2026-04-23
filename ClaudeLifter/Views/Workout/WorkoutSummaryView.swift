@@ -27,32 +27,36 @@ struct WorkoutSummaryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(BrandTheme.terracotta)
+        // Do not wrap in NavigationStack — this view is presented inside a
+        // sheet from ActiveWorkoutView, which is already inside HomeView's
+        // NavigationStack. Nesting NavigationStacks inside a sheet caused
+        // gesture-dismiss weirdness and occasional crashes on back taps.
+        ScrollView {
+            VStack(spacing: 24) {
+                Text(workout.name)
+                    .font(.title3.bold())
+                    .foregroundStyle(.secondary)
 
-                    Text("Workout Complete!")
-                        .font(.title.bold())
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 64))
+                    .foregroundStyle(BrandTheme.terracotta)
 
-                    statsGrid
+                Text("Workout Complete!")
+                    .font(.title.bold())
 
-                    if !personalRecords.isEmpty {
-                        prSection
-                    }
+                statsGrid
 
-                    Button("Done") { onDismiss() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .padding(.bottom)
-                        .accessibilityIdentifier("summaryDone")
+                if !personalRecords.isEmpty {
+                    prSection
                 }
-                .padding()
+
+                Button("Done") { onDismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .padding(.bottom)
+                    .accessibilityIdentifier("summaryDone")
             }
-            .navigationTitle(workout.name)
-            .navigationBarTitleDisplayMode(.inline)
+            .padding()
         }
     }
 

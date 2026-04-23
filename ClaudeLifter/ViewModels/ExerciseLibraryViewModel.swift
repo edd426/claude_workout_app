@@ -27,7 +27,13 @@ final class ExerciseLibraryViewModel {
             for cat in filterCategories {
                 categoryValues[cat] = try await exerciseRepository.fetchDistinctTagValues(for: cat)
             }
-        } catch {}
+        } catch {
+            // Filters failing to load degrades the UI (chips disappear) without
+            // obvious user feedback — surface it so we notice in logs/crash
+            // reports instead of silently rendering an empty filter bar.
+            print("⚠️ ExerciseLibraryViewModel.loadFilterOptions failed: \(error)")
+            errorMessage = "Could not load filter options."
+        }
     }
 
     func loadExercises() async {

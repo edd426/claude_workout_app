@@ -20,7 +20,10 @@ struct ExerciseDetailView: View {
         }
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.large)
-        .onAppear { photoURL = exercise.photoURL }
+        // Use .task instead of .onAppear — .onAppear re-fires on every view
+        // redraw (e.g. navigation push/pop, orientation change), which would
+        // overwrite any local photo state the user has just chosen.
+        .task { photoURL = exercise.photoURL }
         .onChange(of: selectedItem) { _, newItem in
             guard let newItem else { return }
             Task { await handlePhotoSelection(newItem) }

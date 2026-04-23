@@ -66,13 +66,21 @@ struct ChatView: View {
 
     @ViewBuilder
     private var contextBanner: some View {
-        if let context = viewModel.activeWorkoutContext {
-            HStack {
-                Image(systemName: "figure.strengthtraining.traditional")
-                    .foregroundStyle(.secondary)
-                Text("Chatting about: \(context)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        if viewModel.activeWorkoutContext != nil || !modelDisplay.isEmpty {
+            HStack(spacing: 8) {
+                if let context = viewModel.activeWorkoutContext {
+                    Label(context, systemImage: "figure.strengthtraining.traditional")
+                        .labelStyle(.titleAndIcon)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !modelDisplay.isEmpty {
+                    Text(modelDisplay)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .monospaced()
+                }
             }
             .padding(.horizontal)
             .padding(.vertical, 6)
@@ -80,6 +88,19 @@ struct ChatView: View {
             .background(Color(.systemBackground))
             Divider()
         }
+    }
+
+    /// Short human-readable name for the currently selected Anthropic model,
+    /// surfaced in the Coach header so the user can see at a glance which
+    /// model their messages are hitting (Haiku vs Sonnet vs Opus).
+    private var modelDisplay: String {
+        let raw = viewModel.selectedModel
+        if let known = AIModel(rawValue: raw) {
+            return known.displayName
+        }
+        // Fallback: strip the "claude-" prefix if present so arbitrary model
+        // strings still render compactly.
+        return raw.replacingOccurrences(of: "claude-", with: "")
     }
 
     @ViewBuilder

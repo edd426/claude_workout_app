@@ -290,6 +290,13 @@ final class ChatViewModel {
                             thinkingBudget: thinkingBudget,
                             depth: depth + 1
                         )
+                    } else {
+                        // Previously silent — the user saw nothing after 5 tools
+                        // and had no idea the chain had been cut off. Surface it.
+                        let noticeText = "I've hit the tool-chain depth limit (\(5)). If you need me to keep going, just say \"continue.\""
+                        let notice = ChatMessage(role: .assistant, text: noticeText)
+                        messages.append(notice)
+                        persistMessage(notice)
                     }
                 }
 

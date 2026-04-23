@@ -51,6 +51,10 @@ struct ChatView: View {
             }
         }
         .task {
+            // Load preferences first so the very first sendMessage() includes
+            // them in the system prompt. Previously this was never called and
+            // cachedPreferences stayed empty for the entire session.
+            await viewModel.loadPreferences()
             await viewModel.loadHistory()
         }
         .sheet(isPresented: $showConversationList) {

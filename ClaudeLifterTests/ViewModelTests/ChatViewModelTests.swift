@@ -159,6 +159,59 @@ struct ChatViewModelTests {
         withExtendedLifetime(container) {}
     }
 
+    /// Regression test for the "Coach goes silent after create_template" bug
+    /// seen on device: after the tool returns, the assistant's follow-up text
+    /// must land in vm.messages so the user sees it. If the stream handling
+    /// loses .text chunks after tool_result, this test fails.
+    @Test("Assistant text after tool_result is surfaced to the user")
+    func assistantTextAfterToolResultIsVisible() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        mock.stubbedEventSequences = [
+            // First call: Claude chooses to invoke a tool, no text yet.
+            [.toolUse(id: "t1", name: "get_recent_workouts", inputJSON: "{}"), .complete],
+            // Second call (after tool_result): Claude narrates.
+            [.text("You have 3 recent workouts. Last one was leg day."), .complete]
+        ]
+
+        await vm.sendMessage("Show my workouts")
+
+        // The user should see the post-tool narration as an assistant text
+        // message — not just the tool_use/tool_result control blocks.
+        let narration = vm.messages.first { msg in
+            msg.role == .assistant
+                && msg.textContent == "You have 3 recent workouts. Last one was leg day."
+        }
+        #expect(narration != nil, "Assistant narration after tool_result was dropped")
+        withExtendedLifetime(container) {}
+    }
+
+    /// Regression test for a two-tool chain (e.g. search_exercises → create_template):
+    /// each stream in the chain may emit interleaved text + tool_use; the final
+    /// narration must still reach the user.
+    @Test("Chained tool calls preserve final narration")
+    func chainedToolCallsPreserveFinalNarration() async throws {
+        let (vm, mock, container) = try makeViewModel()
+        mock.stubbedEventSequences = [
+            // Call 1: first tool
+            [.text("Let me look up that exercise. "),
+             .toolUse(id: "t1", name: "get_recent_workouts", inputJSON: "{}"),
+             .complete],
+            // Call 2: second tool
+            [.text("Now suggesting a weight. "),
+             .toolUse(id: "t2", name: "get_recent_workouts", inputJSON: "{}"),
+             .complete],
+            // Call 3: final narration (no more tools)
+            [.text("Based on your history, try 80kg for 3×8."), .complete]
+        ]
+
+        await vm.sendMessage("What should I bench today?")
+
+        let finalNarration = vm.messages.last { $0.role == .assistant && $0.textContent.contains("80kg") }
+        #expect(finalNarration != nil, "Final narration after a 2-tool chain was dropped")
+        #expect(mock.streamChatCallCount == 3)
+        withExtendedLifetime(container) {}
+    }
+
     @Test("Tool results are sent as user messages with tool_result content — not system messages")
     func toolResultsSentAsUserMessages() async throws {
         let (vm, mock, container) = try makeViewModel()

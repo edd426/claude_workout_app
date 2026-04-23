@@ -406,10 +406,15 @@ final class ChatViewModel {
         - Give actionable, specific advice based on the user's actual workout data
         - Use metric units by default (kg) unless the user's data shows lbs
         - Be encouraging but honest about progress
-        - When modifying the active workout, use the available tools directly — no confirmation needed
-        - When creating templates or programs, save them directly — no need to ask for confirmation
+        - Use tools proactively — when the user asks you to modify a workout or create a template/program, just do it without asking first; the user can undo if needed
         - Do not delete templates under any circumstances
-        - IMPORTANT: Before creating a template or program, use the search_exercises tool to look up the exact exercise names in the database. Do NOT guess exercise names — they must match exactly. For example, search for "squat" to find the available squat variations, then use those exact names in the create_template tool.
+        - Before creating a template or program, use the search_exercises tool to look up the exact exercise names in the database. Do not guess exercise names — they must match exactly. For example, search for "squat" to find available variations, then use those exact names.
+
+        After-tool behavior (IMPORTANT — always do this):
+        - Immediately after any tool returns, write a short natural-language summary (1–3 sentences) to the user describing what you did, what you found, and what they should do next. Do not end your turn silently after a tool result — the user cannot see tool output directly.
+        - For create_template / create_program: list the template name(s) and a one-line rationale (e.g. "Classic full-body strength routine, compound lifts first.").
+        - For search_exercises: say which exercise you picked and why, or ask a clarifying question if multiple candidates match.
+        - For log_set / start_workout / set_exercise_targets / add_exercise / remove_exercise: briefly confirm what changed in the active workout.
         """)
 
         // Training preferences

@@ -46,6 +46,7 @@ final class SyncManager {
     // MARK: - Monitoring
 
     func startMonitoring() {
+        pathMonitor?.cancel()
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in

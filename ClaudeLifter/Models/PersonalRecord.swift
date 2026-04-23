@@ -17,8 +17,13 @@ final class PersonalRecord {
     var reps: Int?
     var achievedAt: Date
     var workoutId: UUID
-    var syncStatus: SyncStatus
+    var syncStatusRaw: String = "pending"
     var lastModified: Date
+
+    var syncStatus: SyncStatus {
+        get { SyncStatus(rawValue: syncStatusRaw) ?? .pending }
+        set { syncStatusRaw = newValue.rawValue }
+    }
 
     init(
         id: UUID = UUID(),
@@ -40,7 +45,7 @@ final class PersonalRecord {
         self.reps = reps
         self.achievedAt = achievedAt
         self.workoutId = workoutId
-        self.syncStatus = syncStatus
+        self.syncStatusRaw = syncStatus.rawValue
         self.lastModified = lastModified
     }
 

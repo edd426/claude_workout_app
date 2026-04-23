@@ -15,6 +15,12 @@ struct ClaudeLifterApp: App {
 
     init() {
         let isUITesting = ProcessInfo.processInfo.arguments.contains("-UITesting")
+        let modelTypes: [any PersistentModel.Type] = [
+            Exercise.self, ExerciseTag.self, WorkoutSet.self,
+            WorkoutExercise.self, TemplateExercise.self, Workout.self,
+            WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
+            TrainingPreference.self, PersonalRecord.self
+        ]
         do {
             let container: ModelContainer
             if isUITesting {
@@ -27,12 +33,7 @@ struct ClaudeLifterApp: App {
                     configurations: config
                 )
             } else {
-                container = try ModelContainer(
-                    for: Exercise.self, ExerciseTag.self, WorkoutSet.self,
-                    WorkoutExercise.self, TemplateExercise.self, Workout.self,
-                    WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
-                    TrainingPreference.self, PersonalRecord.self
-                )
+                container = try Self.createContainer(types: modelTypes)
             }
             modelContainer = container
             dependencies = DependencyContainer(modelContext: container.mainContext)
@@ -129,6 +130,36 @@ struct ClaudeLifterApp: App {
             UserDefaults.standard.set(true, forKey: "hasPopulatedImageURLs")
         } catch {
             // Non-fatal; will retry next launch
+        }
+    }
+
+    /// Try to create ModelContainer; on schema migration failure, delete the old store and retry.
+    /// Data will be re-synced from Azure and exercises re-imported from bundle.
+    private static func createContainer(types: [any PersistentModel.Type]) throws -> ModelContainer {
+        do {
+            return try ModelContainer(
+                for: Exercise.self, ExerciseTag.self, WorkoutSet.self,
+                WorkoutExercise.self, TemplateExercise.self, Workout.self,
+                WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
+                TrainingPreference.self, PersonalRecord.self
+            )
+        } catch {
+            // Schema migration failed — delete old store and recreate.
+            // Safe for single-user app: exercises re-import from bundle, other data re-syncs from Azure.
+            let storeURL = URL.applicationSupportDirectory.appending(path: "default.store")
+            for suffix in ["", "-wal", "-shm"] {
+                let fileURL = storeURL.deletingLastPathComponent().appending(path: "default.store\(suffix)")
+                try? FileManager.default.removeItem(at: fileURL)
+            }
+            // Reset import flags so exercises are re-imported
+            UserDefaults.standard.removeObject(forKey: "hasImportedExercises")
+            UserDefaults.standard.removeObject(forKey: "hasPopulatedImageURLs")
+            return try ModelContainer(
+                for: Exercise.self, ExerciseTag.self, WorkoutSet.self,
+                WorkoutExercise.self, TemplateExercise.self, Workout.self,
+                WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
+                TrainingPreference.self, PersonalRecord.self
+            )
         }
     }
 

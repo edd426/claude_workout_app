@@ -48,6 +48,7 @@ final class SwiftDataInsightRepository: InsightRepository {
 
     func markAsRead(_ insight: ProactiveInsight) async throws {
         insight.isRead = true
+        insight.recordChange()
         try context.save()
     }
 

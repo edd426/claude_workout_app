@@ -58,6 +58,7 @@ struct RemoveExerciseTool: ClaudeTool {
         for (i, we) in workout.exercises.enumerated() {
             we.order = i
         }
+        workout.recordChange()
         try await context.workoutRepository.save(workout)
 
         return "Removed '\(removedName)' from your workout."

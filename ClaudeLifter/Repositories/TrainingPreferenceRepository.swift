@@ -40,6 +40,7 @@ final class SwiftDataTrainingPreferenceRepository: TrainingPreferenceRepository 
             existing.value = value
             existing.source = source
             existing.updatedAt = .now
+            existing.recordChange()
         } else {
             let pref = TrainingPreference(key: key, value: value, source: source)
             context.insert(pref)

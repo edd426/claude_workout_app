@@ -86,6 +86,7 @@ struct LogSetTool: ClaudeTool {
         // Mark complete
         targetSet.isCompleted = true
         targetSet.completedAt = Date.now
+        workout.recordChange()
 
         try await context.workoutRepository.save(workout)
 

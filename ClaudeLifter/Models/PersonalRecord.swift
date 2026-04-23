@@ -8,7 +8,7 @@ enum PRType: String, Codable, Sendable {
 }
 
 @Model
-final class PersonalRecord {
+final class PersonalRecord: SyncableModel {
     @Attribute(.unique) var id: UUID
     var exerciseId: UUID
     var type: String  // Store PRType as String for SwiftData compatibility

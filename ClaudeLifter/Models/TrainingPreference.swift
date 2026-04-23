@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class TrainingPreference {
+final class TrainingPreference: SyncableModel {
     @Attribute(.unique) var id: UUID
     var key: String
     var value: String

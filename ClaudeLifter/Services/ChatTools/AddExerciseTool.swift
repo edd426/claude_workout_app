@@ -55,6 +55,7 @@ struct AddExerciseTool: ClaudeTool {
         let newOrder = workout.exercises.map { $0.order }.max().map { $0 + 1 } ?? 0
         let workoutExercise = WorkoutExercise(order: newOrder, exercise: exercise)
         workout.exercises.append(workoutExercise)
+        workout.recordChange()
         try await context.workoutRepository.save(workout)
 
         return "Added '\(exercise.name)' to your workout."

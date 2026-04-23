@@ -57,6 +57,10 @@ final class TemplateEditorViewModel {
             ex.order = i
         }
         template.exercises = exercises
+        // Bump lastModified + reset syncStatus so the edit is pushed on next
+        // sync. Without this, sync LWW would see a stale timestamp and the
+        // server copy would win, silently reverting the user's edit.
+        template.recordChange()
         // Capture a reference to pass to async boundary (both sides are @MainActor)
         let templateToSave = template
         do {

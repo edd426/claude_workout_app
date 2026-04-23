@@ -120,18 +120,24 @@ struct ModifyTemplateTool: ClaudeTool {
             let newOrder = (template.exercises.map { $0.order }.max() ?? -1) + 1
             let te = TemplateExercise(order: newOrder, exercise: exercise, defaultSets: sets, defaultReps: reps)
             template.exercises.append(te)
+            template.updatedAt = .now
+            template.recordChange()
             try await templateRepository.save(template)
             return "Added '\(exercise.name)' to '\(template.name)'."
 
         case "remove_exercise":
             guard let exerciseName = json["exercise_name"] as? String else { return "Error: exercise_name missing" }
             template.exercises.removeAll { $0.exercise?.name.localizedCaseInsensitiveContains(exerciseName) == true }
+            template.updatedAt = .now
+            template.recordChange()
             try await templateRepository.save(template)
             return "Removed '\(exerciseName)' from '\(template.name)'."
 
         case "rename":
             guard let newName = json["new_name"] as? String else { return "Error: new_name missing" }
             template.name = newName
+            template.updatedAt = .now
+            template.recordChange()
             try await templateRepository.save(template)
             return "Renamed template to '\(newName)'."
 

@@ -18,6 +18,20 @@ final class ActiveWorkoutViewModel {
     private let prDetectionService: (any PRDetectionServiceProtocol)?
     private let templateRepository: (any TemplateRepository)?
 
+    /// Handle for any in-flight save triggered by a mutation. Exposed so
+    /// tests can `await` it before tearing down the SwiftData container,
+    /// otherwise fire-and-forget Tasks outlive the test and crash when the
+    /// ModelContext is reset. Cancelled before each new save to coalesce
+    /// rapid mutations.
+    private(set) var pendingSave: Task<Void, Never>?
+
+    /// Awaits any in-flight save triggered by the last mutation. Useful in
+    /// tests and wherever deterministic persistence is required before the
+    /// next action.
+    func awaitPendingSave() async {
+        await pendingSave?.value
+    }
+
     var totalSetsCompleted: Int {
         workout?.exercises.flatMap(\.sets).filter(\.isCompleted).count ?? 0
     }
@@ -114,8 +128,10 @@ final class ActiveWorkoutViewModel {
         set.isCompleted = true
         set.completedAt = .now
         lastCompletedSet = set
+        workout?.recordChange()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        Task { await saveDraft() }
+        pendingSave?.cancel()
+        pendingSave = Task { await saveDraft() }
     }
 
     func addExercise(_ exercise: Exercise) {
@@ -126,19 +142,36 @@ final class ActiveWorkoutViewModel {
         for i in 0..<3 {
             we.sets.append(WorkoutSet(order: i))
         }
+        workout.recordChange()
+        pendingSave?.cancel()
+        pendingSave = Task { await saveDraft() }
     }
 
     func removeExercise(_ workoutExercise: WorkoutExercise) {
         workout?.exercises.removeAll { $0.id == workoutExercise.id }
+        workout?.recordChange()
+        pendingSave?.cancel()
+        pendingSave = Task { await saveDraft() }
     }
 
     func removeSet(_ set: WorkoutSet, from workoutExercise: WorkoutExercise) {
         workoutExercise.sets.removeAll { $0.id == set.id }
+        workout?.recordChange()
+        pendingSave?.cancel()
+        pendingSave = Task { await saveDraft() }
+    }
+
+    /// Called by views when a set's weight/reps change via binding — so the
+    /// parent Workout's lastModified reflects the edit and sync LWW is correct.
+    func recordSetEdit(_ workoutExercise: WorkoutExercise) {
+        workout?.recordChange()
+        pendingSave?.cancel()
+        pendingSave = Task { await saveDraft() }
     }
 
     func saveDraft() async {
         guard let workout else { return }
-        workout.lastModified = .now
+        workout.recordChange()
         try? await saveWorkout(workout)
     }
 
@@ -163,13 +196,13 @@ final class ActiveWorkoutViewModel {
         }
 
         workout.completedAt = .now
-        workout.lastModified = .now
+        workout.recordChange()
         do {
             try await saveWorkout(workout)
             if let template, let templateRepository {
                 template.timesPerformed += 1
                 template.lastPerformedAt = .now
-                template.lastModified = .now
+                template.recordChange()
                 try? await templateRepository.save(template)
             }
             if let prService = prDetectionService {

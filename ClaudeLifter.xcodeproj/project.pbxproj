@@ -21,6 +21,7 @@
 		5619789C54086C6176B5FE54 /* SyncStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14F83C7B2F4A4158EFD5E393 /* SyncStatus.swift */; };
 		B38D2E612D829C09AED528D1 /* TemplateExercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A25EF1C4A318CE211B770B /* TemplateExercise.swift */; };
 		D5059F665C9975138CD9A593 /* TrainingPreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12F60A04B4C9A67F72196181 /* TrainingPreference.swift */; };
+		B8E3C9A2D47F0514826CAB91 /* SyncableModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D8F4A61C93E5820B7149CAF /* SyncableModel.swift */; };
 		EAE2AAB56B86284FDE6E7BA9 /* WeightUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C62C9592F32BF3FFC6F6FDA6 /* WeightUnit.swift */; };
 		C5FD5FB914A06475D8D0DD6F /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423B9037C26F3104FCB8457A /* Workout.swift */; };
 		C78D7A98D0AA30F79102838D /* WorkoutExercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7905C925C6C006FF8CEE1ED0 /* WorkoutExercise.swift */; };
@@ -131,6 +132,7 @@
 		A4185EDB9DCD5A912D2D98DC /* EnumTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9150AD6C3A49822BCFA93004 /* EnumTests.swift */; };
 		6B44DAF3C5BAF6884EB5ECA1 /* ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55C11CA3831DC6337201E1D9 /* ModelTests.swift */; };
 		C74F930BFBDB72D0335A9E3E /* PersonalRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2F2D26B503E4DA6C56F201 /* PersonalRecordTests.swift */; };
+		E71C4D92A8B3F6502F9D481A /* LastModifiedPropagationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F62AE18CD35701B89427F0E /* LastModifiedPropagationTests.swift */; };
 		57A3D163990B3217BBEE0E9E /* SyncFieldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 596B7259BB2A729958FDC14E /* SyncFieldTests.swift */; };
 		0211AE6F42D041771E4834FE /* ChatMessageRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85D59F4A1B39E264539D4E2 /* ChatMessageRepositoryTests.swift */; };
 		0B819C2A0607708C104BB84A /* ExerciseRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D397321C7BF71C14D13348 /* ExerciseRepositoryTests.swift */; };
@@ -222,6 +224,7 @@
 		14F83C7B2F4A4158EFD5E393 /* SyncStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatus.swift; sourceTree = "<group>"; };
 		36A25EF1C4A318CE211B770B /* TemplateExercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateExercise.swift; sourceTree = "<group>"; };
 		12F60A04B4C9A67F72196181 /* TrainingPreference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingPreference.swift; sourceTree = "<group>"; };
+		2D8F4A61C93E5820B7149CAF /* SyncableModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncableModel.swift; sourceTree = "<group>"; };
 		C62C9592F32BF3FFC6F6FDA6 /* WeightUnit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightUnit.swift; sourceTree = "<group>"; };
 		423B9037C26F3104FCB8457A /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		7905C925C6C006FF8CEE1ED0 /* WorkoutExercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutExercise.swift; sourceTree = "<group>"; };
@@ -332,6 +335,7 @@
 		9150AD6C3A49822BCFA93004 /* EnumTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnumTests.swift; sourceTree = "<group>"; };
 		55C11CA3831DC6337201E1D9 /* ModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTests.swift; sourceTree = "<group>"; };
 		ED2F2D26B503E4DA6C56F201 /* PersonalRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalRecordTests.swift; sourceTree = "<group>"; };
+		4F62AE18CD35701B89427F0E /* LastModifiedPropagationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LastModifiedPropagationTests.swift; sourceTree = "<group>"; };
 		596B7259BB2A729958FDC14E /* SyncFieldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncFieldTests.swift; sourceTree = "<group>"; };
 		C85D59F4A1B39E264539D4E2 /* ChatMessageRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageRepositoryTests.swift; sourceTree = "<group>"; };
 		E7D397321C7BF71C14D13348 /* ExerciseRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseRepositoryTests.swift; sourceTree = "<group>"; };
@@ -480,6 +484,7 @@
 				14F83C7B2F4A4158EFD5E393,
 				36A25EF1C4A318CE211B770B,
 				12F60A04B4C9A67F72196181,
+				2D8F4A61C93E5820B7149CAF,
 				C62C9592F32BF3FFC6F6FDA6,
 				423B9037C26F3104FCB8457A,
 				7905C925C6C006FF8CEE1ED0,
@@ -733,6 +738,7 @@
 				55C11CA3831DC6337201E1D9,
 				ED2F2D26B503E4DA6C56F201,
 				596B7259BB2A729958FDC14E,
+				4F62AE18CD35701B89427F0E,
 			);
 			path = ModelTests;
 			sourceTree = "<group>";
@@ -945,6 +951,7 @@
 				5619789C54086C6176B5FE54 /* SyncStatus.swift in Sources */,
 				B38D2E612D829C09AED528D1 /* TemplateExercise.swift in Sources */,
 				D5059F665C9975138CD9A593 /* TrainingPreference.swift in Sources */,
+				B8E3C9A2D47F0514826CAB91 /* SyncableModel.swift in Sources */,
 				EAE2AAB56B86284FDE6E7BA9 /* WeightUnit.swift in Sources */,
 				C5FD5FB914A06475D8D0DD6F /* Workout.swift in Sources */,
 				C78D7A98D0AA30F79102838D /* WorkoutExercise.swift in Sources */,
@@ -1062,6 +1069,7 @@
 				A4185EDB9DCD5A912D2D98DC /* EnumTests.swift in Sources */,
 				6B44DAF3C5BAF6884EB5ECA1 /* ModelTests.swift in Sources */,
 				C74F930BFBDB72D0335A9E3E /* PersonalRecordTests.swift in Sources */,
+				E71C4D92A8B3F6502F9D481A /* LastModifiedPropagationTests.swift in Sources */,
 				57A3D163990B3217BBEE0E9E /* SyncFieldTests.swift in Sources */,
 				0211AE6F42D041771E4834FE /* ChatMessageRepositoryTests.swift in Sources */,
 				0B819C2A0607708C104BB84A /* ExerciseRepositoryTests.swift in Sources */,

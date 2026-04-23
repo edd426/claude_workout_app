@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class ProactiveInsight {
+final class ProactiveInsight: SyncableModel {
     @Attribute(.unique) var id: UUID
     var content: String
     var generatedAt: Date

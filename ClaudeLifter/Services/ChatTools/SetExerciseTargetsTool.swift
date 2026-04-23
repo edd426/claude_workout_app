@@ -106,6 +106,7 @@ struct SetExerciseTargetsTool: ClaudeTool {
             }
         }
 
+        workout.recordChange()
         try await context.workoutRepository.save(workout)
 
         // Build summary

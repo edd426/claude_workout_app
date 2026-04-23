@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class WorkoutTemplate {
+final class WorkoutTemplate: SyncableModel {
     @Attribute(.unique) var id: UUID
     var name: String
     var notes: String?

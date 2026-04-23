@@ -2,7 +2,7 @@
 
 ## What shipped
 
-Eight commits ahead of `main@{280ef28}`. Full UI + unit test suites build clean.
+Nine commits ahead of `main@{280ef28}`. Full UI + unit test suites build clean.
 Plan file: `/Users/eddelord/.claude/plans/i-d-like-you-to-ticklish-hickey.md`.
 
 ### Phase 1 — critical bugs (all done)
@@ -27,6 +27,7 @@ Plan file: `/Users/eddelord/.claude/plans/i-d-like-you-to-ticklish-hickey.md`.
 | Commit | What changed |
 |---|---|
 | `c0826c8` | Added `PaginationBoundsTests.swift` — uses the **real** `SwiftDataWorkoutRepository` against 200-workout / 30-session / 100-day fixtures to catch any future `fetchAll()` regression (the issue #71 class of memory bug) |
+| `c742557` | Killed SwiftData context-reset crashes in E2E tests. `ActiveWorkoutViewModel`'s background save Task now captures `[weak self]` so it no-ops when the VM has been released (production path unchanged; tests stop crashing on teardown). Old `Task.yield()` drain in `IntegrationTests` replaced with deterministic `awaitPendingSave()`. |
 
 ## Test status as of last run
 
@@ -37,7 +38,7 @@ Plan file: `/Users/eddelord/.claude/plans/i-d-like-you-to-ticklish-hickey.md`.
 | `LastModifiedPropagationTests` | 9 | 0 | New. Guards every mutation path. |
 | `BuildInfoTests` | 2 | 0 | New. |
 | `PaginationBoundsTests` | 3 | 0 | New. |
-| Full unit-test suite | 527 | 0 | (some E2E tests still show SwiftData context-reset crashes on teardown — pre-existing, auto-retried to green) |
+| Full unit-test suite | 534 | 0 | Zero fatal errors. The pre-existing SwiftData context-reset crashes on teardown are now fixed (see commit `c742557`). |
 | Full UI-test suite (simulator) | 60 | 15 | Partial — test run was killed after ~15 min. Failing clusters: `ExerciseLibraryTests` search (4), `KeyboardDismissalTests` keyboard (1), `EdgeCaseTests` finishNoSets (1); most look pre-existing |
 
 ## What's left to do — pick up here in the morning

@@ -146,6 +146,7 @@
 		2D5A983A04F68C5DB57AB82C /* ImageUploadServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAA6CFA06236E0849598A44 /* ImageUploadServiceTests.swift */; };
 		CCC3D50FD4AF845EE7C23FCB /* InsightGenerationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E0A6F5B9612A9FD2543C0 /* InsightGenerationServiceTests.swift */; };
 		32CA73C513F6D134204FF792 /* KeychainHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB1BA0FAD7D48CF98800F41 /* KeychainHelperTests.swift */; };
+		A1B2C3D4E5F678901234ABCD /* BuildInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9876543210FEDCBA12345678 /* BuildInfoTests.swift */; };
 		5F8BA2A9D7D40C20D07BFB42 /* LogSetToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB61131FBE4F8E956A8F5D4 /* LogSetToolTests.swift */; };
 		67FCC78174F2D9F2362FBA30 /* NetworkServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28AB5540E43AF5302B3472FE /* NetworkServiceTests.swift */; };
 		0B3CBAF2DCFA440BB35A503A /* PRDetectionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DF549B09509802F9D22FA3 /* PRDetectionServiceTests.swift */; };
@@ -346,6 +347,7 @@
 		EEAA6CFA06236E0849598A44 /* ImageUploadServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageUploadServiceTests.swift; sourceTree = "<group>"; };
 		8C8E0A6F5B9612A9FD2543C0 /* InsightGenerationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightGenerationServiceTests.swift; sourceTree = "<group>"; };
 		BFB1BA0FAD7D48CF98800F41 /* KeychainHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelperTests.swift; sourceTree = "<group>"; };
+		9876543210FEDCBA12345678 /* BuildInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfoTests.swift; sourceTree = "<group>"; };
 		AAB61131FBE4F8E956A8F5D4 /* LogSetToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogSetToolTests.swift; sourceTree = "<group>"; };
 		28AB5540E43AF5302B3472FE /* NetworkServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkServiceTests.swift; sourceTree = "<group>"; };
 		D9DF549B09509802F9D22FA3 /* PRDetectionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PRDetectionServiceTests.swift; sourceTree = "<group>"; };
@@ -754,6 +756,7 @@
 			children = (
 				57DB3D4B96160AF45FD47402,
 				39B422702EA79DDE8866C5B1,
+				9876543210FEDCBA12345678,
 				C8D8413498DFA6B11B17332D,
 				1699F48EE9B58D4C4FFD8188,
 				EEAA6CFA06236E0849598A44,
@@ -1074,6 +1077,7 @@
 				2D5A983A04F68C5DB57AB82C /* ImageUploadServiceTests.swift in Sources */,
 				CCC3D50FD4AF845EE7C23FCB /* InsightGenerationServiceTests.swift in Sources */,
 				32CA73C513F6D134204FF792 /* KeychainHelperTests.swift in Sources */,
+				A1B2C3D4E5F678901234ABCD /* BuildInfoTests.swift in Sources */,
 				5F8BA2A9D7D40C20D07BFB42 /* LogSetToolTests.swift in Sources */,
 				67FCC78174F2D9F2362FBA30 /* NetworkServiceTests.swift in Sources */,
 				0B3CBAF2DCFA440BB35A503A /* PRDetectionServiceTests.swift in Sources */,

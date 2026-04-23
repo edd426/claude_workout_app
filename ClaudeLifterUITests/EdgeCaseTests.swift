@@ -14,11 +14,15 @@ final class EdgeCaseTests: XCTestCase {
     }
 
     func testFinishWorkoutWithNoSetsCompleted() throws {
+        // Finish is intentionally disabled until at least one set is
+        // completed — prevents empty "ghost workouts" from cluttering
+        // history (issue #69). The UX path for abandoning an empty
+        // workout is Cancel → Discard, not Finish.
         app.startWorkoutFromTemplate("Push Day")
-        XCTAssertTrue(app.buttons["finishWorkout"].waitForExistence(timeout: 5))
-        app.buttons["finishWorkout"].tap()
-        // Should show summary (0 sets completed is valid)
-        XCTAssertTrue(app.staticTexts["Workout Complete!"].waitForExistence(timeout: 5))
+        let finish = app.buttons["finishWorkout"]
+        XCTAssertTrue(finish.waitForExistence(timeout: 5))
+        XCTAssertFalse(finish.isEnabled,
+                       "Finish should be disabled when no sets have been completed")
     }
 
     func testLongExerciseNameDoesNotBreakLayout() throws {

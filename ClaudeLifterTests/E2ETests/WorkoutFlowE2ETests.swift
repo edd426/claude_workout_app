@@ -137,6 +137,11 @@ struct WorkoutFlowE2ETests {
         let exerciseNames = savedWorkout.exercises.map { $0.exercise?.name ?? "" }
         #expect(exerciseNames.contains("Deadlift"))
         #expect(exerciseNames.contains("Bench Press"))
+
+        // Wait for any in-flight saveDraft Tasks before teardown — otherwise
+        // they reference a freed SwiftData context and crash.
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
     }
 
     // MARK: - Test 3: Exercise Import and Browse
@@ -282,6 +287,8 @@ struct WorkoutFlowE2ETests {
         let lastPerformed = try #require(template.lastPerformedAt)
         #expect(lastPerformed >= beforeFinish)
         #expect(lastPerformed.timeIntervalSinceNow > -5)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
     }
 
     @Test("templateStats: second workout increments timesPerformed to 2")
@@ -329,6 +336,9 @@ struct WorkoutFlowE2ETests {
         }
         await vm2.finishWorkout()
         #expect(template.timesPerformed == 2)
+        await vm1.awaitPendingSave()
+        await vm2.awaitPendingSave()
+        withExtendedLifetime(container) {}
     }
 
     @Test("templateStats: stats persist when fetched fresh from repository")
@@ -365,6 +375,8 @@ struct WorkoutFlowE2ETests {
         let fetched = try #require(allTemplates.first { $0.id == templateId })
         #expect(fetched.timesPerformed == 1)
         #expect(fetched.lastPerformedAt != nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
     }
 
     // MARK: - Test 5: Multiple Filters

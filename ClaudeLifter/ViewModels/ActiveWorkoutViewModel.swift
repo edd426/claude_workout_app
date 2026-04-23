@@ -131,7 +131,14 @@ final class ActiveWorkoutViewModel {
         workout?.recordChange()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         pendingSave?.cancel()
-        pendingSave = Task { await saveDraft() }
+        // [weak self] so the Task is a no-op if the VM has been released
+        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
+        // through a SwiftData context that has already been reset and
+        // crashes in BackingData.
+        pendingSave = Task { [weak self] in
+            guard let self else { return }
+            await self.saveDraft()
+        }
     }
 
     func addExercise(_ exercise: Exercise) {
@@ -144,21 +151,42 @@ final class ActiveWorkoutViewModel {
         }
         workout.recordChange()
         pendingSave?.cancel()
-        pendingSave = Task { await saveDraft() }
+        // [weak self] so the Task is a no-op if the VM has been released
+        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
+        // through a SwiftData context that has already been reset and
+        // crashes in BackingData.
+        pendingSave = Task { [weak self] in
+            guard let self else { return }
+            await self.saveDraft()
+        }
     }
 
     func removeExercise(_ workoutExercise: WorkoutExercise) {
         workout?.exercises.removeAll { $0.id == workoutExercise.id }
         workout?.recordChange()
         pendingSave?.cancel()
-        pendingSave = Task { await saveDraft() }
+        // [weak self] so the Task is a no-op if the VM has been released
+        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
+        // through a SwiftData context that has already been reset and
+        // crashes in BackingData.
+        pendingSave = Task { [weak self] in
+            guard let self else { return }
+            await self.saveDraft()
+        }
     }
 
     func removeSet(_ set: WorkoutSet, from workoutExercise: WorkoutExercise) {
         workoutExercise.sets.removeAll { $0.id == set.id }
         workout?.recordChange()
         pendingSave?.cancel()
-        pendingSave = Task { await saveDraft() }
+        // [weak self] so the Task is a no-op if the VM has been released
+        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
+        // through a SwiftData context that has already been reset and
+        // crashes in BackingData.
+        pendingSave = Task { [weak self] in
+            guard let self else { return }
+            await self.saveDraft()
+        }
     }
 
     /// Called by views when a set's weight/reps change via binding — so the
@@ -166,7 +194,14 @@ final class ActiveWorkoutViewModel {
     func recordSetEdit(_ workoutExercise: WorkoutExercise) {
         workout?.recordChange()
         pendingSave?.cancel()
-        pendingSave = Task { await saveDraft() }
+        // [weak self] so the Task is a no-op if the VM has been released
+        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
+        // through a SwiftData context that has already been reset and
+        // crashes in BackingData.
+        pendingSave = Task { [weak self] in
+            guard let self else { return }
+            await self.saveDraft()
+        }
     }
 
     func saveDraft() async {

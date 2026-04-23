@@ -226,11 +226,11 @@ struct IntegrationTests {
         let savedTemplate = savedTemplates.first(where: { $0.id == template.id })
         #expect(savedTemplate?.timesPerformed == 1, "Template timesPerformed should increment to 1")
 
-        // Drain fire-and-forget saveDraft Tasks spawned by completeSet().
-        // Without this, detached Tasks referencing `workout` may still be in-flight when
-        // the ModelContainer goes out of scope — causing a BackingData.reset crash in
-        // the next test. Yield enough times to let all enqueued MainActor tasks complete.
-        for _ in 0..<20 { await Task.yield() }
+        // Deterministically wait for the fire-and-forget saveDraft Task
+        // spawned by completeSet() / addExercise() / finishWorkout(). This
+        // replaces the old `for _ in 0..<20 { await Task.yield() }` dance
+        // which was flaky on slower machines.
+        await workoutVM.awaitPendingSave()
     }
 
     // MARK: - Test 3: Exercise Browse → fuzzySearch → Coach Suggests Weight

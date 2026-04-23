@@ -6,6 +6,7 @@ struct TemplatePreviewView: View {
 
     @State private var showEditor = false
     @Environment(\.dependencies) private var deps
+    @Environment(\.dismiss) private var dismiss
 
     private var sortedExercises: [TemplateExercise] {
         template.exercises.sorted { $0.order < $1.order }
@@ -35,6 +36,11 @@ struct TemplatePreviewView: View {
 
             Section {
                 Button {
+                    // Pop back to the template list BEFORE starting the
+                    // workout so the root-level swap to ActiveWorkoutView
+                    // is actually visible (otherwise this pushed preview
+                    // shadows the swap and the button appears dead).
+                    dismiss()
                     onStartWorkout()
                 } label: {
                     Text("Start Workout")

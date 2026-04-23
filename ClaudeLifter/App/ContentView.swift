@@ -46,13 +46,14 @@ struct ContentView: View {
                 )
             }
         }
+        // Observe the *workout id* rather than just isWorkoutActive so we fire
+        // once the async ActiveWorkoutViewModel.startWorkout() has finished
+        // assigning a Workout. This replaces the old 500ms sleep workaround.
+        .onChange(of: appState.activeWorkoutVM?.workout?.id) { _, _ in
+            chatViewModel?.activeWorkout = appState.activeWorkoutVM?.workout
+        }
         .onChange(of: appState.isWorkoutActive) { _, isActive in
-            if isActive, let workoutVM = appState.activeWorkoutVM {
-                Task {
-                    try? await Task.sleep(for: .milliseconds(500))
-                    chatViewModel?.activeWorkout = workoutVM.workout
-                }
-            } else {
+            if !isActive {
                 chatViewModel?.activeWorkout = nil
             }
         }

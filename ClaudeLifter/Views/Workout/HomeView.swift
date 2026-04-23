@@ -6,13 +6,15 @@ struct HomeView: View {
     @State private var vm: HomeViewModel?
     @State private var showTemplateEditor = false
     @State private var unreadInsights: [ProactiveInsight] = []
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let activeVM = appState.activeWorkoutVM {
                     ActiveWorkoutView(vm: activeVM, onDismiss: {
-                        appState.endWorkout()
+                        // ActiveWorkoutView already calls appState.endWorkout() in its
+                        // dismiss paths — here we only refresh templates.
                         Task { await vm?.loadTemplates() }
                     })
                 } else {
@@ -34,8 +36,12 @@ struct HomeView: View {
                 unreadInsights = fetched
             }
         }
-        .onAppear {
-            Task { await vm?.loadTemplates() }
+        // Refresh templates when an active workout ends (replaces the old
+        // double-call of loadTemplates from .task + .onAppear).
+        .onChange(of: appState.isWorkoutActive) { wasActive, isActive in
+            if wasActive && !isActive {
+                Task { await vm?.loadTemplates() }
+            }
         }
         .sheet(isPresented: $showTemplateEditor) {
             if let deps {
@@ -125,6 +131,10 @@ struct HomeView: View {
             autoFillService: deps.autoFillService,
             templateRepository: deps.templateRepository
         )
+        // Clear any pushed navigation (e.g. TemplatePreviewView) so the root
+        // swap to ActiveWorkoutView is actually visible to the user. Without
+        // this, tapping Start Workout from a pushed preview did nothing.
+        path = NavigationPath()
         let workoutId = UUID()
         appState.startWorkout(id: workoutId, vm: workoutVM)
     }
@@ -136,6 +146,7 @@ struct HomeView: View {
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService
         )
+        path = NavigationPath()
         let workoutId = UUID()
         appState.startWorkout(id: workoutId, vm: workoutVM)
     }

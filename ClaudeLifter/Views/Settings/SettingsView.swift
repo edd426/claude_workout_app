@@ -20,17 +20,11 @@ struct SettingsView: View {
                 buildInfoSection
             }
             .navigationTitle("Settings")
-            // Dismiss keyboard on scroll (interactive) and on tap anywhere
-            // outside a field. Previously the only way out was Return — which
-            // a user wouldn't discover for a URL/password field.
+            // Dismiss keyboard on scroll (interactive) or on tap anywhere
+            // outside a field. Plenty discoverable — no separate Done button
+            // needed.
             .scrollDismissesKeyboard(.interactively)
             .onTapGesture { focusedField = nil }
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focusedField = nil }
-                }
-            }
         }
     }
 

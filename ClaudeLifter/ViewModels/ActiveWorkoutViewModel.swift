@@ -74,10 +74,36 @@ final class ActiveWorkoutViewModel {
     }
 
     func startWorkout() async {
+        // Clean up any prior in-progress workouts before starting a new one.
+        // Per product: at most one workout is active at a time. Before today
+        // saveDraft() left behind a `completedAt == nil` row for every force-
+        // quit or Exit-with-Save, and they piled up forever because the app
+        // had no UI to resume or discard them. Just delete them so history
+        // only contains genuinely completed sessions.
+        await discardStaleInProgressWorkouts()
+
         if let template {
             await startFromTemplate(template)
         } else if let adHocName {
             await startAdHoc(name: adHocName)
+        }
+    }
+
+    /// Deletes every in-progress workout (completedAt == nil). Called at the
+    /// start of a new session so that drafts from a previous session don't
+    /// linger in history. Also exposed to the Coach via the
+    /// `discard_stale_workouts` tool.
+    private func discardStaleInProgressWorkouts() async {
+        do {
+            let all = try await workoutRepository.fetchAll()
+            for w in all where w.completedAt == nil {
+                try? await workoutRepository.delete(w)
+            }
+        } catch {
+            // Non-fatal — if the cleanup fails we still proceed with the new
+            // workout. The duplicates aren't preventing the user from
+            // starting, they're just ugly in history.
+            print("⚠️ discardStaleInProgressWorkouts failed: \(error)")
         }
     }
 
@@ -206,6 +232,14 @@ final class ActiveWorkoutViewModel {
 
     func saveDraft() async {
         guard let workout else { return }
+        // Don't persist a draft with no user-visible progress. This was the
+        // source of the "Quick Workout — 0 exercises, 0 sets (in progress)"
+        // rows piling up in history. If nothing's been done yet, the user
+        // backing out should leave history untouched, not create a ghost.
+        if workout.exercises.isEmpty && workout.notes?.isEmpty != false {
+            try? await workoutRepository.delete(workout)
+            return
+        }
         workout.recordChange()
         try? await saveWorkout(workout)
     }

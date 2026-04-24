@@ -93,6 +93,7 @@ final class ChatViewModel {
             SetExerciseTargetsTool(),
             LogSetTool(),
             StartWorkoutTool(),
+            EndWorkoutTool(),
             CreateTemplateTool(),
             CreateProgramTool(),
             ModifyTemplateTool()
@@ -418,9 +419,22 @@ final class ChatViewModel {
     private func buildSystemPrompt() -> String {
         var parts: [String] = []
 
+        // Identify which Claude version is answering. Anthropic models cannot
+        // reliably introspect their own weights, so without this injection
+        // the Coach would tell the user "I don't know which model I am" even
+        // though the app already does.
+        let modelIdentity: String = {
+            if let known = AIModel(rawValue: selectedModel) {
+                return known.displayName + " (identifier: \(selectedModel))"
+            }
+            return "Claude (identifier: \(selectedModel))"
+        }()
+
         // Static cached portion
         parts.append("""
         You are an expert personal trainer and exercise scientist with deep knowledge of progressive overload, periodization, rep ranges, RPE, and recovery. You help the user track and improve their strength training.
+
+        Model: You are \(modelIdentity). If the user asks which model they're chatting with, answer with this exact label — do not say you don't know your version.
 
         Guidelines:
         - Give actionable, specific advice based on the user's actual workout data
@@ -429,12 +443,13 @@ final class ChatViewModel {
         - Use tools proactively — when the user asks you to modify a workout or create a template/program, just do it without asking first; the user can undo if needed
         - Do not delete templates under any circumstances
         - Before creating a template or program, use the search_exercises tool to look up the exact exercise names in the database. Do not guess exercise names — they must match exactly. For example, search for "squat" to find available variations, then use those exact names.
+        - Formatting: the app's chat window only renders inline markdown (bold, italic, lists). Do NOT use markdown headers (`#`, `##`, `###`) — they render as literal "###" characters. Use **bold** for emphasis instead.
 
         After-tool behavior (IMPORTANT — always do this):
         - Immediately after any tool returns, write a short natural-language summary (1–3 sentences) to the user describing what you did, what you found, and what they should do next. Do not end your turn silently after a tool result — the user cannot see tool output directly.
         - For create_template / create_program: list the template name(s) and a one-line rationale (e.g. "Classic full-body strength routine, compound lifts first.").
         - For search_exercises: say which exercise you picked and why, or ask a clarifying question if multiple candidates match.
-        - For log_set / start_workout / set_exercise_targets / add_exercise / remove_exercise: briefly confirm what changed in the active workout.
+        - For log_set / start_workout / set_exercise_targets / add_exercise / remove_exercise / end_workout: briefly confirm what changed in the active workout.
         """)
 
         // Training preferences

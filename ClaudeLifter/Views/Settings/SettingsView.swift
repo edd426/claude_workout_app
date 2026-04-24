@@ -1,7 +1,15 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var vm = SettingsViewModel(settingsManager: SettingsManager())
+    @Environment(\.dependencies) private var deps
+    // Build the VM on first appear so it binds to DependencyContainer's
+    // SettingsManager (the same one ChatViewModel reads). Previously this
+    // view created its own SettingsManager instance, so the two were
+    // disconnected — flipping the model in Settings updated one instance
+    // while Coach kept reading the other. The UserDefaults write made the
+    // values eventually match on relaunch, but the live observation was
+    // broken.
+    @State private var vm: SettingsViewModel?
 
     @FocusState private var focusedField: Field?
 
@@ -12,24 +20,35 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                weightUnitSection
-                aiModelSection
-                insightsSection
-                apiKeySection
-                buildInfoSection
+            Group {
+                if let vm {
+                    Form {
+                        weightUnitSection(vm: vm)
+                        aiModelSection(vm: vm)
+                        insightsSection(vm: vm)
+                        apiKeySection(vm: vm)
+                        buildInfoSection
+                    }
+                    // Dismiss keyboard on scroll (interactive) or on tap
+                    // anywhere outside a field. Plenty discoverable — no
+                    // separate Done button needed.
+                    .scrollDismissesKeyboard(.interactively)
+                    .onTapGesture { focusedField = nil }
+                } else {
+                    ProgressView()
+                }
             }
             .navigationTitle("Settings")
-            // Dismiss keyboard on scroll (interactive) or on tap anywhere
-            // outside a field. Plenty discoverable — no separate Done button
-            // needed.
-            .scrollDismissesKeyboard(.interactively)
-            .onTapGesture { focusedField = nil }
+        }
+        .task {
+            guard vm == nil, let deps else { return }
+            vm = SettingsViewModel(settingsManager: deps.settings)
         }
     }
 
-    private var weightUnitSection: some View {
-        Section("Weight Unit") {
+    private func weightUnitSection(vm: SettingsViewModel) -> some View {
+        @Bindable var vm = vm
+        return Section("Weight Unit") {
             Picker("Default Unit", selection: $vm.weightUnit) {
                 ForEach(WeightUnit.allCases, id: \.self) { unit in
                     Text(unit.rawValue.uppercased()).tag(unit)
@@ -39,7 +58,7 @@ struct SettingsView: View {
         }
     }
 
-    private var aiModelSection: some View {
+    private func aiModelSection(vm: SettingsViewModel) -> some View {
         Section("AI Model") {
             ForEach(vm.availableModels, id: \.self) { model in
                 HStack {
@@ -61,9 +80,9 @@ struct SettingsView: View {
         }
     }
 
-    // @needs:ui-viewmodels — serverURL field added for Phase 2 proxy support
     @ViewBuilder
-    private var apiKeySection: some View {
+    private func apiKeySection(vm: SettingsViewModel) -> some View {
+        @Bindable var vm = vm
         Section {
             HStack {
                 TextField("https://your-server.azurewebsites.net", text: $vm.serverURL)
@@ -98,8 +117,9 @@ struct SettingsView: View {
         }
     }
 
-    private var insightsSection: some View {
-        Section {
+    private func insightsSection(vm: SettingsViewModel) -> some View {
+        @Bindable var vm = vm
+        return Section {
             Toggle("Proactive insights on Home", isOn: $vm.proactiveInsightsEnabled)
         } header: {
             Text("Home Screen")

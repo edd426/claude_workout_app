@@ -68,13 +68,17 @@ struct ChatMessageBubbleView: View {
 
     // MARK: - Helpers
 
-    /// Renders a string with markdown (bold, italic, code, links, headers).
-    /// Uses .inlineOnlyPreservingWhitespace so line breaks Claude emits
-    /// actually render — the default AttributedString(markdown:) mode
-    /// collapses paragraphs into a single run, which is what produced the
-    /// infamous "reps.Face Pull" run-together in the Coach transcript.
+    /// Renders a string with markdown (bold, italic, code, links, inline
+    /// formatting). Uses .inlineOnlyPreservingWhitespace so line breaks
+    /// Claude emits actually render. Block-level syntax like headers
+    /// (`###`) is not supported by this parser — so we preprocess leading
+    /// `#`-runs into `**bold**` spans before parsing, and also tell Claude
+    /// in the system prompt to prefer `**bold**`. This keeps responses
+    /// that DO contain headers readable instead of leaving literal "### "
+    /// characters in the bubble.
     private func markdownText(_ string: String) -> Text {
-        let processed = string
+        let headersAsBold = ChatMarkdown.convertHeadersToBold(string)
+        let processed = headersAsBold
             .replacingOccurrences(of: "\n\n", with: "\u{0000}")
             .replacingOccurrences(of: "\n", with: "  \n")
             .replacingOccurrences(of: "\u{0000}", with: "\n\n")
@@ -85,6 +89,45 @@ struct ChatMessageBubbleView: View {
             return Text(attributed)
         }
         return Text(string)
+    }
+}
+
+/// Shared helpers for rendering Coach text in the chat bubble and the
+/// streaming view. Kept file-private-ish via a plain enum so unit tests
+/// can exercise the same logic both views depend on.
+enum ChatMarkdown {
+    /// Convert leading `###`/`##`/`#` header markers at the start of a line
+    /// into `**bold**` spans, so the inline-only markdown renderer doesn't
+    /// leave literal "### " characters in the chat bubble.
+    static func convertHeadersToBold(_ input: String) -> String {
+        var output: [String] = []
+        for line in input.components(separatedBy: "\n") {
+            let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
+            if trimmed.hasPrefix("###### ")
+                || trimmed.hasPrefix("##### ")
+                || trimmed.hasPrefix("#### ")
+                || trimmed.hasPrefix("### ")
+                || trimmed.hasPrefix("## ")
+                || trimmed.hasPrefix("# ") {
+                // Strip the leading `#` run plus the following space, wrap
+                // remainder in **bold**. Preserve leading whitespace.
+                let leadingCount = line.count - trimmed.count
+                let leading = String(line.prefix(leadingCount))
+                var body = String(trimmed)
+                while body.first == "#" { body.removeFirst() }
+                while body.first == " " { body.removeFirst() }
+                // Strip any trailing `#` characters ("## Header ##" style).
+                while body.last == "#" || body.last == " " { body.removeLast() }
+                if !body.isEmpty {
+                    output.append("\(leading)**\(body)**")
+                } else {
+                    output.append(line)
+                }
+            } else {
+                output.append(line)
+            }
+        }
+        return output.joined(separator: "\n")
     }
 }
 

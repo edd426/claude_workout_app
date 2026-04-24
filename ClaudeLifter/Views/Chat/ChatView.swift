@@ -189,7 +189,8 @@ struct ChatView: View {
     /// we still pre-process single newlines into markdown hard-breaks so
     /// single-line wraps also render.
     private func markdownText(_ string: String) -> Text {
-        let processed = string
+        let headersAsBold = ChatMarkdown.convertHeadersToBold(string)
+        let processed = headersAsBold
             .replacingOccurrences(of: "\n\n", with: "\u{0000}")
             .replacingOccurrences(of: "\n", with: "  \n")
             .replacingOccurrences(of: "\u{0000}", with: "\n\n")

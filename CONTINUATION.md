@@ -1,108 +1,104 @@
-# Overnight progress — deep refactor sprint
+# ClaudeLifter — Deep refactor session handoff
 
-## What shipped
+Last active: 2026-04-24. Work paused by user; app is on-device and behaving.
 
-Eleven commits ahead of `main@{280ef28}`. Full UI + unit test suites build clean.
-Plan file: `/Users/eddelord/.claude/plans/i-d-like-you-to-ticklish-hickey.md`.
+## Session state
 
-### Phase 1 — critical bugs (all done)
+**15 commits on `main` ahead of `origin/main`, all local, nothing pushed yet.**
+Run `git push origin main` when you want to publish.
 
-| Commit | Bug fixed | Where it bit you |
-|---|---|---|
-| `a7b3f80` | Schema-migration fallback, string-keyed SyncStatus, NWPathMonitor leak | Your WIP — committed as-is so the refactor diff stays clean |
-| `58a55a4` | Start Workout button silently no-op'd from TemplatePreviewView | Transcript: "Start Workout from template didn't work" |
-| `962a161` | Coach silent stop after `create_template`; `loadPreferences` never called | Transcript: "Did you finish? You just kind of stopped" |
-| `476ca9a` | BuildInfo lied about build date (was using launch time) | Transcript: "Built: 2026-04-23 20:14:31" — that was launch time, not build time |
-| `559064b` | `lastModified` not auto-updated on mutations → sync LWW silently broken | Issue #32 was closed prematurely; template renames / set completions / insight reads all missed it |
+Test baseline: **534 unit tests + 11 `WorkoutFlowTests` UI tests** — all green
+in the iPhone 16e (iOS 26.2) simulator. Zero fatal errors, zero failures.
 
-### Phase 2 — UX polish (partial, in progress)
+Plan file (can archive when you're satisfied):
+`/Users/eddelord/.claude/plans/i-d-like-you-to-ticklish-hickey.md`
 
-| Commit | What changed |
+## What got fixed this session
+
+### Critical (on-device bugs the user reported)
+
+| Commit | What it fixed |
 |---|---|
-| `9efb787` | Show active model ("Haiku / Sonnet / Opus") in Coach header; tool-chain depth-5 silent stop → visible message; `.onAppear` → `.task` in `ExerciseDetailView`; surface `ExerciseLibraryViewModel` filter-load errors |
-| `3f0b31d` | Guard against concurrent `sendMessage` while streaming; `ChatInputView` disables while loading; `persistMessage` logs errors instead of silent `try?`; `WorkoutSummaryView` no longer nests a NavigationStack inside the sheet |
+| `58a55a4` | **"Start Workout" button dead** — TemplatePreviewView now dismisses itself before triggering the workout start so the HomeView root-swap is visible. |
+| `962a161` | **Coach silent after create_template** — system prompt now mandates a narration after every tool result; `loadPreferences()` finally wired into `ChatView.task`. |
+| `476ca9a` | **BuildInfo lied about build date** — now reads the executable's mtime (link time), not `Date()` at first access (launch time). |
+| `559064b` | **`lastModified` not auto-updated on mutations** — new `SyncableModel` protocol + `recordChange()` helper, called from every mutation site. Kingpin fix for sync LWW. |
+| `4336b4a` | **Settings said Opus, Coach used Haiku** — `SettingsManager` exposed on `DependencyContainer` and threaded into `ChatViewModel`. |
+| `b78e9c2` | **Model switch didn't live-update Coach header** — `SettingsManager` converted to `@Observable` with stored properties. |
+| `4894747` | **Two `SettingsManager` instances across the app** — `SettingsView` now binds to the DI container's instance, not a freshly-constructed one. |
+| `4894747` | **Multiple stale in-progress workouts piling up** — `startWorkout()` deletes prior in-progress rows; `saveDraft()` refuses to save empty-exercise ghosts. |
+| `4894747` | **Coach can now close out workouts** — new `end_workout` tool with `finish / discard / cleanup_stale` actions. |
 
-### Phase 3 — test infrastructure (partial, in progress)
+### Polish
 
-| Commit | What changed |
+| Commit | What it fixed |
 |---|---|
-| `c0826c8` | Added `PaginationBoundsTests.swift` — uses the **real** `SwiftDataWorkoutRepository` against 200-workout / 30-session / 100-day fixtures to catch any future `fetchAll()` regression (the issue #71 class of memory bug) |
-| `c742557` | Killed SwiftData context-reset crashes in E2E tests. `ActiveWorkoutViewModel`'s background save Task now captures `[weak self]` so it no-ops when the VM has been released (production path unchanged; tests stop crashing on teardown). Old `Task.yield()` drain in `IntegrationTests` replaced with deterministic `awaitPendingSave()`. |
+| `a7b3f80` | Schema-migration fallback, keyed-string `SyncStatus`, `NWPathMonitor` leak (your WIP, committed cleanly). |
+| `9efb787` | Active AI model shown in Coach header; tool-chain depth-5 stop becomes visible message; `ExerciseDetailView` `.onAppear → .task`; surfaced `ExerciseLibraryViewModel` filter errors. |
+| `3f0b31d` | Concurrent `sendMessage` guard + input disabled while streaming; `persistMessage` logs errors; `WorkoutSummaryView` no longer nests NavigationStack inside a sheet. |
+| `4336b4a` | Coach markdown paragraph breaks preserved (`inlineOnlyPreservingWhitespace`); keyboard dismissal on Settings; "Cancel" → "Exit" + smart skip-dialog-when-empty; proactive insights toggle in Settings. |
+| `b78e9c2` | `AIModel` includes version (`Opus 4.7`, not just `Opus`); removed redundant keyboard "Done" button. |
+| `4894747` | `###` headers preprocessed to `**bold**` before rendering; Coach system prompt includes model identity so the AI can answer "which model are you?"; system prompt tells Claude to avoid `#`-headers. |
 
-## Test status as of last run
+### Test infrastructure
 
-| Suite | Pass | Fail | Note |
-|---|---|---|---|
-| `WorkoutFlowTests` | 11 | 0 | Were 2/11 before today. |
-| `ChatViewModelTests` | 33 | 0 | Includes 2 new regression tests for Coach silent-stop. |
-| `LastModifiedPropagationTests` | 9 | 0 | New. Guards every mutation path. |
-| `BuildInfoTests` | 2 | 0 | New. |
-| `PaginationBoundsTests` | 3 | 0 | New. |
-| Full unit-test suite | 534 | 0 | Zero fatal errors. The pre-existing SwiftData context-reset crashes on teardown are now fixed (see commit `c742557`). |
-| `WorkoutFlowTests` (all 11) + `EdgeCaseTests.testFinishWorkoutWithNoSetsCompleted` | 12 | 0 | All pass. |
-| Final baseline: 185 unit + 11 UI tests | 196 | 0 | Zero failures, zero fatal errors — last run at `46c678b`. |
+| Commit | What it added |
+|---|---|
+| `559064b` | `LastModifiedPropagationTests` — 9 tests, every mutation path asserts `lastModified` + `.pending` syncStatus. |
+| `476ca9a` | `BuildInfoTests` — 2 tests, guards against regression to runtime `Date()`. |
+| `c0826c8` | `PaginationBoundsTests` — 3 tests using the **real** `SwiftDataWorkoutRepository` against 200+ fixtures to guard the #71 class of memory bugs. |
+| `c742557` | Killed pre-existing SwiftData context-reset crashes in E2E teardown via `[weak self]` Tasks + new `awaitPendingSave()`. |
+| `46c678b` | Rewrote `testFinishWorkoutWithNoSetsCompleted` to match real UX (Finish correctly disabled until at least one set). |
 
-## What's left to do — pick up here in the morning
+## What's left — follow-up work
 
-### Phase 0 — on-device audit (needs your iPhone plugged in)
+Nothing is broken; these are genuinely "next sprint" items, roughly in priority order.
 
-Run the full UI test bundle against `Evan DeLord's iPhone` (UDID
-`00008110-001E1D8114F3801E`):
+### High value
+
+1. **Coach prompt caching (~90% cost savings available).** `ChatViewModel.buildSystemPrompt` is called per message. Add `cache_control: ephemeral` to the static portion, build once per conversation, and measure with `usage.cache_read_input_tokens`. *(Explicitly deferred this session.)*
+2. **Device UI test provisioning.** `xcodebuild test -destination platform=iOS,...` failed with `CoreDeviceError 1002 "No provider was found."` — the test bundle needs its own provisioning profile separate from the app. Fix in Signing & Capabilities for the `ClaudeLifterUITests` target in Xcode. Once fixed, the 60-ish UI tests can run on-device too, not just simulator.
+3. **Dynamic model list.** `AIModel` is a hardcoded enum — every new Anthropic release needs a rebuild. Accept arbitrary model strings with validation at first use.
+4. **Azure sync end-to-end on device.** Bicep infra + Functions exist under `/infra` but haven't been deployed/tested against the real phone. Issue #64 (CI/CD) is still the only open GitHub issue.
+
+### Medium
+
+5. **`SetRowView` state/data race.** Local `@State` copies SwiftData model values and writes back via `.onChange`. External mutations (auto-fill completion, sync pull, tool call) during edit can clobber/revert the user's typed weight or reps. Refactor to VM-mediated updates.
+6. **`RestTimerService` singleton in DI.** Each `RestTimerOverlayView` currently instantiates its own. Move to `DependencyContainer` to prevent any regression of #46.
+7. **Remaining `try?` silent failures.** `HomeView.insight.markAsRead`, `ActiveWorkoutViewModel.saveDraft`, `ExerciseDetailView.handlePhotoSelection`, `ClaudeLifterApp.populateImageURLsIfNeeded`. Replace with explicit error logging or a user-surfaced banner.
+8. **`@State var vm = VM(...)` pattern elsewhere.** `ActiveWorkoutView` and some others — change to the `@State var vm: VM?` + `.task` init pattern (as `HomeView` now does) to prevent re-init on parent redraws.
+9. **`navigationDestination(for:)` refactor.** `HomeView.templateList` still uses closure-based `NavigationLink`. Value-based navigation would let Coach's `start_workout` tool actually push the view programmatically instead of just flipping state.
+
+### Low / test-infra
+
+10. **Replace remaining tautological mocks.** `MockWorkoutRepository.recentSets` etc. — where a SwiftData-in-memory repo can stand in, delete the mock. Most tests that use these will work unchanged.
+11. **UI tests that don't assert.** `ChatCoachTests`, `HistoryCalendarTests`, etc. launch + tap but don't assert the outcome. Rewrite with real assertions.
+12. **Multi-conversation chat switching test.** Missing from the suite — seed 50 messages in conversation A, switch to B, back to A, assert no bleed.
+
+## Useful commands
 
 ```bash
+# Full baseline (unit + key UI flow)
 xcodebuild -scheme ClaudeLifter \
-  -destination "platform=iOS,id=00008110-001E1D8114F3801E" \
-  test -only-testing:ClaudeLifterUITests
-```
+  -destination 'platform=iOS Simulator,OS=26.2,name=iPhone 16e' test \
+  -only-testing:ClaudeLifterTests \
+  -only-testing:ClaudeLifterUITests/WorkoutFlowTests
 
-While that runs, walk these flows manually and file a GitHub issue for anything new:
-
-- Home → template picker → preview → **Start Workout** *(fixed, sanity-check)*
-- Coach: "Build me a basic workout" → confirm it narrates after saving *(fixed, sanity-check)*
-- Settings → About section should now show the real build date *(fixed, sanity-check)*
-- Re-verify closed issues that may have regressed: **#32, #36, #37, #46, #56, #61, #65, #70**
-
-### Phase 2 — UX polish (remaining items from plan)
-
-Not done yet. Each is small and mechanical:
-
-- Replace silent `try?` on `HomeView` insight mark-read, `ActiveWorkoutViewModel.saveDraft`, `ExerciseDetailView.handlePhotoSelection`, and `ClaudeLifterApp.populateImageURLsIfNeeded` with at least `print` error logging, ideally a `SurfacedError` banner.
-- `RestTimerOverlayView`: move `RestTimerService` into `DependencyContainer` as a singleton so rapid-open sequences don't create overlapping timers (audit item #7 / issue #46 regression).
-- `SetRowView`: the weight/reps `@State` copies the SwiftData model values then writes back via `onChange` — any external mutation (auto-fill, sync pull, tool call) while the user is editing will clobber or revert their edit. Probably a 1-hour refactor to a VM-mediated update.
-- `ActiveWorkoutViewModel`, `SettingsViewModel`, etc. use `@State var vm = VM(…)` — change to the `@State var vm: VM?` + `.task` init pattern (as `HomeView` does) to prevent re-init on parent redraws.
-- Use `.navigationDestination(for:)` in `HomeView.templateList` instead of closure-based `NavigationLink` — would let us do programmatic navigation cleanly (e.g. from the Coach's `start_workout` tool).
-
-### Phase 3 — test-infrastructure overhaul (remaining)
-
-- Delete tautological mocks (`MockWorkoutRepository.recentSets` etc.) where a SwiftData-in-memory repo can stand in. Most tests that use these will work against the real repo with zero other changes.
-- Fix the pre-existing SwiftData-context-reset crashes in E2E tests (`adHocWorkout`, `templateStats: …`, `fetchAll returns empty`). Same pattern as my `pendingSave`/`awaitPendingSave` fix — or just wrap the test body in `withExtendedLifetime(container) { … }`.
-- Add missing tests (from the plan): multi-conversation chat switching, sync merge with nested add/remove, empty-state handling.
-- Rewrite `ChatCoachTests.swift` and similar UI tests that launch+tap but don't assert anything meaningful.
-
-### Phase 4 — device smoke
-
-After the phone is reconnected: run UI bundle on device, walk Phase 0 checklist again.
-
-### Phase 5 — backlog grooming + follow-up issues
-
-- Reopen / relabel closed issues that on-device testing shows are still broken.
-- File follow-up issues:
-  - **Coach prompt caching** (~90% cost savings available — deferred per your call)
-  - **Dynamic model list** so Opus 4.7 / Sonnet 4.7 don't need a rebuild
-  - **Azure sync end-to-end on device**
-  - Issue #64 (CI/CD) still open
-
-## One-liner to remember
-
-All 8 commits are on `main`; nothing is pushed yet. Run `git push` when ready.
-
-```bash
-# Quick smoke to confirm the day's baseline
+# Just the new regression suites
 xcodebuild -scheme ClaudeLifter \
-  -destination 'platform=iOS Simulator,OS=26.2,name=iPhone 16e' \
-  test -only-testing:ClaudeLifterTests/LastModifiedPropagationTests \
-       -only-testing:ClaudeLifterTests/ChatViewModelTests \
-       -only-testing:ClaudeLifterTests/BuildInfoTests \
-       -only-testing:ClaudeLifterTests/PaginationBoundsTests \
-       -only-testing:ClaudeLifterUITests/WorkoutFlowTests
+  -destination 'platform=iOS Simulator,OS=26.2,name=iPhone 16e' test \
+  -only-testing:ClaudeLifterTests/LastModifiedPropagationTests \
+  -only-testing:ClaudeLifterTests/ChatViewModelTests \
+  -only-testing:ClaudeLifterTests/BuildInfoTests \
+  -only-testing:ClaudeLifterTests/PaginationBoundsTests
+
+# Build & install on the plugged-in phone
+xcodebuild -scheme ClaudeLifter \
+  -destination 'platform=iOS,id=00008110-001E1D8114F3801E' build
+xcrun devicectl device install app \
+  --device 00008110-001E1D8114F3801E \
+  ~/Library/Developer/Xcode/DerivedData/ClaudeLifter-hksekbwiejlwszcjbxmhraxgbzaf/Build/Products/Debug-iphoneos/ClaudeLifter.app
+
+# Publish when ready
+git push origin main
 ```

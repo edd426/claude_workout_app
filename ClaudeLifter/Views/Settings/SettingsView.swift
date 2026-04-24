@@ -3,15 +3,34 @@ import SwiftUI
 struct SettingsView: View {
     @State private var vm = SettingsViewModel(settingsManager: SettingsManager())
 
+    @FocusState private var focusedField: Field?
+
+    private enum Field: Hashable {
+        case serverURL
+        case apiKey
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 weightUnitSection
                 aiModelSection
+                insightsSection
                 apiKeySection
                 buildInfoSection
             }
             .navigationTitle("Settings")
+            // Dismiss keyboard on scroll (interactive) and on tap anywhere
+            // outside a field. Previously the only way out was Return — which
+            // a user wouldn't discover for a URL/password field.
+            .scrollDismissesKeyboard(.interactively)
+            .onTapGesture { focusedField = nil }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                }
+            }
         }
     }
 
@@ -57,6 +76,7 @@ struct SettingsView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
+                    .focused($focusedField, equals: .serverURL)
                 if !vm.serverURL.isEmpty {
                     Button {
                         vm.serverURL = ""
@@ -80,6 +100,20 @@ struct SettingsView: View {
             SecureField("sk-ant-... or Azure function key", text: $vm.apiKey)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .focused($focusedField, equals: .apiKey)
+        }
+    }
+
+    private var insightsSection: some View {
+        Section {
+            Toggle("Proactive insights on Home", isOn: $vm.proactiveInsightsEnabled)
+        } header: {
+            Text("Home Screen")
+        } footer: {
+            Text(vm.proactiveInsightsEnabled
+                 ? "Shows Coach-generated suggestion cards on the home screen (\u{201C}You haven’t trained legs in 2 weeks”, etc.). Turn off if they pile up when you’re away from the app."
+                 : "Home screen will not show insight cards. No new insights will be generated either.")
+                .font(.caption)
         }
     }
 

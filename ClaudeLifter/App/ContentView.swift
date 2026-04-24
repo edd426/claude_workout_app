@@ -41,6 +41,11 @@ struct ContentView: View {
                     templateRepository: dependencies.templateRepository,
                     preferenceRepository: dependencies.preferenceRepository,
                     chatRepository: dependencies.chatRepository,
+                    // Without this, ChatViewModel.selectedModel silently falls
+                    // back to Haiku regardless of what the user picked in
+                    // Settings — the root cause of the "Settings says Opus
+                    // but Coach shows Haiku" bug.
+                    settings: dependencies.settings,
                     appState: appState,
                     autoFillService: dependencies.autoFillService
                 )

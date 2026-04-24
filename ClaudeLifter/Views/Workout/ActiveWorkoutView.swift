@@ -45,22 +45,26 @@ struct ActiveWorkoutView: View {
         .onChange(of: vm.isFinished) { _, finished in
             if finished { showSummary = true }
         }
-        .confirmationDialog("End Workout?", isPresented: $showCancelDialog) {
-            Button("Save as Draft") {
-                Task {
-                    await vm.saveDraft()
-                    appState.endWorkout()
-                    onDismiss?()
-                }
-            }
-            Button("Discard Workout", role: .destructive) {
+        .confirmationDialog("Exit workout?", isPresented: $showCancelDialog) {
+            Button("Discard — don't save", role: .destructive) {
                 Task {
                     await vm.cancelWorkout()
                     appState.endWorkout()
                     onDismiss?()
                 }
             }
+            Button("Save progress as draft") {
+                Task {
+                    await vm.saveDraft()
+                    appState.endWorkout()
+                    onDismiss?()
+                }
+            }
             Button("Keep Going", role: .cancel) {}
+        } message: {
+            Text(vm.hasCompletedSets
+                 ? "You've logged at least one set — saving keeps it in your history."
+                 : "Nothing logged yet, so discarding won't remove anything from your history.")
         }
     }
 
@@ -116,8 +120,20 @@ struct ActiveWorkoutView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            Button("Cancel") {
-                showCancelDialog = true
+            // "Exit" is clearer than "Cancel" — users read Cancel as "never
+            // mind, this dialog", not as "leave this workout". And if the
+            // user hasn't logged anything yet we can short-circuit the
+            // confirmation entirely since there's nothing to lose.
+            Button("Exit") {
+                if vm.hasCompletedSets {
+                    showCancelDialog = true
+                } else {
+                    Task {
+                        await vm.cancelWorkout()
+                        appState.endWorkout()
+                        onDismiss?()
+                    }
+                }
             }
             .accessibilityIdentifier("cancelWorkout")
         }

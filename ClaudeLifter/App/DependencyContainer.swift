@@ -17,9 +17,16 @@ final class DependencyContainer {
     let anthropicService: any AnthropicServiceProtocol
     let insightGenerationService: any InsightGenerationServiceProtocol
     let syncManager: SyncManager
+    /// Exposed so ViewModels (ChatViewModel especially) can read the user's
+    /// selected AI model. Previously this was built inside init() but not
+    /// stored on the container, so ChatViewModel was constructed with
+    /// settings=nil and fell back to a hardcoded Haiku default — the user's
+    /// Opus / Sonnet choice was silently ignored for every chat request.
+    let settings: SettingsManager
 
     init(modelContext: ModelContext) {
         let settings = SettingsManager()
+        self.settings = settings
 
         let workoutRepo = SwiftDataWorkoutRepository(context: modelContext)
         let templateRepo = SwiftDataTemplateRepository(context: modelContext)
@@ -50,7 +57,8 @@ final class DependencyContainer {
         self.insightGenerationService = InsightGenerationService(
             anthropicService: anthropic,
             workoutRepository: workoutRepo,
-            insightRepository: insightRepo
+            insightRepository: insightRepo,
+            settings: settings
         )
 
         self.syncManager = SyncManager(

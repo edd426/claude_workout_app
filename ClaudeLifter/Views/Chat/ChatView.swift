@@ -180,15 +180,23 @@ struct ChatView: View {
 
     // MARK: - Helpers
 
-    /// Renders a string with markdown. Pre-processes single newlines to hard
-    /// line breaks (two trailing spaces) since Claude uses \n for line breaks
-    /// but CommonMark treats them as spaces.
+    /// Renders a string with markdown, preserving the user-visible line
+    /// breaks that Claude emits. By default AttributedString(markdown:) uses
+    /// inlineOnly parsing, which collapses newlines into spaces and fuses
+    /// paragraphs — so Claude's "reps.\n\nFace Pull:" rendered as
+    /// "reps.Face Pull:" with nothing between them. We use
+    /// `.inlineOnlyPreservingWhitespace` so the \n characters stay put, and
+    /// we still pre-process single newlines into markdown hard-breaks so
+    /// single-line wraps also render.
     private func markdownText(_ string: String) -> Text {
         let processed = string
             .replacingOccurrences(of: "\n\n", with: "\u{0000}")
             .replacingOccurrences(of: "\n", with: "  \n")
             .replacingOccurrences(of: "\u{0000}", with: "\n\n")
-        if let attributed = try? AttributedString(markdown: processed) {
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace
+        )
+        if let attributed = try? AttributedString(markdown: processed, options: options) {
             return Text(attributed)
         }
         return Text(string)

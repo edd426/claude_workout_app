@@ -32,8 +32,14 @@ struct HomeView: View {
                 )
                 await vm?.loadTemplates()
             }
-            if let fetched = try? await deps.insightRepository.fetchUnread() {
+            // Honour the user's Settings toggle — don't even fetch insight
+            // cards if they're disabled. Prevents a "pile up after weeks
+            // away" cluttered Home screen.
+            if deps.settings.proactiveInsightsEnabled,
+               let fetched = try? await deps.insightRepository.fetchUnread() {
                 unreadInsights = fetched
+            } else {
+                unreadInsights = []
             }
         }
         // Refresh templates when an active workout ends (replaces the old

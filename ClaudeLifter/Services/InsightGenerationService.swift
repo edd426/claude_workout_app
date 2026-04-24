@@ -37,6 +37,9 @@ final class InsightGenerationService: InsightGenerationServiceProtocol {
     }
 
     func shouldGenerateInsights() -> Bool {
+        // Respect the Settings toggle — if the user has disabled proactive
+        // insights, don't burn API tokens generating ones they'll never see.
+        if let settings, !settings.proactiveInsightsEnabled { return false }
         guard let lastDate = defaults.object(forKey: Self.lastGenerationKey) as? Date else {
             return true
         }

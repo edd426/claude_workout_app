@@ -17,6 +17,9 @@ final class SettingsViewModel {
     var serverURL: String {
         didSet { settingsManager.serverURL = serverURL }
     }
+    var proactiveInsightsEnabled: Bool {
+        didSet { settingsManager.proactiveInsightsEnabled = proactiveInsightsEnabled }
+    }
 
     let availableModels = AIModel.allCases
 
@@ -28,5 +31,6 @@ final class SettingsViewModel {
         self.aiModel = settingsManager.aiModel
         self.apiKey = settingsManager.apiKey
         self.serverURL = settingsManager.serverURL
+        self.proactiveInsightsEnabled = settingsManager.proactiveInsightsEnabled
     }
 }

@@ -27,6 +27,9 @@ struct SettingsView: View {
                         aiModelSection(vm: vm)
                         insightsSection(vm: vm)
                         apiKeySection(vm: vm)
+                        if let deps {
+                            syncStatusSection(syncManager: deps.syncManager)
+                        }
                         buildInfoSection
                     }
                     // Dismiss keyboard on scroll (interactive) or on tap
@@ -131,6 +134,14 @@ struct SettingsView: View {
         }
     }
 
+    private func syncStatusSection(syncManager: SyncManager) -> some View {
+        Section {
+            SyncStateRow(state: syncManager.state)
+        } header: {
+            Text("Sync Status")
+        }
+    }
+
     private var buildInfoSection: some View {
         Section {
             Button {
@@ -148,6 +159,120 @@ struct SettingsView: View {
             .buttonStyle(.plain)
         } header: {
             Text("About")
+        }
+    }
+}
+
+// MARK: - Sync state UI (also used by HomeView)
+
+/// Full row for Settings showing the current SyncManager state. Reactive — reads
+/// `state`'s underlying inputs through @Observable, so SwiftUI re-renders when
+/// the user pastes the server URL, when sync starts, when it errors, etc.
+struct SyncStateRow: View {
+    let state: SyncState
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: iconName)
+                .font(.title3)
+                .foregroundStyle(iconColor)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var iconName: String {
+        switch state {
+        case .disabled: return "exclamationmark.triangle.fill"
+        case .offline:  return "wifi.slash"
+        case .syncing:  return "arrow.triangle.2.circlepath"
+        case .error:    return "xmark.octagon.fill"
+        case .synced:   return "checkmark.circle.fill"
+        case .pending:  return "clock"
+        }
+    }
+
+    private var iconColor: Color {
+        switch state {
+        case .disabled: return .orange
+        case .offline:  return .secondary
+        case .syncing:  return BrandTheme.info
+        case .error:    return .red
+        case .synced:   return BrandTheme.success
+        case .pending:  return .secondary
+        }
+    }
+
+    private var title: String {
+        switch state {
+        case .disabled: return "Sync disabled"
+        case .offline:  return "Offline"
+        case .syncing:  return "Syncing…"
+        case .error:    return "Sync failed"
+        case .synced:   return "Synced"
+        case .pending:  return "Sync pending"
+        }
+    }
+
+    private var detail: String {
+        switch state {
+        case .disabled:
+            return "Set the Server URL above to enable cloud sync."
+        case .offline:
+            return "Will resume when network returns."
+        case .syncing:
+            return "Pulling and pushing changes…"
+        case .error(let msg):
+            return msg
+        case .synced(let date):
+            return "Last synced \(Self.relativeFormatter.localizedString(for: date, relativeTo: .now))"
+        case .pending:
+            return "Configured but no sync has run yet."
+        }
+    }
+
+    /// Static formatter — RelativeDateTimeFormatter is expensive to construct.
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+}
+
+/// Compact banner for the Home tab. Renders only for actionable states the user
+/// would otherwise miss — currently `.disabled`. Other states (offline, syncing,
+/// synced) are visible in Settings; cluttering Home with them is noise.
+struct SyncStateBanner: View {
+    let state: SyncState
+
+    var body: some View {
+        if case .disabled = state {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Cloud sync is off")
+                        .font(.subheadline.weight(.medium))
+                    Text("Workouts are saved on this device only. Open Settings to set the server URL.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(BrandTheme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal)
+            .padding(.top, 8)
+        } else {
+            EmptyView()
         }
     }
 }

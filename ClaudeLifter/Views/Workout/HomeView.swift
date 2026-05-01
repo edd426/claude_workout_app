@@ -64,6 +64,12 @@ struct HomeView: View {
 
     private var templatePickerView: some View {
         VStack(spacing: 0) {
+            if let deps {
+                // Surfaces the silent-no-op state from `SyncManager.syncIfNeeded`'s
+                // serverURL guard. Rendered as a no-op for every other state, so
+                // the configured-and-working case adds no chrome here.
+                SyncStateBanner(state: deps.syncManager.state)
+            }
             if !unreadInsights.isEmpty {
                 insightCardsSection
             }

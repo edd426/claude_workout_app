@@ -601,3 +601,126 @@ struct SyncManagerTests {
         }
     }
 }
+
+@Suite("SyncManager State")
+@MainActor
+struct SyncStateTests {
+    /// Build a SyncManager with isolated UserDefaults; only `settings.serverURL`
+    /// matters for these tests. All other deps are inert.
+    private func makeManager(serverURL: String = "") throws -> (SyncManager, SettingsManager) {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let settings = SettingsManager(
+            defaults: UserDefaults(suiteName: "sync-status-\(UUID())")!
+        )
+        settings.serverURL = serverURL
+
+        let manager = SyncManager(
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            chatRepository: SwiftDataChatMessageRepository(context: context),
+            insightRepository: SwiftDataInsightRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            networkService: MockNetworkService(),
+            settings: settings
+        )
+        return (manager, settings)
+    }
+
+    @Test("status is .disabled when serverURL is empty")
+    func disabledWhenNoServerURL() throws {
+        let (manager, _) = try makeManager(serverURL: "")
+        #expect(manager.state == SyncState.disabled)
+    }
+
+    @Test("status is .pending when configured but never synced and online")
+    func pendingWhenConfiguredAndIdle() throws {
+        let (manager, _) = try makeManager(serverURL: "https://example.com")
+        manager.isConnected = true
+        #expect(manager.state == SyncState.pending)
+    }
+
+    @Test("status is .offline when configured but no connectivity")
+    func offlineWhenDisconnected() throws {
+        let (manager, _) = try makeManager(serverURL: "https://example.com")
+        manager.isConnected = false
+        #expect(manager.state == SyncState.offline)
+    }
+
+    @Test("status is .syncing while a sync is in flight")
+    func syncingWhenInFlight() throws {
+        let (manager, _) = try makeManager(serverURL: "https://example.com")
+        manager.isConnected = true
+        manager.isSyncing = true
+        #expect(manager.state == SyncState.syncing)
+    }
+
+    @Test("status is .error when last attempt failed")
+    func errorAfterFailure() throws {
+        let (manager, _) = try makeManager(serverURL: "https://example.com")
+        manager.isConnected = true
+        manager.syncError = "401 Unauthorized"
+        if case .error(let msg) = manager.state {
+            #expect(msg == "401 Unauthorized")
+        } else {
+            Issue.record("expected .error, got \(manager.state)")
+        }
+    }
+
+    @Test("status is .synced when a successful sync timestamp exists")
+    func syncedWhenTimestampSet() throws {
+        let (manager, _) = try makeManager(serverURL: "https://example.com")
+        manager.isConnected = true
+        let when = Date(timeIntervalSince1970: 1_700_000_000)
+        manager.lastSyncDate = when
+        if case .synced(let date) = manager.state {
+            #expect(date == when)
+        } else {
+            Issue.record("expected .synced, got \(manager.state)")
+        }
+    }
+
+    // Priority order: disabled > offline > syncing > error > synced > pending.
+    // The intent is to surface the most actionable state first.
+
+    @Test("disabled wins over every other condition")
+    func disabledOverridesAll() throws {
+        let (manager, settings) = try makeManager(serverURL: "")
+        manager.isConnected = false
+        manager.isSyncing = true
+        manager.syncError = "boom"
+        manager.lastSyncDate = .now
+        _ = settings
+        #expect(manager.state == SyncState.disabled)
+    }
+
+    @Test("offline beats error and synced when connectivity is gone")
+    func offlineBeatsLowerPriority() throws {
+        let (manager, _) = try makeManager(serverURL: "https://example.com")
+        manager.isConnected = false
+        manager.syncError = "previous failure"
+        manager.lastSyncDate = .now
+        #expect(manager.state == SyncState.offline)
+    }
+
+    @Test("syncing beats error and synced while running")
+    func syncingBeatsLowerPriority() throws {
+        let (manager, _) = try makeManager(serverURL: "https://example.com")
+        manager.isConnected = true
+        manager.isSyncing = true
+        manager.syncError = "previous failure"
+        manager.lastSyncDate = .now
+        #expect(manager.state == SyncState.syncing)
+    }
+
+    @Test("error beats synced when both are present and online idle")
+    func errorBeatsSynced() throws {
+        let (manager, _) = try makeManager(serverURL: "https://example.com")
+        manager.isConnected = true
+        manager.syncError = "401"
+        manager.lastSyncDate = .now
+        if case .error = manager.state {} else {
+            Issue.record("expected .error, got \(manager.state)")
+        }
+    }
+}

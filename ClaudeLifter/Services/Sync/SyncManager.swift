@@ -2,6 +2,30 @@ import Foundation
 import Network
 import Observation
 
+/// User-facing snapshot of the SyncManager. Derived from its state, not stored.
+/// Distinct from `SyncStatus` (which is the per-record `.pending` / `.synced` state on
+/// individual models). Priority order (highest first):
+///     disabled > offline > syncing > error > synced > pending
+/// `disabled` is something the user must fix in Settings; `offline` blocks every other
+/// state from being meaningful; in-flight `syncing` matters more than stale errors; a
+/// fresh `error` matters more than an older `synced` timestamp.
+enum SyncState: Equatable {
+    /// Server URL is empty — the iOS app has never been told where to sync to.
+    /// This is the silent-no-op state from `syncIfNeeded`'s first guard. The whole
+    /// reason this enum exists is to surface this case to the UI.
+    case disabled
+    /// Server URL is set, but the device has no network connectivity.
+    case offline
+    /// A sync is currently in flight.
+    case syncing
+    /// The last sync attempt failed. Carries the error message.
+    case error(String)
+    /// Sync succeeded at the given timestamp.
+    case synced(Date)
+    /// Server URL is set, online, idle, no error — but never synced yet.
+    case pending
+}
+
 @Observable
 @MainActor
 final class SyncManager {
@@ -9,6 +33,16 @@ final class SyncManager {
     var lastSyncDate: Date?
     var syncError: String?
     var isConnected = true
+
+    /// Derived UI state. See `SyncState` for priority rules.
+    var state: SyncState {
+        if settings.serverURL.isEmpty { return .disabled }
+        if !isConnected { return .offline }
+        if isSyncing { return .syncing }
+        if let syncError { return .error(syncError) }
+        if let lastSyncDate { return .synced(lastSyncDate) }
+        return .pending
+    }
 
     private let workoutRepository: any WorkoutRepository
     private let templateRepository: any TemplateRepository

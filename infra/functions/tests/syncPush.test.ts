@@ -187,6 +187,42 @@ describe("syncPush — issue #74: per-record results in push response", () => {
     expect(collectionById["i1"]).toBe("insights");
   });
 
+  test("a non-404 read failure yields 'error' and does NOT upsert (no LWW bypass)", async () => {
+    // A throttling/outage error during the existence check must not be treated
+    // as "document doesn't exist" — that would overwrite a possibly-newer
+    // server copy without the LWW comparison ever running.
+    mockItemRead.mockRejectedValue({ code: 503 });
+
+    const req = makeRequest({
+      workouts: [{ id: "w1", lastModified: "2026-07-01T00:00:00.000Z" }],
+    });
+
+    const res = await handler(req, makeContext());
+    const body = res.jsonBody!;
+
+    expect(isOk(res.status)).toBe(true);
+    expect(body.results).toEqual([
+      { id: "w1", collection: "workouts", status: "error" },
+    ]);
+    expect(mockItems.upsert).not.toHaveBeenCalled();
+  });
+
+  test("a confirmed 404 read still means 'new record' and upserts", async () => {
+    mockItemRead.mockRejectedValue({ code: 404 });
+
+    const req = makeRequest({
+      workouts: [{ id: "w1", lastModified: "2026-07-01T00:00:00.000Z" }],
+    });
+
+    const res = await handler(req, makeContext());
+    const body = res.jsonBody!;
+
+    expect(body.results).toEqual([
+      { id: "w1", collection: "workouts", status: "accepted" },
+    ]);
+    expect(mockItems.upsert).toHaveBeenCalledTimes(1);
+  });
+
   test("a record missing an id is reported as an 'error', not silently dropped", async () => {
     const req = makeRequest({
       workouts: [

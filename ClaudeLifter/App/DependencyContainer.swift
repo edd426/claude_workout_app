@@ -16,6 +16,7 @@ final class DependencyContainer {
     let imageUploadService: any ImageUploadServiceProtocol
     let anthropicService: any AnthropicServiceProtocol
     let insightGenerationService: any InsightGenerationServiceProtocol
+    let backupService: any BackupServiceProtocol
     let syncManager: SyncManager
     /// Exposed so ViewModels (ChatViewModel especially) can read the user's
     /// selected AI model. Previously this was built inside init() but not
@@ -44,6 +45,13 @@ final class DependencyContainer {
         self.insightRepository = insightRepo
         self.autoFillService = AutoFillService(workoutRepository: workoutRepo)
         self.exerciseImportService = ExerciseImportService()
+        self.backupService = BackupService(
+            modelContext: modelContext,
+            workoutRepository: workoutRepo,
+            templateRepository: templateRepo,
+            exerciseRepository: exerciseRepo,
+            preferenceRepository: prefRepo
+        )
         self.networkService = network
         self.imageUploadService = ImageUploadService(networkService: network)
 

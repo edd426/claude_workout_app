@@ -209,12 +209,14 @@ final class SyncManager {
 
         // Snapshot lastModified at push time: a record edited while the POST is
         // in flight must stay .pending — the server acknowledged the old payload,
-        // not the edit (issue #74).
-        var pushedModified: [UUID: Date] = [:]
-        for workout in pendingWorkouts { pushedModified[workout.id] = workout.lastModified }
-        for template in pendingTemplates { pushedModified[template.id] = template.lastModified }
-        for insight in pendingInsights { pushedModified[insight.id] = insight.lastModified }
-        for pref in pendingPrefs { pushedModified[pref.id] = pref.lastModified }
+        // not the edit (issue #74). Keyed by (collection, id): a bare-UUID key
+        // would let an accepted record in one collection acknowledge a rejected
+        // record with the same id in another.
+        var pushedModified: [PushKey: Date] = [:]
+        for workout in pendingWorkouts { pushedModified[PushKey("workouts", workout.id)] = workout.lastModified }
+        for template in pendingTemplates { pushedModified[PushKey("templates", template.id)] = template.lastModified }
+        for insight in pendingInsights { pushedModified[PushKey("insights", insight.id)] = insight.lastModified }
+        for pref in pendingPrefs { pushedModified[PushKey("preferences", pref.id)] = pref.lastModified }
 
         let request = SyncPushRequest(
             workouts: pendingWorkouts.map { SyncMapper.toDTO($0) },
@@ -235,29 +237,62 @@ final class SyncManager {
             // is safe — upserts are idempotent, so they re-push next cycle.
             throw SyncError.missingPushAcknowledgement
         }
-        let acceptedIds = Set(results.lazy.filter { $0.status == "accepted" }.map(\.id))
+        let acceptedKeys = Set(
+            results.lazy.filter { $0.status == "accepted" }
+                .map { PushKey($0.collection, $0.id) }
+        )
 
         // Mark synced only what the server accepted AND what wasn't edited
         // mid-flight. Everything else stays .pending and retries.
-        for workout in pendingWorkouts where acceptedIds.contains(workout.id)
-            && workout.lastModified == pushedModified[workout.id] {
-            workout.syncStatus = .synced
+        for workout in pendingWorkouts {
+            let key = PushKey("workouts", workout.id)
+            if acceptedKeys.contains(key) && workout.lastModified == pushedModified[key] {
+                workout.syncStatus = .synced
+            }
         }
-        for template in pendingTemplates where acceptedIds.contains(template.id)
-            && template.lastModified == pushedModified[template.id] {
-            template.syncStatus = .synced
+        for template in pendingTemplates {
+            let key = PushKey("templates", template.id)
+            if acceptedKeys.contains(key) && template.lastModified == pushedModified[key] {
+                template.syncStatus = .synced
+            }
         }
-        for insight in pendingInsights where acceptedIds.contains(insight.id)
-            && insight.lastModified == pushedModified[insight.id] {
-            insight.syncStatus = .synced
+        for insight in pendingInsights {
+            let key = PushKey("insights", insight.id)
+            if acceptedKeys.contains(key) && insight.lastModified == pushedModified[key] {
+                insight.syncStatus = .synced
+            }
         }
-        for pref in pendingPrefs where acceptedIds.contains(pref.id)
-            && pref.lastModified == pushedModified[pref.id] {
-            pref.syncStatus = .synced
+        for pref in pendingPrefs {
+            let key = PushKey("preferences", pref.id)
+            if acceptedKeys.contains(key) && pref.lastModified == pushedModified[key] {
+                pref.syncStatus = .synced
+            }
         }
         // Chat messages are immutable once created — no mid-flight edit race.
-        for message in pendingChat where acceptedIds.contains(message.id) {
+        for message in pendingChat where acceptedKeys.contains(PushKey("chat", message.id)) {
             message.syncStatus = .synced
+        }
+
+        // Every submitted record must be acknowledged one way or another. A
+        // partial results array leaves the missing records safely .pending,
+        // but silence would look like success — surface it.
+        let resultKeys = Set(results.map { PushKey($0.collection, $0.id) })
+        var submittedKeys = Set(pushedModified.keys)
+        for message in pendingChat { submittedKeys.insert(PushKey("chat", message.id)) }
+        guard submittedKeys.isSubset(of: resultKeys) else {
+            throw SyncError.missingPushAcknowledgement
+        }
+    }
+
+    /// Identity of a pushed record on the wire: collection + id. Ids are UUIDs
+    /// and should never collide across collections, but the response carries the
+    /// collection precisely so acknowledgement matching doesn't have to bet on it.
+    private struct PushKey: Hashable {
+        let collection: String
+        let id: UUID
+        init(_ collection: String, _ id: UUID) {
+            self.collection = collection
+            self.id = id
         }
     }
 }

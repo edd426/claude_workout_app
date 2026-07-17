@@ -36,8 +36,10 @@ async function upsertToContainer(
       continue;
     }
 
-    // Last-write-wins check. A read failure means the document doesn't exist
-    // yet, so we fall through and treat the incoming record as new.
+    // Last-write-wins check. Only a confirmed 404 means "new record"; any
+    // other read failure (throttling, timeout, auth, outage) must NOT fall
+    // through to upsert — that would overwrite a possibly-newer server copy
+    // without the LWW comparison ever running.
     let staleConflict = false;
     try {
       const { resource: existing } = await container.item(id, id).read();
@@ -54,8 +56,14 @@ async function upsertToContainer(
           staleConflict = true;
         }
       }
-    } catch {
-      // Document doesn't exist yet — proceed with upsert
+    } catch (err) {
+      const code = (err as { code?: number | string }).code;
+      if (code === 404 || code === "NotFound") {
+        // Document doesn't exist yet — proceed with upsert.
+      } else {
+        results.push({ id, collection: containerName, status: "error" });
+        continue;
+      }
     }
 
     if (staleConflict) {

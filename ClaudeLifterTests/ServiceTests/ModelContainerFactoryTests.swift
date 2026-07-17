@@ -67,19 +67,21 @@ struct ModelContainerFactoryTests {
 
         // A file of garbage bytes is not a SQLite database — open must fail.
         try Data("this is not a database".utf8).write(to: storeURL)
-        var quarantineHookRan = false
+        var hookDestination: URL?
 
         let result = try ModelContainerFactory.make(
             storeURL: storeURL,
             quarantineDirectory: quarantine,
-            onQuarantine: { quarantineHookRan = true }
+            onQuarantine: { hookDestination = $0 }
         )
 
         guard case .quarantined(let destination) = result.outcome else {
             Issue.record("Expected quarantine, got \(result.outcome)")
             return
         }
-        #expect(quarantineHookRan)
+        // The hook must receive the real destination — it records the recovery
+        // location BEFORE the fresh-store attempt, so it can't be wrong.
+        #expect(hookDestination == destination)
 
         // The bytes were moved, not deleted.
         let quarantinedStore = destination.appending(path: "default.store")

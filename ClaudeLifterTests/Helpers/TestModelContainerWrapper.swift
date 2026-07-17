@@ -3,15 +3,15 @@ import SwiftData
 
 /// Namespace for ai-chat tests that call TestModelContainer.makeTestContainer()
 enum TestModelContainer {
+    /// Builds from the app's versioned schema — the same single source as the
+    /// free-function helper. This wrapper used to carry its own inline type
+    /// list that had drifted (it omitted PersonalRecord).
     @MainActor
     static func makeTestContainer() throws -> ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(
-            for: Exercise.self, ExerciseTag.self, WorkoutSet.self,
-            WorkoutExercise.self, TemplateExercise.self, Workout.self,
-            WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
-            TrainingPreference.self,
-            configurations: config
+            for: Schema(versionedSchema: CurrentSchema.self),
+            configurations: [config]
         )
     }
 }

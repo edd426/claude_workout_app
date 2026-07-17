@@ -39,6 +39,7 @@
 		F3216B11087B9D064BBE735A /* AnthropicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11BBBC79FFE09545E46E0D /* AnthropicService.swift */; };
 		3B32199F496CAB6FE95DE206 /* AnthropicServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E7CF96DD47561F6D654A6D0 /* AnthropicServiceProtocol.swift */; };
 		CEB366FC8EADC5EE75DBBA28 /* AutoFillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD8FBCC69E34DDDC11E219B0 /* AutoFillService.swift */; };
+		D94B03409EC3EF99C6CC50A4 /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E694FE6BE485C25598DC26 /* BackupService.swift */; };
 		2C771E09004CA25C30507D6D /* ExerciseImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D93FFC0D359C347B05570ADB /* ExerciseImportService.swift */; };
 		77D1BDDCFB898B669902026C /* ImageUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050AB0BAF86C67AFDD6015F8 /* ImageUploadService.swift */; };
 		34DF7262F9CD14DC65255D34 /* ImageUploadServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3446E7E1633E041806CC3D50 /* ImageUploadServiceProtocol.swift */; };
@@ -147,6 +148,7 @@
 		9CD9913215A03960D38689CB /* WorkoutRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F7907E999B5764AE58C64DE /* WorkoutRepositoryTests.swift */; };
 		C7A29B57895E849549875600 /* AnthropicServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57DB3D4B96160AF45FD47402 /* AnthropicServiceTests.swift */; };
 		55D0200296DD90E01C7C109D /* AutoFillServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B422702EA79DDE8866C5B1 /* AutoFillServiceTests.swift */; };
+		398486E872710A07C9E8DF05 /* BackupServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20369FD1186D4C69566B448 /* BackupServiceTests.swift */; };
 		C97EECE8A12623ED84A48C89 /* BuildInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB00B4674741DE90C09B714F /* BuildInfoTests.swift */; };
 		F6103383559FD5F2FC1F941C /* ChatToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D8413498DFA6B11B17332D /* ChatToolTests.swift */; };
 		707EF5220C619208E9562C65 /* ExerciseImportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1699F48EE9B58D4C4FFD8188 /* ExerciseImportServiceTests.swift */; };
@@ -247,6 +249,7 @@
 		CA11BBBC79FFE09545E46E0D /* AnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicService.swift; sourceTree = "<group>"; };
 		9E7CF96DD47561F6D654A6D0 /* AnthropicServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicServiceProtocol.swift; sourceTree = "<group>"; };
 		BD8FBCC69E34DDDC11E219B0 /* AutoFillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillService.swift; sourceTree = "<group>"; };
+		D3E694FE6BE485C25598DC26 /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
 		D93FFC0D359C347B05570ADB /* ExerciseImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseImportService.swift; sourceTree = "<group>"; };
 		050AB0BAF86C67AFDD6015F8 /* ImageUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageUploadService.swift; sourceTree = "<group>"; };
 		3446E7E1633E041806CC3D50 /* ImageUploadServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageUploadServiceProtocol.swift; sourceTree = "<group>"; };
@@ -355,6 +358,7 @@
 		1F7907E999B5764AE58C64DE /* WorkoutRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRepositoryTests.swift; sourceTree = "<group>"; };
 		57DB3D4B96160AF45FD47402 /* AnthropicServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicServiceTests.swift; sourceTree = "<group>"; };
 		39B422702EA79DDE8866C5B1 /* AutoFillServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillServiceTests.swift; sourceTree = "<group>"; };
+		A20369FD1186D4C69566B448 /* BackupServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupServiceTests.swift; sourceTree = "<group>"; };
 		AB00B4674741DE90C09B714F /* BuildInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfoTests.swift; sourceTree = "<group>"; };
 		C8D8413498DFA6B11B17332D /* ChatToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatToolTests.swift; sourceTree = "<group>"; };
 		1699F48EE9B58D4C4FFD8188 /* ExerciseImportServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseImportServiceTests.swift; sourceTree = "<group>"; };
@@ -528,6 +532,7 @@
 				CA11BBBC79FFE09545E46E0D,
 				9E7CF96DD47561F6D654A6D0,
 				BD8FBCC69E34DDDC11E219B0,
+				D3E694FE6BE485C25598DC26,
 				D93FFC0D359C347B05570ADB,
 				050AB0BAF86C67AFDD6015F8,
 				3446E7E1633E041806CC3D50,
@@ -776,6 +781,7 @@
 			children = (
 				57DB3D4B96160AF45FD47402,
 				39B422702EA79DDE8866C5B1,
+				A20369FD1186D4C69566B448,
 				AB00B4674741DE90C09B714F,
 				C8D8413498DFA6B11B17332D,
 				1699F48EE9B58D4C4FFD8188,
@@ -984,6 +990,7 @@
 				F3216B11087B9D064BBE735A /* AnthropicService.swift in Sources */,
 				3B32199F496CAB6FE95DE206 /* AnthropicServiceProtocol.swift in Sources */,
 				CEB366FC8EADC5EE75DBBA28 /* AutoFillService.swift in Sources */,
+				D94B03409EC3EF99C6CC50A4 /* BackupService.swift in Sources */,
 				2C771E09004CA25C30507D6D /* ExerciseImportService.swift in Sources */,
 				77D1BDDCFB898B669902026C /* ImageUploadService.swift in Sources */,
 				34DF7262F9CD14DC65255D34 /* ImageUploadServiceProtocol.swift in Sources */,
@@ -1099,6 +1106,7 @@
 				9CD9913215A03960D38689CB /* WorkoutRepositoryTests.swift in Sources */,
 				C7A29B57895E849549875600 /* AnthropicServiceTests.swift in Sources */,
 				55D0200296DD90E01C7C109D /* AutoFillServiceTests.swift in Sources */,
+				398486E872710A07C9E8DF05 /* BackupServiceTests.swift in Sources */,
 				C97EECE8A12623ED84A48C89 /* BuildInfoTests.swift in Sources */,
 				F6103383559FD5F2FC1F941C /* ChatToolTests.swift in Sources */,
 				707EF5220C619208E9562C65 /* ExerciseImportServiceTests.swift in Sources */,

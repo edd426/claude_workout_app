@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(\.dependencies) private var deps
@@ -10,6 +12,14 @@ struct SettingsView: View {
     // values eventually match on relaunch, but the live observation was
     // broken.
     @State private var vm: SettingsViewModel?
+
+    // Backup UI state.
+    @State private var shareItem: ShareItem?
+    @State private var isImporting = false
+    @State private var alertMessage: String?
+    /// Path of a store that failed to open and was quarantined (issue #72),
+    /// read once from UserDefaults so the user can find their recovered data.
+    @State private var quarantinePath: String?
 
     @FocusState private var focusedField: Field?
 
@@ -29,6 +39,10 @@ struct SettingsView: View {
                         apiKeySection(vm: vm)
                         if let deps {
                             syncStatusSection(syncManager: deps.syncManager)
+                            backupSection(deps: deps)
+                        }
+                        if let quarantinePath {
+                            quarantineSection(path: quarantinePath)
                         }
                         buildInfoSection
                     }
@@ -37,6 +51,21 @@ struct SettingsView: View {
                     // separate Done button needed.
                     .scrollDismissesKeyboard(.interactively)
                     .onTapGesture { focusedField = nil }
+                    .sheet(item: $shareItem) { item in
+                        ShareSheet(items: [item.url])
+                    }
+                    .fileImporter(
+                        isPresented: $isImporting,
+                        allowedContentTypes: [.json],
+                        allowsMultipleSelection: false
+                    ) { result in
+                        handleImport(result: result)
+                    }
+                    .alert("Backup", isPresented: alertPresented) {
+                        Button("OK", role: .cancel) { alertMessage = nil }
+                    } message: {
+                        Text(alertMessage ?? "")
+                    }
                 } else {
                     ProgressView()
                 }
@@ -44,9 +73,98 @@ struct SettingsView: View {
             .navigationTitle("Settings")
         }
         .task {
+            quarantinePath = UserDefaults.standard.string(forKey: "lastStoreQuarantinePath")
             guard vm == nil, let deps else { return }
             vm = SettingsViewModel(settingsManager: deps.settings)
         }
+    }
+
+    // MARK: - Backup
+
+    private func backupSection(deps: DependencyContainer) -> some View {
+        Section {
+            Button {
+                Task { await exportBackup(deps: deps) }
+            } label: {
+                Label("Export Backup", systemImage: "square.and.arrow.up")
+            }
+            Button {
+                isImporting = true
+            } label: {
+                Label("Import Backup", systemImage: "square.and.arrow.down")
+            }
+        } header: {
+            Text("Backup")
+        } footer: {
+            Text("Export writes a JSON file of all workouts, templates, custom exercises, and preferences that you can save off-device. Import merges a backup file, skipping anything already on this device.")
+                .font(.caption)
+        }
+    }
+
+    private func quarantineSection(path: String) -> some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("A previous database failed to open and was recovered. Your old data was moved here (not deleted):")
+                    .font(.caption)
+                Text(path)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Button("Dismiss") {
+                    UserDefaults.standard.removeObject(forKey: "lastStoreQuarantinePath")
+                    quarantinePath = nil
+                }
+                .font(.caption)
+            }
+        } header: {
+            Text("Store Recovery")
+        }
+    }
+
+    private var alertPresented: Binding<Bool> {
+        Binding(
+            get: { alertMessage != nil },
+            set: { presented in if !presented { alertMessage = nil } }
+        )
+    }
+
+    private func exportBackup(deps: DependencyContainer) async {
+        do {
+            let url = try await deps.backupService.exportBackup()
+            shareItem = ShareItem(url: url)
+        } catch {
+            alertMessage = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func handleImport(result: Result<[URL], Error>) {
+        guard let deps else { return }
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            Task {
+                do {
+                    let summary = try await deps.backupService.importBackup(from: url)
+                    alertMessage = Self.summaryMessage(summary)
+                } catch {
+                    alertMessage = "Import failed: \(error.localizedDescription)"
+                }
+            }
+        case .failure(let error):
+            alertMessage = "Import failed: \(error.localizedDescription)"
+        }
+    }
+
+    private static func summaryMessage(_ summary: BackupImportSummary) -> String {
+        func line(_ label: String, _ result: BackupImportSummary.CollectionResult) -> String {
+            "\(label): \(result.imported) imported, \(result.skipped) skipped"
+        }
+        return [
+            line("Workouts", summary.workouts),
+            line("Templates", summary.templates),
+            line("Custom exercises", summary.customExercises),
+            line("Preferences", summary.preferences)
+        ].joined(separator: "\n")
     }
 
     private func weightUnitSection(vm: SettingsViewModel) -> some View {
@@ -161,6 +279,26 @@ struct SettingsView: View {
             Text("About")
         }
     }
+}
+
+// MARK: - Backup share sheet helpers
+
+/// Identifiable wrapper so a freshly-exported file URL can drive `.sheet(item:)`.
+private struct ShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+/// Bridges `UIActivityViewController` so the exported backup file can be shared
+/// (AirDrop, Files, Mail, etc.) from SwiftUI.
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Sync state UI (also used by HomeView)

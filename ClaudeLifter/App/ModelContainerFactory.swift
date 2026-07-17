@@ -33,11 +33,13 @@ enum ModelContainerFactory {
 
     /// Create the container at `storeURL`, migrating via `ClaudeLifterMigrationPlan`.
     /// On open failure, quarantine the store files and retry with a fresh store.
-    /// `onQuarantine` runs after files are moved (e.g. reset import flags).
+    /// `onQuarantine` receives the quarantine destination and runs BEFORE the
+    /// fresh-store attempt, so the recovery location is recorded even if that
+    /// second attempt also fails and the app aborts.
     static func make(
         storeURL: URL = defaultStoreURL,
         quarantineDirectory: URL = defaultQuarantineDirectory,
-        onQuarantine: () -> Void = {}
+        onQuarantine: (URL) -> Void = { _ in }
     ) throws -> Result {
         let schema = Schema(versionedSchema: CurrentSchema.self)
         let configuration = ModelConfiguration(schema: schema, url: storeURL)
@@ -55,7 +57,7 @@ enum ModelContainerFactory {
                 into: quarantineDirectory,
                 openError: error
             )
-            onQuarantine()
+            onQuarantine(destination)
             let container = try ModelContainer(
                 for: schema,
                 migrationPlan: ClaudeLifterMigrationPlan.self,
@@ -73,9 +75,12 @@ enum ModelContainerFactory {
         openError: Error
     ) throws -> URL {
         let fm = FileManager.default
+        // UUID suffix: the timestamp alone has one-second granularity, and two
+        // recovery attempts in the same second must not collide.
         let stamp = ISO8601DateFormatter().string(from: .now)
             .replacingOccurrences(of: ":", with: "-")
-        let destination = quarantineDirectory.appending(path: stamp)
+            + "-" + UUID().uuidString.prefix(8)
+        let destination = quarantineDirectory.appending(path: String(stamp))
         try fm.createDirectory(at: destination, withIntermediateDirectories: true)
 
         let storeName = storeURL.lastPathComponent

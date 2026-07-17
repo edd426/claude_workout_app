@@ -24,18 +24,20 @@ struct ClaudeLifterApp: App {
                     configurations: [config]
                 )
             } else {
-                let result = try ModelContainerFactory.make(onQuarantine: {
-                    // Fresh store: bundled exercises must re-import on next launch.
+                let result = try ModelContainerFactory.make(onQuarantine: { destination in
+                    // Fresh store: bundled exercises must re-import.
                     UserDefaults.standard.removeObject(forKey: "hasImportedExercises")
                     UserDefaults.standard.removeObject(forKey: "hasPopulatedImageURLs")
-                })
-                if case .quarantined(let destination) = result.outcome {
-                    // Recorded so the UI can surface the recovery instead of it
-                    // passing silently; the quarantined files are recoverable.
+                    // Reset the sync cursor — a fresh store must pull the FULL
+                    // history. Keeping the old cursor makes the first pull skip
+                    // everything older than it: an empty restore that looks synced.
+                    UserDefaults.standard.removeObject(forKey: "lastSyncTimestamp")
+                    // Recorded before the fresh-store attempt so the recovery
+                    // location survives even if that attempt fails too.
                     UserDefaults.standard.set(
                         destination.path, forKey: "lastStoreQuarantinePath"
                     )
-                }
+                })
                 container = result.container
             }
             modelContainer = container

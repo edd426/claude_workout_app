@@ -9,12 +9,23 @@ struct PRDetectionServiceTests {
 
     // MARK: - Helpers
 
-    func makeSetup() throws -> (ModelContext, PRDetectionService) {
+    /// Holds the container alongside the context: returning only the context
+    /// deallocated the container at helper return, and the iOS 26.5 SwiftData
+    /// runtime traps on any use of a context whose container is gone (the
+    /// 26.2 runtime silently tolerated it — all 8 persistence tests here
+    /// crashed with SIGTRAP after the toolchain update).
+    struct Setup {
+        let container: ModelContainer
+        let context: ModelContext
+        let service: PRDetectionService
+    }
+
+    func makeSetup() throws -> Setup {
         let container = try makeTestContainer()
         let context = container.mainContext
         let prRepo = SwiftDataPersonalRecordRepository(context: context)
         let service = PRDetectionService(prRepository: prRepo)
-        return (context, service)
+        return Setup(container: container, context: context, service: service)
     }
 
     func insertWorkout(context: ModelContext, exercise: Exercise, sets: [(weight: Double, reps: Int)]) -> Workout {
@@ -35,7 +46,8 @@ struct PRDetectionServiceTests {
 
     @Test("Detects heaviest weight PR")
     func detectsHeaviestWeightPR() async throws {
-        let (context, service) = try makeSetup()
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
         let exercise = TestFixtures.makeExercise(name: "Bench Press")
         context.insert(exercise)
 
@@ -49,7 +61,8 @@ struct PRDetectionServiceTests {
 
     @Test("Detects most reps at weight PR")
     func detectsMostRepsAtWeightPR() async throws {
-        let (context, service) = try makeSetup()
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
         let exercise = TestFixtures.makeExercise(name: "Bench Press")
         context.insert(exercise)
 
@@ -64,7 +77,8 @@ struct PRDetectionServiceTests {
 
     @Test("Detects highest estimated 1RM PR")
     func detectsHighest1RMPR() async throws {
-        let (context, service) = try makeSetup()
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
         let exercise = TestFixtures.makeExercise(name: "Bench Press")
         context.insert(exercise)
 
@@ -79,7 +93,8 @@ struct PRDetectionServiceTests {
 
     @Test("Does not create PR if existing record is higher")
     func doesNotCreatePRIfExistingIsHigher() async throws {
-        let (context, service) = try makeSetup()
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
         let exercise = TestFixtures.makeExercise(name: "Bench Press")
         context.insert(exercise)
         let workoutId = UUID()
@@ -113,7 +128,8 @@ struct PRDetectionServiceTests {
 
     @Test("Multiple PRs detected in single workout for different exercises")
     func multiplePRsForDifferentExercises() async throws {
-        let (context, service) = try makeSetup()
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
         let bench = TestFixtures.makeExercise(name: "Bench Press")
         let squat = TestFixtures.makeSquat()
         context.insert(bench)
@@ -146,7 +162,8 @@ struct PRDetectionServiceTests {
 
     @Test("First-ever exercise: all completed sets create PRs")
     func firstEverExerciseAllSetsArePRs() async throws {
-        let (context, service) = try makeSetup()
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
         let exercise = TestFixtures.makeExercise(name: "Overhead Press")
         context.insert(exercise)
 
@@ -163,7 +180,8 @@ struct PRDetectionServiceTests {
 
     @Test("Returns empty array for workout with no completed sets")
     func emptyArrayForNoCompletedSets() async throws {
-        let (context, service) = try makeSetup()
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
         let exercise = TestFixtures.makeExercise(name: "Bench Press")
         context.insert(exercise)
 
@@ -183,7 +201,8 @@ struct PRDetectionServiceTests {
 
     @Test("PR detection is per-exercise, not global")
     func prDetectionIsPerExercise() async throws {
-        let (context, service) = try makeSetup()
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
         let bench = TestFixtures.makeExercise(name: "Bench Press")
         let squat = TestFixtures.makeSquat()
         context.insert(bench)

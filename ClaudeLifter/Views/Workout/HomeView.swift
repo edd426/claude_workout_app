@@ -4,6 +4,7 @@ struct HomeView: View {
     @Environment(\.dependencies) private var deps
     @Environment(AppState.self) private var appState
     @State private var vm: HomeViewModel?
+    @State private var bodyWeightVM: BodyWeightViewModel?
     @State private var showTemplateEditor = false
     @State private var unreadInsights: [ProactiveInsight] = []
     @State private var path = NavigationPath()
@@ -31,6 +32,13 @@ struct HomeView: View {
                     workoutRepository: deps.workoutRepository
                 )
                 await vm?.loadTemplates()
+            }
+            if bodyWeightVM == nil {
+                bodyWeightVM = BodyWeightViewModel(
+                    repository: deps.bodyWeightRepository,
+                    healthKit: deps.healthKitService,
+                    settings: deps.settings
+                )
             }
             // Honour the user's Settings toggle — don't even fetch insight
             // cards if they're disabled. Prevents a "pile up after weeks
@@ -69,6 +77,9 @@ struct HomeView: View {
                 // serverURL guard. Rendered as a no-op for every other state, so
                 // the configured-and-working case adds no chrome here.
                 SyncStateBanner(state: deps.syncManager.state)
+            }
+            if let bodyWeightVM {
+                BodyWeightCard(vm: bodyWeightVM)
             }
             if !unreadInsights.isEmpty {
                 insightCardsSection

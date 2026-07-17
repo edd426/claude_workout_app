@@ -643,9 +643,12 @@ common_release['VALIDATE_PRODUCT'] = 'YES'
 app_settings = {
     'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon',
     'CODE_SIGN_STYLE': 'Automatic',
+    'CODE_SIGN_ENTITLEMENTS': 'ClaudeLifter/ClaudeLifter.entitlements',
     'DEVELOPMENT_TEAM': '738XNTWZ5K',
     'CURRENT_PROJECT_VERSION': '1',
     'GENERATE_INFOPLIST_FILE': 'YES',
+    'INFOPLIST_KEY_NSHealthShareUsageDescription': '"Reads body-weight entries from Health so weights logged elsewhere appear here."',
+    'INFOPLIST_KEY_NSHealthUpdateUsageDescription': '"Writes body-weight entries you log here to Health."',
     'INFOPLIST_KEY_UIApplicationSceneManifest_Generation': 'YES',
     'INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents': 'YES',
     'INFOPLIST_KEY_UILaunchScreen_Generation': 'YES',

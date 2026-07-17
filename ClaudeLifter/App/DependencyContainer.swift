@@ -17,6 +17,8 @@ final class DependencyContainer {
     let anthropicService: any AnthropicServiceProtocol
     let insightGenerationService: any InsightGenerationServiceProtocol
     let backupService: any BackupServiceProtocol
+    let bodyWeightRepository: any BodyWeightRepository
+    let healthKitService: any HealthKitServiceProtocol
     let syncManager: SyncManager
     /// Exposed so ViewModels (ChatViewModel especially) can read the user's
     /// selected AI model. Previously this was built inside init() but not
@@ -54,6 +56,8 @@ final class DependencyContainer {
         )
         self.networkService = network
         self.imageUploadService = ImageUploadService(networkService: network)
+        self.bodyWeightRepository = SwiftDataBodyWeightRepository(context: modelContext)
+        self.healthKitService = HealthKitService()
 
         // Use proxy when serverURL is configured (Phase 2), fall back to direct API key (Phase 1)
         let anthropic: any AnthropicServiceProtocol

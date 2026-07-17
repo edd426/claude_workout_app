@@ -147,8 +147,30 @@ struct SyncPushRequest: Codable, Sendable {
     let preferences: [PreferenceDTO]
 }
 
+struct SyncPushRecordResult: Codable, Sendable {
+    let id: UUID
+    let collection: String
+    let status: String  // "accepted" | "conflict" | "error"
+}
+
 struct SyncPushResponse: Codable, Sendable {
     let accepted: Int
     let conflicts: Int
     let serverTimestamp: Date
+    /// Per-record outcomes (issue #74). `nil` when talking to a legacy server
+    /// that predates per-record acknowledgement — the client then refuses to
+    /// mark anything synced rather than guess.
+    let results: [SyncPushRecordResult]?
+
+    init(
+        accepted: Int,
+        conflicts: Int,
+        serverTimestamp: Date,
+        results: [SyncPushRecordResult]? = nil
+    ) {
+        self.accepted = accepted
+        self.conflicts = conflicts
+        self.serverTimestamp = serverTimestamp
+        self.results = results
+    }
 }

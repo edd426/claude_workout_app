@@ -6,7 +6,11 @@ import {
 } from "@azure/functions";
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
-import { SyncPushRequest, SyncPushResponse } from "../shared/types";
+import {
+  SyncPushRequest,
+  SyncPushResponse,
+  SyncPushRecordResult,
+} from "../shared/types";
 
 const VALID_COLLECTIONS = [
   "workouts",
@@ -16,58 +20,60 @@ const VALID_COLLECTIONS = [
   "preferences",
 ];
 
-interface UpsertResult {
-  accepted: number;
-  conflicts: number;
-}
-
 async function upsertToContainer(
   containerName: string,
   records: Record<string, unknown>[]
-): Promise<UpsertResult> {
+): Promise<SyncPushRecordResult[]> {
   const database = getDatabase();
   const container = database.container(containerName);
-  let accepted = 0;
-  let conflicts = 0;
+  const results: SyncPushRecordResult[] = [];
 
   for (const record of records) {
     const id = record["id"] as string;
     if (!id) {
-      conflicts++;
+      // Validation failure — surfaced as an error, never counted as a conflict.
+      results.push({ id: id ?? "", collection: containerName, status: "error" });
       continue;
     }
 
+    // Last-write-wins check. A read failure means the document doesn't exist
+    // yet, so we fall through and treat the incoming record as new.
+    let staleConflict = false;
     try {
-      // Try to read the existing document
       const { resource: existing } = await container.item(id, id).read();
 
       if (existing) {
         const existingModified = existing["lastModified"] as string | undefined;
         const incomingModified = record["lastModified"] as string | undefined;
 
-        // Last-write-wins: only overwrite if incoming is newer
         if (
           existingModified &&
           incomingModified &&
           incomingModified <= existingModified
         ) {
-          conflicts++;
-          continue;
+          staleConflict = true;
         }
       }
     } catch {
       // Document doesn't exist yet — proceed with upsert
     }
 
+    if (staleConflict) {
+      // Incoming record lost LWW — existing server copy is kept, not written.
+      results.push({ id, collection: containerName, status: "conflict" });
+      continue;
+    }
+
     try {
       await container.items.upsert(record);
-      accepted++;
+      results.push({ id, collection: containerName, status: "accepted" });
     } catch {
-      conflicts++;
+      // Upsert threw — do NOT report this as synced (previously folded into conflicts).
+      results.push({ id, collection: containerName, status: "error" });
     }
   }
 
-  return { accepted, conflicts };
+  return results;
 }
 
 app.http("syncPush", {
@@ -92,22 +98,20 @@ app.http("syncPush", {
     }
 
     try {
-      let totalAccepted = 0;
-      let totalConflicts = 0;
+      const results: SyncPushRecordResult[] = [];
 
       for (const collection of VALID_COLLECTIONS) {
         const records = body[collection as keyof SyncPushRequest];
         if (records && records.length > 0) {
-          const result = await upsertToContainer(collection, records);
-          totalAccepted += result.accepted;
-          totalConflicts += result.conflicts;
+          results.push(...(await upsertToContainer(collection, records)));
         }
       }
 
       const response: SyncPushResponse = {
-        accepted: totalAccepted,
-        conflicts: totalConflicts,
+        accepted: results.filter((r) => r.status === "accepted").length,
+        conflicts: results.filter((r) => r.status === "conflict").length,
         serverTimestamp: new Date().toISOString(),
+        results,
       };
 
       return { jsonBody: response };

@@ -207,6 +207,15 @@ final class SyncManager {
 
         guard hasAnything else { return }
 
+        // Snapshot lastModified at push time: a record edited while the POST is
+        // in flight must stay .pending — the server acknowledged the old payload,
+        // not the edit (issue #74).
+        var pushedModified: [UUID: Date] = [:]
+        for workout in pendingWorkouts { pushedModified[workout.id] = workout.lastModified }
+        for template in pendingTemplates { pushedModified[template.id] = template.lastModified }
+        for insight in pendingInsights { pushedModified[insight.id] = insight.lastModified }
+        for pref in pendingPrefs { pushedModified[pref.id] = pref.lastModified }
+
         let request = SyncPushRequest(
             workouts: pendingWorkouts.map { SyncMapper.toDTO($0) },
             templates: pendingTemplates.map { SyncMapper.toDTO($0) },
@@ -215,26 +224,40 @@ final class SyncManager {
             preferences: pendingPrefs.map { SyncMapper.toDTO($0) }
         )
 
-        let _: SyncPushResponse = try await networkService.post(
+        let response: SyncPushResponse = try await networkService.post(
             endpoint: "/api/sync/push",
             body: request
         )
 
-        // Mark all as synced
-        for workout in pendingWorkouts {
+        guard let results = response.results else {
+            // Legacy server without per-record acknowledgement. Marking records
+            // synced on faith is the issue-#74 data loss; keeping them .pending
+            // is safe — upserts are idempotent, so they re-push next cycle.
+            throw SyncError.missingPushAcknowledgement
+        }
+        let acceptedIds = Set(results.lazy.filter { $0.status == "accepted" }.map(\.id))
+
+        // Mark synced only what the server accepted AND what wasn't edited
+        // mid-flight. Everything else stays .pending and retries.
+        for workout in pendingWorkouts where acceptedIds.contains(workout.id)
+            && workout.lastModified == pushedModified[workout.id] {
             workout.syncStatus = .synced
         }
-        for template in pendingTemplates {
+        for template in pendingTemplates where acceptedIds.contains(template.id)
+            && template.lastModified == pushedModified[template.id] {
             template.syncStatus = .synced
         }
-        for message in pendingChat {
-            message.syncStatus = .synced
-        }
-        for insight in pendingInsights {
+        for insight in pendingInsights where acceptedIds.contains(insight.id)
+            && insight.lastModified == pushedModified[insight.id] {
             insight.syncStatus = .synced
         }
-        for pref in pendingPrefs {
+        for pref in pendingPrefs where acceptedIds.contains(pref.id)
+            && pref.lastModified == pushedModified[pref.id] {
             pref.syncStatus = .synced
+        }
+        // Chat messages are immutable once created — no mid-flight edit race.
+        for message in pendingChat where acceptedIds.contains(message.id) {
+            message.syncStatus = .synced
         }
     }
 }

@@ -20,10 +20,21 @@ export interface SyncPushRequest {
   preferences?: Record<string, unknown>[];
 }
 
+export type SyncPushRecordStatus = "accepted" | "conflict" | "error";
+
+export interface SyncPushRecordResult {
+  id: string;
+  collection: string;
+  status: SyncPushRecordStatus;
+}
+
 export interface SyncPushResponse {
   accepted: number;
   conflicts: number;
   serverTimestamp: string;
+  // Per-record outcome for every submitted record. `accepted`/`conflicts` remain
+  // for backward compatibility; older clients ignore this added field.
+  results: SyncPushRecordResult[];
 }
 
 export interface SasRequest {

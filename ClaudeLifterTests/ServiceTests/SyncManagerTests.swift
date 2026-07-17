@@ -24,7 +24,10 @@ struct SyncManagerTests {
 
         let network = MockNetworkService()
         network.setResponse(
-            SyncPushResponse(accepted: 1, conflicts: 0, serverTimestamp: Date()),
+            SyncPushResponse(
+                accepted: 1, conflicts: 0, serverTimestamp: Date(),
+                results: [SyncPushRecordResult(id: pending.id, collection: "workouts", status: "accepted")]
+            ),
             forEndpoint: "/api/sync/push"
         )
 
@@ -65,7 +68,10 @@ struct SyncManagerTests {
 
         let network = MockNetworkService()
         network.setResponse(
-            SyncPushResponse(accepted: 1, conflicts: 0, serverTimestamp: Date()),
+            SyncPushResponse(
+                accepted: 1, conflicts: 0, serverTimestamp: Date(),
+                results: [SyncPushRecordResult(id: pending.id, collection: "workouts", status: "accepted")]
+            ),
             forEndpoint: "/api/sync/push"
         )
 
@@ -87,6 +93,135 @@ struct SyncManagerTests {
 
         let workouts = try await workoutRepo.fetchAll()
         #expect(workouts[0].syncStatus == .synced)
+    }
+
+    @Test("push keeps rejected records pending and marks accepted synced")
+    func pushKeepsRejectedPending() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let accepted = Workout(name: "Accepted", startedAt: .now, syncStatus: .pending)
+        let rejected = Workout(name: "Rejected", startedAt: .now, syncStatus: .pending)
+        let errored = Workout(name: "Errored", startedAt: .now, syncStatus: .pending)
+        context.insert(accepted)
+        context.insert(rejected)
+        context.insert(errored)
+        try context.save()
+
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let network = MockNetworkService()
+        network.setResponse(
+            SyncPushResponse(
+                accepted: 1, conflicts: 1, serverTimestamp: Date(),
+                results: [
+                    SyncPushRecordResult(id: accepted.id, collection: "workouts", status: "accepted"),
+                    SyncPushRecordResult(id: rejected.id, collection: "workouts", status: "conflict"),
+                    SyncPushRecordResult(id: errored.id, collection: "workouts", status: "error")
+                ]
+            ),
+            forEndpoint: "/api/sync/push"
+        )
+
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-reject-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+
+        let manager = SyncManager(
+            workoutRepository: workoutRepo,
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            chatRepository: SwiftDataChatMessageRepository(context: context),
+            insightRepository: SwiftDataInsightRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            settings: settings
+        )
+
+        try await manager.push()
+
+        // Rejected and errored records must stay .pending so they retry;
+        // marking them .synced is the issue-#74 silent data loss.
+        #expect(accepted.syncStatus == .synced)
+        #expect(rejected.syncStatus == .pending)
+        #expect(errored.syncStatus == .pending)
+    }
+
+    @Test("push against a server without per-record results marks nothing synced")
+    func pushLegacyServerMarksNothingSynced() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let pending = Workout(name: "Keep Me Pending", startedAt: .now, syncStatus: .pending)
+        context.insert(pending)
+        try context.save()
+
+        let network = MockNetworkService()
+        // Legacy server response: no `results` field.
+        network.setResponse(
+            SyncPushResponse(accepted: 1, conflicts: 0, serverTimestamp: Date()),
+            forEndpoint: "/api/sync/push"
+        )
+
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-legacy-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+
+        let manager = SyncManager(
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            chatRepository: SwiftDataChatMessageRepository(context: context),
+            insightRepository: SwiftDataInsightRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            settings: settings
+        )
+
+        await #expect(throws: SyncError.self) {
+            try await manager.push()
+        }
+        #expect(pending.syncStatus == .pending)
+    }
+
+    @Test("edit made while push is in flight is not marked synced")
+    func inFlightEditStaysPending() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let workout = Workout(name: "Edited Mid-Push", startedAt: .now, syncStatus: .pending)
+        context.insert(workout)
+        try context.save()
+
+        let network = MockNetworkService()
+        network.setResponse(
+            SyncPushResponse(
+                accepted: 1, conflicts: 0, serverTimestamp: Date(),
+                results: [SyncPushRecordResult(id: workout.id, collection: "workouts", status: "accepted")]
+            ),
+            forEndpoint: "/api/sync/push"
+        )
+        // Simulate the user editing the workout while the POST is in flight.
+        network.onPost = {
+            workout.recordChange()
+        }
+
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-inflight-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+
+        let manager = SyncManager(
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            chatRepository: SwiftDataChatMessageRepository(context: context),
+            insightRepository: SwiftDataInsightRepository(context: context),
+            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            settings: settings
+        )
+
+        try await manager.push()
+
+        // The mid-flight edit set lastModified past the pushed snapshot; the
+        // server acknowledged the OLD payload, so the edit must remain pending.
+        #expect(workout.syncStatus == .pending)
     }
 
     @Test("push skips network call when nothing is pending")

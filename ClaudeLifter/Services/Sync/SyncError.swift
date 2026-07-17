@@ -6,6 +6,7 @@ enum SyncError: Error, LocalizedError {
     case serverError(Int)
     case networkUnavailable
     case decodingError(Error)
+    case missingPushAcknowledgement
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +20,8 @@ enum SyncError: Error, LocalizedError {
             return "Network unavailable. Changes will sync when connectivity is restored."
         case .decodingError(let underlying):
             return "Failed to decode server response: \(underlying.localizedDescription)"
+        case .missingPushAcknowledgement:
+            return "Sync server is outdated (no per-record results). Deploy the updated Azure Functions; local changes are kept and will retry."
         }
     }
 }

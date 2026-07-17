@@ -16,9 +16,15 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
         responses[endpoint] = value
     }
 
+    /// Runs mid-request, after the call is recorded and before the response is
+    /// returned — lets tests simulate mutations that happen while a POST is in
+    /// flight (issue #74's edit-during-push race).
+    var onPost: (@MainActor () -> Void)?
+
     func post<R: Decodable & Sendable>(endpoint: String, body: some Encodable & Sendable) async throws -> R {
         postCallCount += 1
         lastPostEndpoint = endpoint
+        if let onPost { await onPost() }
         if let error = errorToThrow { throw error }
         guard let value = responses[endpoint] as? R else {
             throw SyncError.serverError(500)

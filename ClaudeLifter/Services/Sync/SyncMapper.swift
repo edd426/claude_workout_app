@@ -108,16 +108,6 @@ enum SyncMapper {
 
     // MARK: - DTO → Model (update existing model from DTO, last-write-wins)
 
-    /// Simple scalar-only update (no nested exercises). Used when exerciseRepository is unavailable.
-    static func applyDTO(_ dto: WorkoutDTO, to workout: Workout) {
-        workout.name = dto.name
-        workout.templateId = dto.templateId
-        workout.completedAt = dto.completedAt
-        workout.notes = dto.notes
-        workout.lastModified = dto.lastModified
-        workout.syncStatus = .synced
-    }
-
     /// Full merge including nested exercises and sets.
     @MainActor
     static func applyDTO(
@@ -174,17 +164,6 @@ enum SyncMapper {
                 }
             }
         }
-    }
-
-    /// Simple scalar-only update (no nested exercises).
-    static func applyDTO(_ dto: TemplateDTO, to template: WorkoutTemplate) {
-        template.name = dto.name
-        template.notes = dto.notes
-        template.updatedAt = dto.updatedAt
-        template.lastPerformedAt = dto.lastPerformedAt
-        template.timesPerformed = dto.timesPerformed
-        template.lastModified = dto.lastModified
-        template.syncStatus = .synced
     }
 
     /// Full merge including nested template exercises.

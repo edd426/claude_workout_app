@@ -50,7 +50,10 @@ final class SyncManager {
     private let insightRepository: any InsightRepository
     private let preferenceRepository: any TrainingPreferenceRepository
     private let networkService: any NetworkServiceProtocol
-    private let exerciseRepository: (any ExerciseRepository)?
+    /// Required: pull cannot reconstruct workouts/templates without resolving
+    /// exercise references. Optional-with-nil-default is how issue #73 happened —
+    /// production omitted it and restores silently skipped everything.
+    private let exerciseRepository: any ExerciseRepository
     private let settings: SettingsManager
 
     private var pathMonitor: NWPathMonitor?
@@ -63,7 +66,7 @@ final class SyncManager {
         insightRepository: any InsightRepository,
         preferenceRepository: any TrainingPreferenceRepository,
         networkService: any NetworkServiceProtocol,
-        exerciseRepository: (any ExerciseRepository)? = nil,
+        exerciseRepository: any ExerciseRepository,
         settings: SettingsManager
     ) {
         self.workoutRepository = workoutRepository
@@ -142,14 +145,10 @@ final class SyncManager {
         for dto in response.workouts {
             if let local = try await workoutRepository.fetch(id: dto.id) {
                 if dto.lastModified > local.lastModified {
-                    if let exerciseRepo = exerciseRepository {
-                        try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepo)
-                    } else {
-                        SyncMapper.applyDTO(dto, to: local)
-                    }
+                    try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepository)
                 }
-            } else if let exerciseRepo = exerciseRepository {
-                let workout = try await SyncMapper.createWorkout(from: dto, exerciseRepository: exerciseRepo)
+            } else {
+                let workout = try await SyncMapper.createWorkout(from: dto, exerciseRepository: exerciseRepository)
                 try await workoutRepository.save(workout)
             }
         }
@@ -158,14 +157,10 @@ final class SyncManager {
         for dto in response.templates {
             if let local = try await templateRepository.fetch(id: dto.id) {
                 if dto.lastModified > local.lastModified {
-                    if let exerciseRepo = exerciseRepository {
-                        try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepo)
-                    } else {
-                        SyncMapper.applyDTO(dto, to: local)
-                    }
+                    try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepository)
                 }
-            } else if let exerciseRepo = exerciseRepository {
-                let template = try await SyncMapper.createTemplate(from: dto, exerciseRepository: exerciseRepo)
+            } else {
+                let template = try await SyncMapper.createTemplate(from: dto, exerciseRepository: exerciseRepository)
                 try await templateRepository.save(template)
             }
         }

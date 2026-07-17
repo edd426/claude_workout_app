@@ -33,11 +33,12 @@ final class DependencyContainer {
         let chatRepo = SwiftDataChatMessageRepository(context: modelContext)
         let prefRepo = SwiftDataTrainingPreferenceRepository(context: modelContext)
         let insightRepo = SwiftDataInsightRepository(context: modelContext)
+        let exerciseRepo = SwiftDataExerciseRepository(context: modelContext)
         let network = NetworkService(settings: settings)
 
         self.workoutRepository = workoutRepo
         self.templateRepository = templateRepo
-        self.exerciseRepository = SwiftDataExerciseRepository(context: modelContext)
+        self.exerciseRepository = exerciseRepo
         self.chatRepository = chatRepo
         self.preferenceRepository = prefRepo
         self.insightRepository = insightRepo
@@ -68,6 +69,7 @@ final class DependencyContainer {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: exerciseRepo,
             settings: settings
         )
     }

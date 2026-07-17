@@ -38,6 +38,7 @@ struct SyncManagerTests {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
 
@@ -78,6 +79,7 @@ struct SyncManagerTests {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
 
@@ -109,6 +111,7 @@ struct SyncManagerTests {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
 
@@ -151,6 +154,7 @@ struct SyncManagerTests {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
 
@@ -193,6 +197,7 @@ struct SyncManagerTests {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
 
@@ -225,6 +230,7 @@ struct SyncManagerTests {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
 
@@ -297,6 +303,66 @@ struct SyncManagerTests {
         #expect(workouts[0].name == "Server Workout")
         #expect(workouts[0].exercises.count == 1)
         #expect(workouts[0].exercises[0].sets.count == 1)
+    }
+
+    @Test("restore round-trip: pull inserts new templates with their exercises")
+    func restoreRoundTripInsertsTemplatesWithExercises() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        try context.save()
+
+        let workoutRepo = SwiftDataWorkoutRepository(context: context)
+        let templateRepo = SwiftDataTemplateRepository(context: context)
+        let chatRepo = SwiftDataChatMessageRepository(context: context)
+        let insightRepo = SwiftDataInsightRepository(context: context)
+        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
+
+        let teDTO = TemplateExerciseDTO(
+            id: UUID(), exerciseId: exercise.id, order: 0,
+            defaultSets: 3, defaultReps: 8, defaultWeight: 60.0,
+            defaultRestSeconds: 90, notes: nil
+        )
+        let templateDTO = TemplateDTO(
+            id: UUID(), name: "Server Push Day", notes: nil,
+            createdAt: Date(), updatedAt: Date(), lastPerformedAt: nil,
+            timesPerformed: 0, lastModified: Date(), exercises: [teDTO]
+        )
+
+        let network = MockNetworkService()
+        network.setResponse(
+            SyncPullResponse(
+                workouts: [], templates: [templateDTO], chat: [],
+                insights: [], preferences: [], serverTimestamp: Date()
+            ),
+            forEndpoint: "/api/sync/pull"
+        )
+
+        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-restore-\(UUID())")!)
+        settings.serverURL = "https://example.com"
+
+        // Mirrors DependencyContainer's SyncManager construction. Guards issue #73:
+        // production omitted exerciseRepository, so a fresh install restored nothing.
+        let manager = SyncManager(
+            workoutRepository: workoutRepo,
+            templateRepository: templateRepo,
+            chatRepository: chatRepo,
+            insightRepository: insightRepo,
+            preferenceRepository: prefRepo,
+            networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            settings: settings
+        )
+
+        try await manager.pull()
+
+        let templates = try await templateRepo.fetchAll()
+        #expect(templates.count == 1)
+        #expect(templates.first?.name == "Server Push Day")
+        #expect(templates.first?.exercises.count == 1)
+        #expect(templates.first?.exercises.first?.defaultSets == 3)
     }
 
     @Test("pull inserts new insights from server")
@@ -385,6 +451,7 @@ struct SyncManagerTests {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
 
@@ -590,6 +657,7 @@ struct SyncManagerTests {
             insightRepository: insightRepo,
             preferenceRepository: prefRepo,
             networkService: network,
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
 
@@ -622,6 +690,7 @@ struct SyncStateTests {
             insightRepository: SwiftDataInsightRepository(context: context),
             preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
             networkService: MockNetworkService(),
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
         return (manager, settings)

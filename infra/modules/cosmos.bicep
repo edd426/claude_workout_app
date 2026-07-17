@@ -30,9 +30,12 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     capabilities: []
     backupPolicy: {
       type: 'Periodic'
+      // Two backup copies are free; copies = retention / interval, so keep the
+      // ratio at exactly 2. Daily + 48h beats the old 4h + 8h: a data-loss
+      // incident is rarely noticed within 8 hours (issue #73).
       periodicModeProperties: {
-        backupIntervalInMinutes: 240
-        backupRetentionIntervalInHours: 8
+        backupIntervalInMinutes: 1440
+        backupRetentionIntervalInHours: 48
         backupStorageRedundancy: 'Local'
       }
     }

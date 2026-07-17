@@ -152,7 +152,8 @@ struct SyncMapperTests {
     // MARK: - applyDTO (reverse mapping)
 
     @Test("applyDTO updates workout fields from WorkoutDTO")
-    func applyWorkoutDTO() {
+    @MainActor
+    func applyWorkoutDTO() async throws {
         let workout = TestFixtures.makeWorkout(name: "Old Name")
         let newModified = Date(timeIntervalSinceNow: 100)
         let dto = WorkoutDTO(
@@ -165,7 +166,7 @@ struct SyncMapperTests {
             lastModified: newModified,
             exercises: []
         )
-        SyncMapper.applyDTO(dto, to: workout)
+        try await SyncMapper.applyDTO(dto, to: workout, exerciseRepository: MockExerciseRepository())
         #expect(workout.name == "New Name")
         #expect(workout.notes == "updated notes")
         #expect(workout.lastModified == newModified)
@@ -173,7 +174,8 @@ struct SyncMapperTests {
     }
 
     @Test("applyDTO marks workout as synced")
-    func applyWorkoutDTOMarksSynced() {
+    @MainActor
+    func applyWorkoutDTOMarksSynced() async throws {
         let workout = TestFixtures.makeWorkout()
         #expect(workout.syncStatus == .pending)
         let dto = WorkoutDTO(
@@ -186,7 +188,7 @@ struct SyncMapperTests {
             lastModified: .now,
             exercises: []
         )
-        SyncMapper.applyDTO(dto, to: workout)
+        try await SyncMapper.applyDTO(dto, to: workout, exerciseRepository: MockExerciseRepository())
         #expect(workout.syncStatus == .synced)
     }
 

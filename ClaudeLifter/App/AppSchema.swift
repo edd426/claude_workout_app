@@ -20,17 +20,39 @@ enum ClaudeLifterSchemaV1: VersionedSchema {
     }
 }
 
+/// V2 (issue #80): adds `BodyWeightEntry`. V1 above is IMMUTABLE history —
+/// never edit an existing version's model list; add a new version and a stage.
+enum ClaudeLifterSchemaV2: VersionedSchema {
+    static let versionIdentifier = Schema.Version(2, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [
+            Exercise.self, ExerciseTag.self, WorkoutSet.self,
+            WorkoutExercise.self, TemplateExercise.self, Workout.self,
+            WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
+            TrainingPreference.self, PersonalRecord.self,
+            BodyWeightEntry.self
+        ]
+    }
+}
+
 /// The schema version the app currently runs.
-typealias CurrentSchema = ClaudeLifterSchemaV1
+typealias CurrentSchema = ClaudeLifterSchemaV2
 
 enum ClaudeLifterMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [ClaudeLifterSchemaV1.self]
+        [ClaudeLifterSchemaV1.self, ClaudeLifterSchemaV2.self]
     }
 
-    /// Empty until a V2 exists. A schema change without a stage here will fail
-    /// container creation — which now quarantines instead of wiping (issue #72).
+    /// V1→V2 is purely additive (one new model), so lightweight migration
+    /// suffices. A schema change without a stage here fails container
+    /// creation — which quarantines instead of wiping (issue #72).
     static var stages: [MigrationStage] {
-        []
+        [migrateV1toV2]
     }
+
+    static let migrateV1toV2 = MigrationStage.lightweight(
+        fromVersion: ClaudeLifterSchemaV1.self,
+        toVersion: ClaudeLifterSchemaV2.self
+    )
 }

@@ -16,7 +16,7 @@ enum SyncState: Equatable {
     case disabled
     /// Server URL is set, but the device has no network connectivity.
     case offline
-    /// A sync is currently in flight.
+    /// A snapshot push or restore is currently in flight.
     case syncing
     /// The last sync attempt failed. Carries the error message.
     case error(String)
@@ -26,11 +26,33 @@ enum SyncState: Equatable {
     case pending
 }
 
+/// Per-collection outcome of a cloud restore, surfaced in the Settings alert.
+struct RestoreSummary: Sendable, Equatable {
+    var workouts = 0
+    var templates = 0
+    var customExercises = 0
+    var bodyWeightEntries = 0
+    /// Placeholder custom exercises created for exerciseIds that resolved
+    /// neither by id nor by name (issue #79 fold-in). Zero on a healthy restore.
+    var placeholderExercises = 0
+    var revision = 0
+}
+
+/// One-way full-state snapshot mirror, phone → Azure (issue #78).
+///
+/// SwiftData on the phone is authoritative. Every push serializes the COMPLETE
+/// local state of the four mirrored types (workouts, templates, custom
+/// exercises, body-weight entries) and the server replaces its copy wholesale —
+/// deletions propagate by absence, no tombstones, no clock comparison. The
+/// cloud exists only for MCP reads and disaster restore (`restoreFromSnapshot`).
+/// Per-record `syncStatus` survives purely as the local "is a push due" bit.
 @Observable
 @MainActor
 final class SyncManager {
     var isSyncing = false
     var lastSyncDate: Date?
+    /// Server-assigned revision of the last successful push or restore.
+    var lastRevision: Int?
     var syncError: String?
     var isConnected = true
 
@@ -46,14 +68,11 @@ final class SyncManager {
 
     private let workoutRepository: any WorkoutRepository
     private let templateRepository: any TemplateRepository
-    private let chatRepository: any ChatMessageRepository
-    private let insightRepository: any InsightRepository
-    private let preferenceRepository: any TrainingPreferenceRepository
-    private let networkService: any NetworkServiceProtocol
-    /// Required: pull cannot reconstruct workouts/templates without resolving
-    /// exercise references. Optional-with-nil-default is how issue #73 happened —
-    /// production omitted it and restores silently skipped everything.
+    /// Needed on both paths: push filters custom exercises out of the library,
+    /// restore resolves exercise references (and creates placeholders).
     private let exerciseRepository: any ExerciseRepository
+    private let bodyWeightRepository: any BodyWeightRepository
+    private let networkService: any NetworkServiceProtocol
     private let settings: SettingsManager
 
     private var pathMonitor: NWPathMonitor?
@@ -62,22 +81,19 @@ final class SyncManager {
     init(
         workoutRepository: any WorkoutRepository,
         templateRepository: any TemplateRepository,
-        chatRepository: any ChatMessageRepository,
-        insightRepository: any InsightRepository,
-        preferenceRepository: any TrainingPreferenceRepository,
-        networkService: any NetworkServiceProtocol,
         exerciseRepository: any ExerciseRepository,
+        bodyWeightRepository: any BodyWeightRepository,
+        networkService: any NetworkServiceProtocol,
         settings: SettingsManager
     ) {
         self.workoutRepository = workoutRepository
         self.templateRepository = templateRepository
-        self.chatRepository = chatRepository
-        self.insightRepository = insightRepository
-        self.preferenceRepository = preferenceRepository
-        self.networkService = networkService
         self.exerciseRepository = exerciseRepository
+        self.bodyWeightRepository = bodyWeightRepository
+        self.networkService = networkService
         self.settings = settings
         self.lastSyncDate = settings.lastSyncTimestamp
+        self.lastRevision = settings.lastSyncRevision
     }
 
     // MARK: - Monitoring
@@ -111,188 +127,197 @@ final class SyncManager {
         defer { isSyncing = false }
 
         do {
-            try await pull()
-            try await push()
+            // Any record turning .pending means a snapshot push is due. The
+            // snapshot itself is always FULL state — pending is only the trigger.
+            guard try await hasPendingChanges() else { return }
+            try await pushSnapshot()
         } catch {
             syncError = error.localizedDescription
         }
     }
 
-    // MARK: - Pull
-
-    func pull() async throws {
-        let request = SyncPullRequest(
-            lastSyncTimestamp: settings.lastSyncTimestamp,
-            collections: ["workouts", "templates", "chat", "insights", "preferences"]
-        )
-
-        let response: SyncPullResponse = try await networkService.post(
-            endpoint: "/api/sync/pull",
-            body: request
-        )
-
-        try await mergePullResponse(response)
-
-        lastSyncDate = response.serverTimestamp
-        settings.lastSyncTimestamp = response.serverTimestamp
-    }
-
-    private func mergePullResponse(_ response: SyncPullResponse) async throws {
-        // Last-write-wins by lastModified date
-        // Uses per-ID lookups instead of fetchAll() to avoid loading entire tables
-
-        // Merge workouts
-        for dto in response.workouts {
-            if let local = try await workoutRepository.fetch(id: dto.id) {
-                if dto.lastModified > local.lastModified {
-                    try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepository)
-                }
-            } else {
-                let workout = try await SyncMapper.createWorkout(from: dto, exerciseRepository: exerciseRepository)
-                try await workoutRepository.save(workout)
-            }
-        }
-
-        // Merge templates
-        for dto in response.templates {
-            if let local = try await templateRepository.fetch(id: dto.id) {
-                if dto.lastModified > local.lastModified {
-                    try await SyncMapper.applyDTO(dto, to: local, exerciseRepository: exerciseRepository)
-                }
-            } else {
-                let template = try await SyncMapper.createTemplate(from: dto, exerciseRepository: exerciseRepository)
-                try await templateRepository.save(template)
-            }
-        }
-
-        // Merge insights
-        for dto in response.insights {
-            if let local = try await insightRepository.fetch(id: dto.id) {
-                if dto.lastModified > local.lastModified {
-                    SyncMapper.applyDTO(dto, to: local)
-                }
-            } else {
-                let insight = SyncMapper.createInsight(from: dto)
-                try await insightRepository.save(insight)
-            }
-        }
-
-        // Merge preferences
-        for dto in response.preferences {
-            if let local = try await preferenceRepository.fetch(id: dto.id) {
-                if dto.lastModified > local.lastModified {
-                    SyncMapper.applyDTO(dto, to: local)
-                }
-            } else {
-                try await preferenceRepository.upsert(
-                    key: dto.key,
-                    value: dto.value,
-                    source: dto.source
-                )
-            }
-        }
+    private func hasPendingChanges() async throws -> Bool {
+        if try await !workoutRepository.fetchPending().isEmpty { return true }
+        if try await !templateRepository.fetchPending().isEmpty { return true }
+        if try await !bodyWeightRepository.fetchPending().isEmpty { return true }
+        return false
     }
 
     // MARK: - Push
 
-    func push() async throws {
-        let pendingWorkouts = try await workoutRepository.fetchPending()
-        let pendingTemplates = try await templateRepository.fetchPending()
-        let pendingChat = try await chatRepository.fetchPending()
-        let pendingInsights = try await insightRepository.fetchPending()
-        let pendingPrefs = try await preferenceRepository.fetchPending()
+    /// Serialize the complete local state of the four mirrored types and POST
+    /// it as one snapshot. On 200, mark records `.synced` and persist the
+    /// server revision. On any failure, everything stays `.pending` and the
+    /// next trigger retries — the operation is idempotent by design.
+    func pushSnapshot() async throws {
+        let workouts = try await workoutRepository.fetchAll()
+        let templates = try await templateRepository.fetchAll()
+        let customExercises = try await exerciseRepository.fetchAll().filter(\.isCustom)
+        let bodyWeightEntries = try await bodyWeightRepository.fetchAll()
 
-        let hasAnything = !pendingWorkouts.isEmpty || !pendingTemplates.isEmpty ||
-            !pendingChat.isEmpty || !pendingInsights.isEmpty || !pendingPrefs.isEmpty
+        // Snapshot lastModified at serialization time: a record edited while
+        // the POST is in flight must stay .pending — the server received the
+        // old payload, not the edit (issue #74's guarantee, kept in v2).
+        let workoutModified = Dictionary(uniqueKeysWithValues: workouts.map { ($0.id, $0.lastModified) })
+        let templateModified = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0.lastModified) })
+        let entryModified = Dictionary(uniqueKeysWithValues: bodyWeightEntries.map { ($0.id, $0.lastModified) })
 
-        guard hasAnything else { return }
-
-        // Snapshot lastModified at push time: a record edited while the POST is
-        // in flight must stay .pending — the server acknowledged the old payload,
-        // not the edit (issue #74). Keyed by (collection, id): a bare-UUID key
-        // would let an accepted record in one collection acknowledge a rejected
-        // record with the same id in another.
-        var pushedModified: [PushKey: Date] = [:]
-        for workout in pendingWorkouts { pushedModified[PushKey("workouts", workout.id)] = workout.lastModified }
-        for template in pendingTemplates { pushedModified[PushKey("templates", template.id)] = template.lastModified }
-        for insight in pendingInsights { pushedModified[PushKey("insights", insight.id)] = insight.lastModified }
-        for pref in pendingPrefs { pushedModified[PushKey("preferences", pref.id)] = pref.lastModified }
-
-        let request = SyncPushRequest(
-            workouts: pendingWorkouts.map { SyncMapper.toDTO($0) },
-            templates: pendingTemplates.map { SyncMapper.toDTO($0) },
-            chat: pendingChat.map { SyncMapper.toDTO($0) },
-            insights: pendingInsights.map { SyncMapper.toDTO($0) },
-            preferences: pendingPrefs.map { SyncMapper.toDTO($0) }
+        // ALWAYS all four collections, even when empty — the server rejects a
+        // missing key, and an empty array legitimately means "wipe that type".
+        let request = SnapshotPushRequest(
+            snapshot: SyncSnapshot(
+                workouts: workouts.map { SyncMapper.toDTO($0) },
+                templates: templates.map { SyncMapper.toDTO($0) },
+                customExercises: customExercises.map { SyncMapper.toDTO($0) },
+                bodyWeightEntries: bodyWeightEntries.map { SyncMapper.toDTO($0) }
+            )
         )
 
-        let response: SyncPushResponse = try await networkService.post(
-            endpoint: "/api/sync/push",
-            body: request
-        )
+        let response = try await networkService.pushSnapshot(request)
 
-        guard let results = response.results else {
-            // Legacy server without per-record acknowledgement. Marking records
-            // synced on faith is the issue-#74 data loss; keeping them .pending
-            // is safe — upserts are idempotent, so they re-push next cycle.
-            throw SyncError.missingPushAcknowledgement
+        for workout in workouts where workout.lastModified == workoutModified[workout.id] {
+            workout.syncStatus = .synced
         }
-        let acceptedKeys = Set(
-            results.lazy.filter { $0.status == "accepted" }
-                .map { PushKey($0.collection, $0.id) }
-        )
-
-        // Mark synced only what the server accepted AND what wasn't edited
-        // mid-flight. Everything else stays .pending and retries.
-        for workout in pendingWorkouts {
-            let key = PushKey("workouts", workout.id)
-            if acceptedKeys.contains(key) && workout.lastModified == pushedModified[key] {
-                workout.syncStatus = .synced
-            }
+        for template in templates where template.lastModified == templateModified[template.id] {
+            template.syncStatus = .synced
         }
-        for template in pendingTemplates {
-            let key = PushKey("templates", template.id)
-            if acceptedKeys.contains(key) && template.lastModified == pushedModified[key] {
-                template.syncStatus = .synced
-            }
-        }
-        for insight in pendingInsights {
-            let key = PushKey("insights", insight.id)
-            if acceptedKeys.contains(key) && insight.lastModified == pushedModified[key] {
-                insight.syncStatus = .synced
-            }
-        }
-        for pref in pendingPrefs {
-            let key = PushKey("preferences", pref.id)
-            if acceptedKeys.contains(key) && pref.lastModified == pushedModified[key] {
-                pref.syncStatus = .synced
-            }
-        }
-        // Chat messages are immutable once created — no mid-flight edit race.
-        for message in pendingChat where acceptedKeys.contains(PushKey("chat", message.id)) {
-            message.syncStatus = .synced
+        for entry in bodyWeightEntries where entry.lastModified == entryModified[entry.id] {
+            entry.syncStatus = .synced
         }
 
-        // Every submitted record must be acknowledged one way or another. A
-        // partial results array leaves the missing records safely .pending,
-        // but silence would look like success — surface it.
-        let resultKeys = Set(results.map { PushKey($0.collection, $0.id) })
-        var submittedKeys = Set(pushedModified.keys)
-        for message in pendingChat { submittedKeys.insert(PushKey("chat", message.id)) }
-        guard submittedKeys.isSubset(of: resultKeys) else {
-            throw SyncError.missingPushAcknowledgement
+        recordSuccess(revision: response.revision, serverTime: response.serverTime)
+    }
+
+    // MARK: - Restore
+
+    /// Disaster recovery: fetch the cloud mirror and REPLACE local data for the
+    /// four mirrored types. Never touches chat history, insights, preferences,
+    /// or the bundled exercise library. Destructive — callers must confirm with
+    /// the user first (Settings does).
+    func restoreFromSnapshot() async throws -> RestoreSummary {
+        guard !isSyncing else { throw SyncError.syncInProgress }
+        isSyncing = true
+        syncError = nil
+        defer { isSyncing = false }
+
+        do {
+            let response = try await networkService.fetchSnapshot()
+
+            // A fresh mirror (never pushed to) reads as revision 0 with four
+            // empty arrays. Wiping local data with that would be data loss
+            // dressed up as a restore — refuse.
+            guard response.revision > 0 else { throw SyncError.emptyMirror }
+
+            let snapshot = response.snapshot
+            var summary = RestoreSummary()
+            summary.revision = response.revision
+
+            // 1. Wipe the four mirrored types.
+            for workout in try await workoutRepository.fetchAll() {
+                try await workoutRepository.delete(workout)
+            }
+            for template in try await templateRepository.fetchAll() {
+                try await templateRepository.delete(template)
+            }
+            for exercise in try await exerciseRepository.fetchAll() where exercise.isCustom {
+                try await exerciseRepository.delete(exercise)
+            }
+            for entry in try await bodyWeightRepository.fetchAll() {
+                try await bodyWeightRepository.delete(entry)
+            }
+
+            // 2. Custom exercises FIRST so template/workout references resolve.
+            //    Insert the exercise, then attach tags (relationship objects
+            //    must attach to a managed parent).
+            for dto in snapshot.customExercises {
+                let exercise = SyncMapper.createExercise(from: dto)
+                try await exerciseRepository.save(exercise)
+                if !dto.tags.isEmpty {
+                    exercise.tags = dto.tags.map {
+                        ExerciseTag(category: $0.category, value: $0.value)
+                    }
+                    try await exerciseRepository.save(exercise)
+                }
+                summary.customExercises += 1
+            }
+
+            // 3. Placeholders for exercise references that resolve neither by
+            //    id nor by name — the sets must survive, not silently drop.
+            summary.placeholderExercises = try await createPlaceholderExercises(for: snapshot)
+
+            // 4. Templates and workouts (factories mark them .synced — local
+            //    state now equals the mirror, no re-push due).
+            for dto in snapshot.templates {
+                let template = try await SyncMapper.createTemplate(
+                    from: dto, exerciseRepository: exerciseRepository
+                )
+                try await templateRepository.save(template)
+                summary.templates += 1
+            }
+            for dto in snapshot.workouts {
+                let workout = try await SyncMapper.createWorkout(
+                    from: dto, exerciseRepository: exerciseRepository
+                )
+                try await workoutRepository.save(workout)
+                summary.workouts += 1
+            }
+
+            // 5. Body-weight entries.
+            for dto in snapshot.bodyWeightEntries {
+                try await bodyWeightRepository.save(SyncMapper.createBodyWeightEntry(from: dto))
+                summary.bodyWeightEntries += 1
+            }
+
+            recordSuccess(revision: response.revision, serverTime: response.serverTime)
+            return summary
+        } catch {
+            syncError = error.localizedDescription
+            throw error
         }
     }
 
-    /// Identity of a pushed record on the wire: collection + id. Ids are UUIDs
-    /// and should never collide across collections, but the response carries the
-    /// collection precisely so acknowledgement matching doesn't have to bet on it.
-    private struct PushKey: Hashable {
-        let collection: String
-        let id: UUID
-        init(_ collection: String, _ id: UUID) {
-            self.collection = collection
-            self.id = id
+    /// For every exercise reference in the snapshot that resolves neither by id
+    /// nor by fuzzy name (SyncMapper's resolution order), insert a placeholder
+    /// custom exercise carrying the referenced id so the workout's sets survive.
+    private func createPlaceholderExercises(for snapshot: SyncSnapshot) async throws -> Int {
+        var references: [(id: UUID, name: String?)] = []
+        for template in snapshot.templates {
+            for te in template.exercises {
+                references.append((te.exerciseId, te.exerciseName))
+            }
         }
+        for workout in snapshot.workouts {
+            for we in workout.exercises {
+                references.append((we.exerciseId, we.exerciseName))
+            }
+        }
+
+        var created = 0
+        var seen = Set<UUID>()
+        for reference in references where !seen.contains(reference.id) {
+            seen.insert(reference.id)
+            if try await exerciseRepository.fetch(id: reference.id) != nil { continue }
+            if let name = reference.name,
+               try await !exerciseRepository.fuzzySearch(query: name).isEmpty {
+                continue
+            }
+            let placeholder = Exercise(
+                id: reference.id,
+                name: "Unknown exercise (restored)",
+                isCustom: true
+            )
+            try await exerciseRepository.save(placeholder)
+            created += 1
+        }
+        return created
+    }
+
+    // MARK: - Bookkeeping
+
+    private func recordSuccess(revision: Int, serverTime: Date) {
+        lastSyncDate = serverTime
+        lastRevision = revision
+        settings.lastSyncTimestamp = serverTime
+        settings.lastSyncRevision = revision
     }
 }

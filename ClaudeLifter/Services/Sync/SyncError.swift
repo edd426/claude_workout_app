@@ -6,7 +6,12 @@ enum SyncError: Error, LocalizedError {
     case serverError(Int)
     case networkUnavailable
     case decodingError(Error)
-    case missingPushAcknowledgement
+    /// A push or restore is already running; the operations are mutually
+    /// exclusive because restore rewrites the same records a push reads.
+    case syncInProgress
+    /// GET /api/sync/snapshot returned revision 0 — the mirror has never
+    /// received a push. Restoring would wipe local data with nothing.
+    case emptyMirror
 
     var errorDescription: String? {
         switch self {
@@ -20,8 +25,10 @@ enum SyncError: Error, LocalizedError {
             return "Network unavailable. Changes will sync when connectivity is restored."
         case .decodingError(let underlying):
             return "Failed to decode server response: \(underlying.localizedDescription)"
-        case .missingPushAcknowledgement:
-            return "Sync server is outdated (no per-record results). Deploy the updated Azure Functions; local changes are kept and will retry."
+        case .syncInProgress:
+            return "A sync is already running. Try again in a moment."
+        case .emptyMirror:
+            return "The cloud has no snapshot yet — nothing to restore. Sync from this phone first."
         }
     }
 }

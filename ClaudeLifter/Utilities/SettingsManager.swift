@@ -43,6 +43,7 @@ final class SettingsManager {
         static let apiKey = "apiKey"
         static let serverURL = "serverURL"
         static let lastSyncTimestamp = "lastSyncTimestamp"
+        static let lastSyncRevision = "lastSyncRevision"
         static let proactiveInsightsEnabled = "proactiveInsightsEnabled"
     }
 
@@ -68,6 +69,18 @@ final class SettingsManager {
         didSet { defaults.set(lastSyncTimestamp, forKey: Key.lastSyncTimestamp) }
     }
 
+    /// Server-assigned snapshot revision from the last successful push or
+    /// restore (issue #78). Nil until the first sync.
+    var lastSyncRevision: Int? {
+        didSet {
+            if let lastSyncRevision {
+                defaults.set(lastSyncRevision, forKey: Key.lastSyncRevision)
+            } else {
+                defaults.removeObject(forKey: Key.lastSyncRevision)
+            }
+        }
+    }
+
     // MARK: - Init (loads from UserDefaults)
 
     init(defaults: UserDefaults = .standard, keychainKey: String? = nil) {
@@ -86,6 +99,7 @@ final class SettingsManager {
         self.aiModel = AIModel(rawValue: defaults.string(forKey: Key.aiModel) ?? "") ?? .haiku
         self.serverURL = defaults.string(forKey: Key.serverURL) ?? ""
         self.lastSyncTimestamp = defaults.object(forKey: Key.lastSyncTimestamp) as? Date
+        self.lastSyncRevision = defaults.object(forKey: Key.lastSyncRevision) as? Int
         // Missing key → treat as enabled (legacy install default).
         if defaults.object(forKey: Key.proactiveInsightsEnabled) == nil {
             self.proactiveInsightsEnabled = true

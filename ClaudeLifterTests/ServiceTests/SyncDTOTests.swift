@@ -4,17 +4,10 @@ import Foundation
 
 @Suite("SyncDTO Encode/Decode Tests")
 struct SyncDTOTests {
-    private let encoder: JSONEncoder = {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        return e
-    }()
-
-    private let decoder: JSONDecoder = {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
-        return d
-    }()
+    // The wire codecs used by NetworkService — ISO 8601 with fractional seconds,
+    // per the v2 snapshot contract.
+    private let encoder = NetworkService.makeWireEncoder()
+    private let decoder = NetworkService.makeWireDecoder()
 
     @Test("WorkoutSetDTO roundtrips through JSON")
     func workoutSetDTORoundtrip() throws {
@@ -59,25 +52,6 @@ struct SyncDTOTests {
         #expect(decoded.notes == nil)
     }
 
-    @Test("WorkoutExerciseDTO roundtrips through JSON")
-    func workoutExerciseDTORoundtrip() throws {
-        let dto = WorkoutExerciseDTO(
-            id: UUID(),
-            exerciseId: UUID(),
-            order: 0,
-            notes: "good form",
-            restSeconds: 90,
-            sets: []
-        )
-        let data = try encoder.encode(dto)
-        let decoded = try decoder.decode(WorkoutExerciseDTO.self, from: data)
-        #expect(decoded.id == dto.id)
-        #expect(decoded.exerciseId == dto.exerciseId)
-        #expect(decoded.order == dto.order)
-        #expect(decoded.notes == dto.notes)
-        #expect(decoded.restSeconds == dto.restSeconds)
-    }
-
     @Test("WorkoutDTO roundtrips through JSON")
     func workoutDTORoundtrip() throws {
         let now = Date(timeIntervalSinceReferenceDate: 1000)
@@ -89,7 +63,12 @@ struct SyncDTOTests {
             completedAt: now.addingTimeInterval(3600),
             notes: nil,
             lastModified: now,
-            exercises: []
+            exercises: [
+                WorkoutExerciseDTO(
+                    id: UUID(), exerciseId: UUID(), order: 0,
+                    notes: "good form", restSeconds: 90, sets: []
+                )
+            ]
         )
         let data = try encoder.encode(dto)
         let decoded = try decoder.decode(WorkoutDTO.self, from: data)
@@ -97,27 +76,8 @@ struct SyncDTOTests {
         #expect(decoded.name == dto.name)
         #expect(decoded.templateId == dto.templateId)
         #expect(decoded.notes == nil)
-    }
-
-    @Test("TemplateExerciseDTO roundtrips through JSON")
-    func templateExerciseDTORoundtrip() throws {
-        let dto = TemplateExerciseDTO(
-            id: UUID(),
-            exerciseId: UUID(),
-            order: 2,
-            defaultSets: 4,
-            defaultReps: 8,
-            defaultWeight: 80.0,
-            defaultRestSeconds: 120,
-            notes: nil
-        )
-        let data = try encoder.encode(dto)
-        let decoded = try decoder.decode(TemplateExerciseDTO.self, from: data)
-        #expect(decoded.id == dto.id)
-        #expect(decoded.defaultSets == dto.defaultSets)
-        #expect(decoded.defaultReps == dto.defaultReps)
-        #expect(decoded.defaultWeight == dto.defaultWeight)
-        #expect(decoded.defaultRestSeconds == dto.defaultRestSeconds)
+        #expect(decoded.exercises.count == 1)
+        #expect(decoded.exercises[0].restSeconds == 90)
     }
 
     @Test("TemplateDTO roundtrips through JSON")
@@ -132,7 +92,13 @@ struct SyncDTOTests {
             lastPerformedAt: nil,
             timesPerformed: 5,
             lastModified: now,
-            exercises: []
+            exercises: [
+                TemplateExerciseDTO(
+                    id: UUID(), exerciseId: UUID(), order: 2,
+                    defaultSets: 4, defaultReps: 8, defaultWeight: 80.0,
+                    defaultRestSeconds: 120, notes: nil
+                )
+            ]
         )
         let data = try encoder.encode(dto)
         let decoded = try decoder.decode(TemplateDTO.self, from: data)
@@ -140,42 +106,58 @@ struct SyncDTOTests {
         #expect(decoded.name == dto.name)
         #expect(decoded.timesPerformed == dto.timesPerformed)
         #expect(decoded.lastPerformedAt == nil)
+        #expect(decoded.exercises.count == 1)
+        #expect(decoded.exercises[0].defaultSets == 4)
     }
 
-    @Test("ChatMessageDTO roundtrips through JSON")
-    func chatMessageDTORoundtrip() throws {
-        let dto = ChatMessageDTO(
+    @Test("ExerciseDTO roundtrips through JSON including tags")
+    func exerciseDTORoundtrip() throws {
+        let dto = ExerciseDTO(
             id: UUID(),
-            workoutId: nil,
-            role: "user",
-            content: "How many sets?",
-            timestamp: Date(timeIntervalSinceReferenceDate: 3000)
+            name: "My Cable Fly",
+            force: "push",
+            level: "beginner",
+            mechanic: "isolation",
+            equipment: "cable",
+            instructions: ["Set pulleys", "Squeeze"],
+            primaryMuscles: ["chest"],
+            secondaryMuscles: ["shoulders"],
+            isCustom: true,
+            externalId: nil,
+            notes: "seat height 4",
+            imageURL: nil,
+            photoURL: "exercises/abc.jpg",
+            tags: [ExerciseTagDTO(category: "muscle_group", value: "chest")]
         )
         let data = try encoder.encode(dto)
-        let decoded = try decoder.decode(ChatMessageDTO.self, from: data)
+        let decoded = try decoder.decode(ExerciseDTO.self, from: data)
         #expect(decoded.id == dto.id)
-        #expect(decoded.role == dto.role)
-        #expect(decoded.content == dto.content)
-        #expect(decoded.workoutId == nil)
+        #expect(decoded.name == dto.name)
+        #expect(decoded.isCustom == true)
+        #expect(decoded.instructions == dto.instructions)
+        #expect(decoded.notes == dto.notes)
+        #expect(decoded.photoURL == dto.photoURL)
+        #expect(decoded.tags.count == 1)
+        #expect(decoded.tags[0].category == "muscle_group")
+        #expect(decoded.tags[0].value == "chest")
     }
 
-    @Test("InsightDTO roundtrips through JSON")
-    func insightDTORoundtrip() throws {
-        let now = Date(timeIntervalSinceReferenceDate: 4000)
-        let dto = InsightDTO(
+    @Test("BodyWeightEntryDTO roundtrips through JSON")
+    func bodyWeightEntryDTORoundtrip() throws {
+        let dto = BodyWeightEntryDTO(
             id: UUID(),
-            content: "Train legs!",
-            type: "warning",
-            generatedAt: now,
-            isRead: false,
-            lastModified: now
+            weightKg: 81.3,
+            recordedAt: Date(timeIntervalSinceReferenceDate: 3000),
+            source: "healthkit",
+            healthKitSampleUUID: UUID(),
+            lastModified: Date(timeIntervalSinceReferenceDate: 3001)
         )
         let data = try encoder.encode(dto)
-        let decoded = try decoder.decode(InsightDTO.self, from: data)
+        let decoded = try decoder.decode(BodyWeightEntryDTO.self, from: data)
         #expect(decoded.id == dto.id)
-        #expect(decoded.content == dto.content)
-        #expect(decoded.type == dto.type)
-        #expect(decoded.isRead == dto.isRead)
+        #expect(decoded.weightKg == dto.weightKg)
+        #expect(decoded.source == dto.source)
+        #expect(decoded.healthKitSampleUUID == dto.healthKitSampleUUID)
     }
 
     @Test("PreferenceDTO roundtrips through JSON")
@@ -196,35 +178,118 @@ struct SyncDTOTests {
         #expect(decoded.source == dto.source)
     }
 
-    @Test("SyncPullRequest roundtrips through JSON")
-    func syncPullRequestRoundtrip() throws {
-        let dto = SyncPullRequest(
-            lastSyncTimestamp: Date(timeIntervalSinceReferenceDate: 6000),
-            collections: ["workouts", "templates"]
+    // MARK: - Snapshot wire contract (v2)
+
+    @Test("SnapshotPushRequest always encodes all four collection keys, even when empty")
+    func snapshotRequestAlwaysHasFourKeys() throws {
+        // The server rejects a body with a missing collection key (400). An empty
+        // array means "wipe that type" — so empty must still be on the wire.
+        let request = SnapshotPushRequest(
+            snapshot: SyncSnapshot(
+                workouts: [], templates: [], customExercises: [], bodyWeightEntries: []
+            )
         )
-        let data = try encoder.encode(dto)
-        let decoded = try decoder.decode(SyncPullRequest.self, from: data)
-        #expect(decoded.collections == dto.collections)
+        let data = try encoder.encode(request)
+        let json = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        #expect(json["schemaVersion"] as? Int == 2)
+        let snapshot = try #require(json["snapshot"] as? [String: Any])
+        #expect(snapshot["workouts"] as? [Any] != nil)
+        #expect(snapshot["templates"] as? [Any] != nil)
+        #expect(snapshot["customExercises"] as? [Any] != nil)
+        #expect(snapshot["bodyWeightEntries"] as? [Any] != nil)
     }
 
-    @Test("SyncPullRequest with nil timestamp roundtrips")
-    func syncPullRequestNilTimestamp() throws {
-        let dto = SyncPullRequest(lastSyncTimestamp: nil, collections: ["workouts"])
-        let data = try encoder.encode(dto)
-        let decoded = try decoder.decode(SyncPullRequest.self, from: data)
-        #expect(decoded.lastSyncTimestamp == nil)
+    @Test("SnapshotPushResponse decodes the contract-literal JSON")
+    func snapshotPushResponseDecodesContractJSON() throws {
+        // Verbatim from the wire contract, fractional-second serverTime included.
+        let json = """
+        {
+          "revision": 42,
+          "serverTime": "2026-07-18T18:00:00.000Z",
+          "counts": {
+            "workouts": {"upserted": 3, "deleted": 1},
+            "templates": {"upserted": 0, "deleted": 0},
+            "customExercises": {"upserted": 2, "deleted": 0},
+            "bodyWeightEntries": {"upserted": 5, "deleted": 0}
+          }
+        }
+        """
+        let response = try decoder.decode(
+            SnapshotPushResponse.self, from: Data(json.utf8)
+        )
+        #expect(response.revision == 42)
+        #expect(response.counts["workouts"]?.upserted == 3)
+        #expect(response.counts["workouts"]?.deleted == 1)
+        #expect(response.counts["bodyWeightEntries"]?.upserted == 5)
+        let expected = ISO8601DateFormatter()
+        expected.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        #expect(response.serverTime == expected.date(from: "2026-07-18T18:00:00.000Z"))
     }
 
-    @Test("SyncPushResponse roundtrips through JSON")
-    func syncPushResponseRoundtrip() throws {
-        let dto = SyncPushResponse(
-            accepted: 5,
-            conflicts: 0,
-            serverTimestamp: Date(timeIntervalSinceReferenceDate: 7000)
+    @Test("SnapshotFetchResponse decodes a fresh mirror (revision 0, empty arrays)")
+    func snapshotFetchResponseDecodesFreshMirror() throws {
+        let json = """
+        {
+          "revision": 0,
+          "serverTime": "2026-07-18T18:00:00.000Z",
+          "snapshot": {
+            "workouts": [],
+            "templates": [],
+            "customExercises": [],
+            "bodyWeightEntries": []
+          }
+        }
+        """
+        let response = try decoder.decode(
+            SnapshotFetchResponse.self, from: Data(json.utf8)
         )
-        let data = try encoder.encode(dto)
-        let decoded = try decoder.decode(SyncPushResponse.self, from: data)
-        #expect(decoded.accepted == dto.accepted)
-        #expect(decoded.conflicts == dto.conflicts)
+        #expect(response.revision == 0)
+        #expect(response.snapshot.workouts.isEmpty)
+        #expect(response.snapshot.bodyWeightEntries.isEmpty)
+    }
+
+    @Test("wire decoder accepts dates without fractional seconds too")
+    func wireDecoderAcceptsPlainISO8601() throws {
+        let json = """
+        {"revision": 1, "serverTime": "2026-07-18T18:00:00Z", "counts": {}}
+        """
+        let response = try decoder.decode(
+            SnapshotPushResponse.self, from: Data(json.utf8)
+        )
+        #expect(response.revision == 1)
+    }
+
+    @Test("wire encoder writes dates with fractional seconds")
+    func wireEncoderWritesFractionalSeconds() throws {
+        struct Box: Codable { let date: Date }
+        let data = try encoder.encode(Box(date: Date(timeIntervalSince1970: 1_752_861_600)))
+        let string = try #require(String(data: data, encoding: .utf8))
+        // "2025-07-18T18:00:00.000Z" — fractional seconds must be present
+        #expect(string.contains(".000Z"))
+    }
+
+    @Test("SnapshotFetchResponse roundtrips with populated snapshot")
+    func snapshotFetchResponseRoundtrip() throws {
+        let workout = WorkoutDTO(
+            id: UUID(), templateId: nil, name: "Push Day",
+            startedAt: Date(timeIntervalSinceReferenceDate: 100), completedAt: nil,
+            notes: nil, lastModified: Date(timeIntervalSinceReferenceDate: 101),
+            exercises: []
+        )
+        let response = SnapshotFetchResponse(
+            revision: 3,
+            serverTime: Date(timeIntervalSinceReferenceDate: 200),
+            snapshot: SyncSnapshot(
+                workouts: [workout], templates: [], customExercises: [],
+                bodyWeightEntries: []
+            )
+        )
+        let data = try encoder.encode(response)
+        let decoded = try decoder.decode(SnapshotFetchResponse.self, from: data)
+        #expect(decoded.revision == 3)
+        #expect(decoded.snapshot.workouts.count == 1)
+        #expect(decoded.snapshot.workouts[0].name == "Push Day")
     }
 }

@@ -54,4 +54,36 @@ struct SettingsManagerTests {
 
         #expect(settings.apiKey == "")
     }
+
+    @Test("lastSyncRevision persists across SettingsManager instances")
+    func lastSyncRevisionPersists() {
+        // Arrange
+        let suite = "test-revision-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        let settings = SettingsManager(defaults: defaults)
+        #expect(settings.lastSyncRevision == nil)
+
+        // Act
+        settings.lastSyncRevision = 42
+
+        // Assert — a fresh instance reads the persisted value
+        let reloaded = SettingsManager(defaults: UserDefaults(suiteName: suite)!)
+        #expect(reloaded.lastSyncRevision == 42)
+    }
+
+    @Test("clearing lastSyncRevision removes the stored value")
+    func lastSyncRevisionClears() {
+        // Arrange
+        let suite = "test-revision-clear-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        let settings = SettingsManager(defaults: defaults)
+        settings.lastSyncRevision = 7
+
+        // Act
+        settings.lastSyncRevision = nil
+
+        // Assert
+        let reloaded = SettingsManager(defaults: UserDefaults(suiteName: suite)!)
+        #expect(reloaded.lastSyncRevision == nil)
+    }
 }

@@ -28,10 +28,14 @@ struct ClaudeLifterApp: App {
                     // Fresh store: bundled exercises must re-import.
                     UserDefaults.standard.removeObject(forKey: "hasImportedExercises")
                     UserDefaults.standard.removeObject(forKey: "hasPopulatedImageURLs")
-                    // Reset the sync cursor — a fresh store must pull the FULL
-                    // history. Keeping the old cursor makes the first pull skip
-                    // everything older than it: an empty restore that looks synced.
+                    // Reset the sync markers — a fresh store has never synced,
+                    // and a stale "Last synced …" row would hide that the real
+                    // recovery path is Settings → Restore from Cloud. NOTE: the
+                    // phone is authoritative (one-way mirror, #78), so the user
+                    // should restore from cloud BEFORE logging new workouts —
+                    // the next push replaces the cloud mirror with local state.
                     UserDefaults.standard.removeObject(forKey: "lastSyncTimestamp")
+                    UserDefaults.standard.removeObject(forKey: "lastSyncRevision")
                     // Recorded before the fresh-store attempt so the recovery
                     // location survives even if that attempt fails too.
                     UserDefaults.standard.set(

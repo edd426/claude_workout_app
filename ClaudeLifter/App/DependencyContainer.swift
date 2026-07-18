@@ -62,7 +62,8 @@ final class DependencyContainer {
         )
         self.networkService = network
         self.imageUploadService = ImageUploadService(networkService: network)
-        self.bodyWeightRepository = SwiftDataBodyWeightRepository(context: modelContext)
+        let bodyWeightRepo = SwiftDataBodyWeightRepository(context: modelContext)
+        self.bodyWeightRepository = bodyWeightRepo
         self.healthKitService = HealthKitService()
         self.restTimerService = RestTimerService()
         self.notificationScheduler = UserNotificationScheduler()
@@ -85,11 +86,9 @@ final class DependencyContainer {
         self.syncManager = SyncManager(
             workoutRepository: workoutRepo,
             templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
             exerciseRepository: exerciseRepo,
+            bodyWeightRepository: bodyWeightRepo,
+            networkService: network,
             settings: settings
         )
     }

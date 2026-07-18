@@ -17,6 +17,10 @@ struct SettingsView: View {
     @State private var shareItem: ShareItem?
     @State private var isImporting = false
     @State private var alertMessage: String?
+    // Cloud restore UI state (issue #78). Destructive, so gated behind an
+    // explicit confirmation dialog.
+    @State private var isConfirmingRestore = false
+    @State private var isRestoring = false
     /// Path of a store that failed to open and was quarantined (issue #72),
     /// read once from UserDefaults so the user can find their recovered data.
     @State private var quarantinePath: String?
@@ -61,7 +65,7 @@ struct SettingsView: View {
                     ) { result in
                         handleImport(result: result)
                     }
-                    .alert("Backup", isPresented: alertPresented) {
+                    .alert("Data", isPresented: alertPresented) {
                         Button("OK", role: .cancel) { alertMessage = nil }
                     } message: {
                         Text(alertMessage ?? "")
@@ -254,9 +258,51 @@ struct SettingsView: View {
 
     private func syncStatusSection(syncManager: SyncManager) -> some View {
         Section {
-            SyncStateRow(state: syncManager.state)
+            SyncStateRow(state: syncManager.state, revision: syncManager.lastRevision)
+            Button(role: .destructive) {
+                isConfirmingRestore = true
+            } label: {
+                Label("Restore from Cloud", systemImage: "icloud.and.arrow.down")
+            }
+            .disabled(isRestoring || syncManager.state == .disabled)
+            .confirmationDialog(
+                "Replace local data with the cloud snapshot?",
+                isPresented: $isConfirmingRestore,
+                titleVisibility: .visible
+            ) {
+                Button("Replace Local Data", role: .destructive) {
+                    Task { await restoreFromCloud(syncManager: syncManager) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This deletes all workouts, templates, custom exercises, and body-weight entries on this phone and replaces them with the last cloud snapshot. Chat history and training preferences are not affected. This cannot be undone.")
+            }
         } header: {
             Text("Sync Status")
+        } footer: {
+            Text("Sync mirrors this phone's data to the cloud — the phone is the source of truth. Restore is for disaster recovery on a fresh install.")
+                .font(.caption)
+        }
+    }
+
+    private func restoreFromCloud(syncManager: SyncManager) async {
+        isRestoring = true
+        defer { isRestoring = false }
+        do {
+            let summary = try await syncManager.restoreFromSnapshot()
+            var lines = [
+                "Restored from cloud snapshot #\(summary.revision):",
+                "Workouts: \(summary.workouts)",
+                "Templates: \(summary.templates)",
+                "Custom exercises: \(summary.customExercises)",
+                "Body-weight entries: \(summary.bodyWeightEntries)"
+            ]
+            if summary.placeholderExercises > 0 {
+                lines.append("Placeholders created for \(summary.placeholderExercises) unknown exercise(s)")
+            }
+            alertMessage = lines.joined(separator: "\n")
+        } catch {
+            alertMessage = "Restore failed: \(error.localizedDescription)"
         }
     }
 
@@ -308,6 +354,9 @@ private struct ShareSheet: UIViewControllerRepresentable {
 /// the user pastes the server URL, when sync starts, when it errors, etc.
 struct SyncStateRow: View {
     let state: SyncState
+    /// Server-assigned snapshot revision of the last successful sync, shown
+    /// alongside the last-synced time. Nil until the first sync.
+    var revision: Int? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -366,11 +415,15 @@ struct SyncStateRow: View {
         case .offline:
             return "Will resume when network returns."
         case .syncing:
-            return "Pulling and pushing changes…"
+            return "Uploading snapshot…"
         case .error(let msg):
             return msg
         case .synced(let date):
-            return "Last synced \(Self.relativeFormatter.localizedString(for: date, relativeTo: .now))"
+            let when = Self.relativeFormatter.localizedString(for: date, relativeTo: .now)
+            if let revision {
+                return "Last synced \(when) · snapshot #\(revision)"
+            }
+            return "Last synced \(when)"
         case .pending:
             return "Configured but no sync has run yet."
         }

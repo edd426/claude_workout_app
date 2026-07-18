@@ -1,6 +1,11 @@
 import Foundation
 
-// Wire format DTOs for sync API
+// Wire format DTOs for the v2 one-way snapshot sync API (issue #78).
+//
+// SwiftData on the phone is authoritative. Sync is a full-state snapshot
+// mirror phone → Azure; the mirror exists only for MCP reads and disaster
+// restore. Dates are ISO 8601 with fractional seconds (see NetworkService's
+// wire codecs); ids are UUID strings.
 
 struct WorkoutSetDTO: Codable, Sendable {
     let id: UUID
@@ -98,23 +103,46 @@ struct TemplateDTO: Codable, Sendable {
     let exercises: [TemplateExerciseDTO]
 }
 
-struct ChatMessageDTO: Codable, Sendable {
+/// Full-fidelity wire representation of an `Exercise`. Only CUSTOM exercises
+/// travel over the wire (bundled ones re-import from the app bundle). Also the
+/// on-disk shape of BackupService's `customExercises` array (field-compatible
+/// with the former ExerciseBackupDTO, so old backup files still decode).
+struct ExerciseDTO: Codable, Sendable {
     let id: UUID
-    let workoutId: UUID?
-    let role: String  // "user", "assistant", "system"
-    let content: String
-    let timestamp: Date
+    let name: String
+    let force: String?
+    let level: String?
+    let mechanic: String?
+    let equipment: String?
+    let instructions: [String]
+    let primaryMuscles: [String]
+    let secondaryMuscles: [String]
+    let isCustom: Bool
+    let externalId: String?
+    let notes: String?
+    let imageURL: String?
+    let photoURL: String?
+    let tags: [ExerciseTagDTO]
 }
 
-struct InsightDTO: Codable, Sendable {
+/// Tag content only — a fresh ExerciseTag id is minted on restore to avoid
+/// colliding with existing tag ids in the destination store.
+struct ExerciseTagDTO: Codable, Sendable {
+    let category: String
+    let value: String
+}
+
+struct BodyWeightEntryDTO: Codable, Sendable {
     let id: UUID
-    let content: String
-    let type: String  // "suggestion", "warning", "encouragement"
-    let generatedAt: Date
-    let isRead: Bool
+    let weightKg: Double
+    let recordedAt: Date
+    let source: String  // "manual" | "healthkit"
+    let healthKitSampleUUID: UUID?
     let lastModified: Date
 }
 
+/// Still on the wire for local backup files only (BackupService). Preferences
+/// are NOT part of cloud sync — that path caused the pull ping-pong (#78).
 struct PreferenceDTO: Codable, Sendable {
     let id: UUID
     let key: String
@@ -123,54 +151,44 @@ struct PreferenceDTO: Codable, Sendable {
     let lastModified: Date
 }
 
-// Sync request/response types
+// MARK: - Snapshot request/response (POST/GET /api/sync/snapshot)
 
-struct SyncPullRequest: Codable, Sendable {
-    let lastSyncTimestamp: Date?
-    let collections: [String]
-}
-
-struct SyncPullResponse: Codable, Sendable {
+/// The complete mirrored state. ALWAYS carries all four collections — the
+/// server rejects a missing key (400), and an empty array means "wipe that
+/// type on the server". That is how deletions propagate: no tombstones, the
+/// server deletes any doc absent from the snapshot.
+struct SyncSnapshot: Codable, Sendable {
     let workouts: [WorkoutDTO]
     let templates: [TemplateDTO]
-    let chat: [ChatMessageDTO]
-    let insights: [InsightDTO]
-    let preferences: [PreferenceDTO]
-    let serverTimestamp: Date
+    let customExercises: [ExerciseDTO]
+    let bodyWeightEntries: [BodyWeightEntryDTO]
 }
 
-struct SyncPushRequest: Codable, Sendable {
-    let workouts: [WorkoutDTO]
-    let templates: [TemplateDTO]
-    let chat: [ChatMessageDTO]
-    let insights: [InsightDTO]
-    let preferences: [PreferenceDTO]
-}
+struct SnapshotPushRequest: Codable, Sendable {
+    let schemaVersion: Int
+    let snapshot: SyncSnapshot
 
-struct SyncPushRecordResult: Codable, Sendable {
-    let id: UUID
-    let collection: String
-    let status: String  // "accepted" | "conflict" | "error"
-}
-
-struct SyncPushResponse: Codable, Sendable {
-    let accepted: Int
-    let conflicts: Int
-    let serverTimestamp: Date
-    /// Per-record outcomes (issue #74). `nil` when talking to a legacy server
-    /// that predates per-record acknowledgement — the client then refuses to
-    /// mark anything synced rather than guess.
-    let results: [SyncPushRecordResult]?
-
-    init(
-        accepted: Int,
-        conflicts: Int,
-        serverTimestamp: Date,
-        results: [SyncPushRecordResult]? = nil
-    ) {
-        self.accepted = accepted
-        self.conflicts = conflicts
-        self.serverTimestamp = serverTimestamp
-        self.results = results
+    init(schemaVersion: Int = 2, snapshot: SyncSnapshot) {
+        self.schemaVersion = schemaVersion
+        self.snapshot = snapshot
     }
+}
+
+struct SnapshotCollectionCounts: Codable, Sendable {
+    let upserted: Int
+    let deleted: Int
+}
+
+struct SnapshotPushResponse: Codable, Sendable {
+    /// Server-assigned, monotonically increasing. 0 means the mirror has
+    /// never received a push.
+    let revision: Int
+    let serverTime: Date
+    let counts: [String: SnapshotCollectionCounts]
+}
+
+struct SnapshotFetchResponse: Codable, Sendable {
+    let revision: Int
+    let serverTime: Date
+    let snapshot: SyncSnapshot
 }

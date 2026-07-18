@@ -8,7 +8,6 @@ protocol InsightRepository {
     func fetchUnread() async throws -> [ProactiveInsight]
     func save(_ insight: ProactiveInsight) async throws
     func markAsRead(_ insight: ProactiveInsight) async throws
-    func fetchPending() async throws -> [ProactiveInsight]
 }
 
 @MainActor
@@ -50,13 +49,5 @@ final class SwiftDataInsightRepository: InsightRepository {
         insight.isRead = true
         insight.recordChange()
         try context.save()
-    }
-
-    func fetchPending() async throws -> [ProactiveInsight] {
-        let pendingRaw = SyncStatus.pending.rawValue
-        let descriptor = FetchDescriptor<ProactiveInsight>(
-            predicate: #Predicate { $0.syncStatusRaw == pendingRaw }
-        )
-        return try context.fetch(descriptor)
     }
 }

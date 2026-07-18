@@ -11,37 +11,11 @@ struct BackupDocument: Codable, Sendable {
     let exportedAt: Date
     let workouts: [WorkoutDTO]
     let templates: [TemplateDTO]
-    let customExercises: [ExerciseBackupDTO]
+    /// Same full-fidelity `ExerciseDTO` as the v2 snapshot wire format —
+    /// field-compatible with the former ExerciseBackupDTO, so backup files
+    /// written before issue #78 still decode.
+    let customExercises: [ExerciseDTO]
     let preferences: [PreferenceDTO]
-}
-
-/// Backup representation of an `Exercise`. Mirrors the model's fields. The Sync
-/// DTOs only ever reference exercises by id/name (they assume the library is
-/// present), so a full-fidelity exercise DTO lives here rather than in Sync.
-struct ExerciseBackupDTO: Codable, Sendable {
-    let id: UUID
-    let name: String
-    let force: String?
-    let level: String?
-    let mechanic: String?
-    let equipment: String?
-    let instructions: [String]
-    let primaryMuscles: [String]
-    let secondaryMuscles: [String]
-    let isCustom: Bool
-    let externalId: String?
-    let notes: String?
-    let imageURL: String?
-    let photoURL: String?
-    let tags: [ExerciseTagBackupDTO]
-}
-
-/// Backup representation of an `ExerciseTag`. Only the meaningful content is
-/// carried — a fresh id is minted on restore to avoid colliding with existing
-/// tag ids in the destination store.
-struct ExerciseTagBackupDTO: Codable, Sendable {
-    let category: String
-    let value: String
 }
 
 // MARK: - Import errors
@@ -140,7 +114,7 @@ final class BackupService: BackupServiceProtocol {
         let templates = try await templateRepository.fetchAll().map { SyncMapper.toDTO($0) }
         let customExercises = try await exerciseRepository.fetchAll()
             .filter { $0.isCustom }
-            .map { Self.toBackupDTO($0) }
+            .map { SyncMapper.toDTO($0) }
         let preferences = try await preferenceRepository.fetchAll().map { SyncMapper.toDTO($0) }
 
         let document = BackupDocument(
@@ -274,45 +248,10 @@ final class BackupService: BackupServiceProtocol {
 
     // MARK: - Exercise mapping
 
-    private static func toBackupDTO(_ exercise: Exercise) -> ExerciseBackupDTO {
-        ExerciseBackupDTO(
-            id: exercise.id,
-            name: exercise.name,
-            force: exercise.force,
-            level: exercise.level,
-            mechanic: exercise.mechanic,
-            equipment: exercise.equipment,
-            instructions: exercise.instructions,
-            primaryMuscles: exercise.primaryMuscles,
-            secondaryMuscles: exercise.secondaryMuscles,
-            isCustom: exercise.isCustom,
-            externalId: exercise.externalId,
-            notes: exercise.notes,
-            imageURL: exercise.imageURL,
-            photoURL: exercise.photoURL,
-            tags: exercise.tags.map { ExerciseTagBackupDTO(category: $0.category, value: $0.value) }
-        )
-    }
-
     /// Build and insert an `Exercise` (with fresh-id tags) into the context.
     /// Mirrors ExerciseImportService's insert-then-attach-tags pattern.
-    private func insertExercise(from dto: ExerciseBackupDTO) {
-        let exercise = Exercise(
-            id: dto.id,
-            name: dto.name,
-            force: dto.force,
-            level: dto.level,
-            mechanic: dto.mechanic,
-            equipment: dto.equipment,
-            instructions: dto.instructions,
-            primaryMuscles: dto.primaryMuscles,
-            secondaryMuscles: dto.secondaryMuscles,
-            isCustom: dto.isCustom,
-            externalId: dto.externalId,
-            notes: dto.notes,
-            imageURL: dto.imageURL,
-            photoURL: dto.photoURL
-        )
+    private func insertExercise(from dto: ExerciseDTO) {
+        let exercise = SyncMapper.createExercise(from: dto)
         modelContext.insert(exercise)
 
         var tags: [ExerciseTag] = []

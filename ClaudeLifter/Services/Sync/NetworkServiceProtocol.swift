@@ -6,4 +6,11 @@ protocol NetworkServiceProtocol: Sendable {
     func streamPost(endpoint: String, body: some Encodable & Sendable) -> AsyncThrowingStream<Data, Error>
     func uploadBlob(url: URL, data: Data, contentType: String) async throws
     func downloadBlob(url: URL) async throws -> Data
+
+    // v2 one-way snapshot sync (issue #78)
+
+    /// POST /api/sync/snapshot — full-state replace of the cloud mirror.
+    func pushSnapshot(_ request: SnapshotPushRequest) async throws -> SnapshotPushResponse
+    /// GET /api/sync/snapshot — disaster-restore read of the mirror.
+    func fetchSnapshot() async throws -> SnapshotFetchResponse
 }

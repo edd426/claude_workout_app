@@ -248,13 +248,13 @@ struct BackupServiceTests {
         let pref = try #require(try await SwiftDataTrainingPreferenceRepository(context: contextB).fetchAll().first)
         #expect(pref.syncStatus == .pending)
 
-        // Assert — they surface via fetchPending() (what the push cycle queries)
+        // Assert — synced types surface via fetchPending() (the snapshot-push
+        // trigger). Preferences no longer sync, so their .pending flag above is
+        // informational only.
         let pendingWorkouts = try await SwiftDataWorkoutRepository(context: contextB).fetchPending().count
         #expect(pendingWorkouts == 1)
         let pendingTemplates = try await SwiftDataTemplateRepository(context: contextB).fetchPending().count
         #expect(pendingTemplates == 1)
-        let pendingPrefs = try await SwiftDataTrainingPreferenceRepository(context: contextB).fetchPending().count
-        #expect(pendingPrefs == 1)
     }
 
     @Test("Import aborts before any write when an exercise reference is unresolvable")

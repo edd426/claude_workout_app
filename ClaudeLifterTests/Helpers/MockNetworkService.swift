@@ -64,6 +64,38 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
         }
     }
 
+    // MARK: - v2 snapshot sync (issue #78)
+
+    var pushSnapshotCallCount = 0
+    var lastSnapshotRequest: SnapshotPushRequest?
+    var pushSnapshotResult: SnapshotPushResponse?
+    /// Runs mid-request, after the request is recorded and before the response
+    /// is returned — lets tests simulate edits made while the POST is in flight.
+    var onPushSnapshot: (@MainActor () -> Void)?
+
+    func pushSnapshot(_ request: SnapshotPushRequest) async throws -> SnapshotPushResponse {
+        pushSnapshotCallCount += 1
+        lastSnapshotRequest = request
+        if let onPushSnapshot { await onPushSnapshot() }
+        if let error = errorToThrow { throw error }
+        guard let result = pushSnapshotResult else {
+            throw SyncError.serverError(500)
+        }
+        return result
+    }
+
+    var fetchSnapshotCallCount = 0
+    var fetchSnapshotResult: SnapshotFetchResponse?
+
+    func fetchSnapshot() async throws -> SnapshotFetchResponse {
+        fetchSnapshotCallCount += 1
+        if let error = errorToThrow { throw error }
+        guard let result = fetchSnapshotResult else {
+            throw SyncError.serverError(500)
+        }
+        return result
+    }
+
     func uploadBlob(url: URL, data: Data, contentType: String) async throws {
         uploadBlobCallCount += 1
         if let error = errorToThrow { throw error }

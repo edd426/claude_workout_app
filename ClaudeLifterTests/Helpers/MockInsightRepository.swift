@@ -40,8 +40,4 @@ final class MockInsightRepository: InsightRepository {
         insight.isRead = true
     }
 
-    func fetchPending() async throws -> [ProactiveInsight] {
-        if let error = errorToThrow { throw error }
-        return insights.filter { $0.syncStatus == .pending }
-    }
 }

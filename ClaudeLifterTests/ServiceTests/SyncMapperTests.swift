@@ -82,61 +82,94 @@ struct SyncMapperTests {
         #expect(dto.lastModified == template.lastModified)
     }
 
-    // MARK: - AIChatMessage → DTO
+    // MARK: - Exercise → DTO
 
-    @Test("AIChatMessage maps to ChatMessageDTO correctly")
-    func chatMessageToDTO() {
-        let msg = TestFixtures.makeChatMessage(role: .assistant, content: "Great progress!")
-        let dto = SyncMapper.toDTO(msg)
-        #expect(dto.id == msg.id)
-        #expect(dto.role == "assistant")
-        #expect(dto.content == msg.content)
-        #expect(dto.workoutId == msg.workoutId)
-        #expect(dto.timestamp == msg.timestamp)
+    @Test("Exercise maps to ExerciseDTO including tags")
+    @MainActor
+    func exerciseToDTO() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+
+        let exercise = TestFixtures.makeExercise(name: "My Machine Press", isCustom: true)
+        exercise.notes = "pin 7"
+        context.insert(exercise)
+        let tag = ExerciseTag(category: "muscle_group", value: "chest")
+        context.insert(tag)
+        exercise.tags = [tag]
+        try context.save()
+
+        let dto = SyncMapper.toDTO(exercise)
+        #expect(dto.id == exercise.id)
+        #expect(dto.name == "My Machine Press")
+        #expect(dto.isCustom == true)
+        #expect(dto.notes == "pin 7")
+        #expect(dto.primaryMuscles == exercise.primaryMuscles)
+        #expect(dto.tags.count == 1)
+        #expect(dto.tags[0].category == "muscle_group")
+        #expect(dto.tags[0].value == "chest")
     }
 
-    @Test("AIChatMessage user role maps to 'user' string")
-    func chatMessageUserRole() {
-        let msg = AIChatMessage(role: .user, content: "How much?")
-        let dto = SyncMapper.toDTO(msg)
-        #expect(dto.role == "user")
+    @Test("createExercise builds an Exercise from ExerciseDTO (tags attached by caller)")
+    func createExerciseFromDTO() {
+        let dto = ExerciseDTO(
+            id: UUID(), name: "Cloud Custom", force: "pull", level: "advanced",
+            mechanic: "compound", equipment: "machine",
+            instructions: ["Pull hard"], primaryMuscles: ["back"],
+            secondaryMuscles: ["biceps"], isCustom: true, externalId: nil,
+            notes: "seat 3", imageURL: nil, photoURL: nil,
+            tags: [ExerciseTagDTO(category: "equipment", value: "machine")]
+        )
+        let exercise = SyncMapper.createExercise(from: dto)
+        #expect(exercise.id == dto.id)
+        #expect(exercise.name == "Cloud Custom")
+        #expect(exercise.isCustom == true)
+        #expect(exercise.equipment == "machine")
+        #expect(exercise.notes == "seat 3")
+        #expect(exercise.instructions == ["Pull hard"])
+        // Tags are deliberately NOT attached here — SwiftData relationship
+        // objects are attached after the exercise is inserted into a context.
+        #expect(exercise.tags.isEmpty)
     }
 
-    @Test("AIChatMessage system role maps to 'system' string")
-    func chatMessageSystemRole() {
-        let msg = AIChatMessage(role: .system, content: "You are a trainer.")
-        let dto = SyncMapper.toDTO(msg)
-        #expect(dto.role == "system")
+    // MARK: - BodyWeightEntry ↔ DTO
+
+    @Test("BodyWeightEntry maps to BodyWeightEntryDTO")
+    func bodyWeightEntryToDTO() {
+        let sampleUUID = UUID()
+        let entry = BodyWeightEntry(
+            weightKg: 83.2,
+            recordedAt: Date(timeIntervalSinceReferenceDate: 500),
+            source: "healthkit",
+            healthKitSampleUUID: sampleUUID
+        )
+        let dto = SyncMapper.toDTO(entry)
+        #expect(dto.id == entry.id)
+        #expect(dto.weightKg == 83.2)
+        #expect(dto.recordedAt == entry.recordedAt)
+        #expect(dto.source == "healthkit")
+        #expect(dto.healthKitSampleUUID == sampleUUID)
+        #expect(dto.lastModified == entry.lastModified)
     }
 
-    // MARK: - ProactiveInsight → DTO
-
-    @Test("ProactiveInsight maps to InsightDTO correctly")
-    func insightToDTO() {
-        let insight = TestFixtures.makeInsight(content: "Train legs!", type: .warning)
-        let dto = SyncMapper.toDTO(insight)
-        #expect(dto.id == insight.id)
-        #expect(dto.content == insight.content)
-        #expect(dto.type == "warning")
-        #expect(dto.isRead == insight.isRead)
-        #expect(dto.lastModified == insight.lastModified)
+    @Test("createBodyWeightEntry builds a synced entry from DTO")
+    func createBodyWeightEntryFromDTO() {
+        let dto = BodyWeightEntryDTO(
+            id: UUID(), weightKg: 78.9,
+            recordedAt: Date(timeIntervalSinceReferenceDate: 600),
+            source: "manual", healthKitSampleUUID: nil,
+            lastModified: Date(timeIntervalSinceReferenceDate: 601)
+        )
+        let entry = SyncMapper.createBodyWeightEntry(from: dto)
+        #expect(entry.id == dto.id)
+        #expect(entry.weightKg == 78.9)
+        #expect(entry.recordedAt == dto.recordedAt)
+        #expect(entry.source == "manual")
+        #expect(entry.healthKitSampleUUID == nil)
+        #expect(entry.syncStatus == .synced)
+        #expect(entry.lastModified == dto.lastModified)
     }
 
-    @Test("InsightType suggestion maps to 'suggestion' string")
-    func insightSuggestionType() {
-        let insight = ProactiveInsight(content: "Try dropsets", type: .suggestion)
-        let dto = SyncMapper.toDTO(insight)
-        #expect(dto.type == "suggestion")
-    }
-
-    @Test("InsightType encouragement maps to 'encouragement' string")
-    func insightEncouragementType() {
-        let insight = ProactiveInsight(content: "Great week!", type: .encouragement)
-        let dto = SyncMapper.toDTO(insight)
-        #expect(dto.type == "encouragement")
-    }
-
-    // MARK: - TrainingPreference → DTO
+    // MARK: - TrainingPreference → DTO (still used by BackupService)
 
     @Test("TrainingPreference maps to PreferenceDTO correctly")
     func preferenceToDTO() {
@@ -149,47 +182,18 @@ struct SyncMapperTests {
         #expect(dto.lastModified == pref.lastModified)
     }
 
-    // MARK: - applyDTO (reverse mapping)
-
-    @Test("applyDTO updates workout fields from WorkoutDTO")
-    @MainActor
-    func applyWorkoutDTO() async throws {
-        let workout = TestFixtures.makeWorkout(name: "Old Name")
-        let newModified = Date(timeIntervalSinceNow: 100)
-        let dto = WorkoutDTO(
-            id: workout.id,
-            templateId: nil,
-            name: "New Name",
-            startedAt: workout.startedAt,
-            completedAt: nil,
-            notes: "updated notes",
-            lastModified: newModified,
-            exercises: []
+    @Test("createPreference creates TrainingPreference from PreferenceDTO")
+    func createPreferenceFromDTO() {
+        let dto = PreferenceDTO(
+            id: UUID(), key: "injury", value: "bad left shoulder",
+            source: "user_stated", lastModified: Date()
         )
-        try await SyncMapper.applyDTO(dto, to: workout, exerciseRepository: MockExerciseRepository())
-        #expect(workout.name == "New Name")
-        #expect(workout.notes == "updated notes")
-        #expect(workout.lastModified == newModified)
-        #expect(workout.syncStatus == .synced)
-    }
-
-    @Test("applyDTO marks workout as synced")
-    @MainActor
-    func applyWorkoutDTOMarksSynced() async throws {
-        let workout = TestFixtures.makeWorkout()
-        #expect(workout.syncStatus == .pending)
-        let dto = WorkoutDTO(
-            id: workout.id,
-            templateId: nil,
-            name: workout.name,
-            startedAt: workout.startedAt,
-            completedAt: nil,
-            notes: nil,
-            lastModified: .now,
-            exercises: []
-        )
-        try await SyncMapper.applyDTO(dto, to: workout, exerciseRepository: MockExerciseRepository())
-        #expect(workout.syncStatus == .synced)
+        let pref = SyncMapper.createPreference(from: dto)
+        #expect(pref.id == dto.id)
+        #expect(pref.key == "injury")
+        #expect(pref.value == "bad left shoulder")
+        #expect(pref.source == "user_stated")
+        #expect(pref.syncStatus == .synced)
     }
 
     // MARK: - Factory methods (create from DTO)
@@ -289,34 +293,6 @@ struct SyncMapperTests {
         #expect(template.exercises[0].defaultWeight == 100.0)
     }
 
-    @Test("createInsight creates ProactiveInsight from InsightDTO")
-    func createInsightFromDTO() {
-        let dto = InsightDTO(
-            id: UUID(), content: "Train legs!", type: "warning",
-            generatedAt: Date(), isRead: true, lastModified: Date()
-        )
-        let insight = SyncMapper.createInsight(from: dto)
-        #expect(insight.id == dto.id)
-        #expect(insight.content == "Train legs!")
-        #expect(insight.type == .warning)
-        #expect(insight.isRead == true)
-        #expect(insight.syncStatus == .synced)
-    }
-
-    @Test("createPreference creates TrainingPreference from PreferenceDTO")
-    func createPreferenceFromDTO() {
-        let dto = PreferenceDTO(
-            id: UUID(), key: "injury", value: "bad left shoulder",
-            source: "user_stated", lastModified: Date()
-        )
-        let pref = SyncMapper.createPreference(from: dto)
-        #expect(pref.id == dto.id)
-        #expect(pref.key == "injury")
-        #expect(pref.value == "bad left shoulder")
-        #expect(pref.source == "user_stated")
-        #expect(pref.syncStatus == .synced)
-    }
-
     // MARK: - Name-based fallback for MCP-created templates
 
     @Test("createTemplate uses exerciseName fallback when ID not found")
@@ -381,126 +357,5 @@ struct SyncMapperTests {
 
         #expect(workout.exercises.count == 1)
         #expect(workout.exercises[0].exercise?.name == "Squat")
-    }
-
-    // MARK: - Nested merge (applyDTO with exercises)
-
-    @Test("applyDTO merges workout exercises: inserts new, updates existing, removes deleted")
-    @MainActor
-    func applyWorkoutDTOMergesExercises() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let exerciseA = TestFixtures.makeExercise(name: "Bench Press")
-        let exerciseB = TestFixtures.makeExercise(name: "Squat")
-        context.insert(exerciseA)
-        context.insert(exerciseB)
-
-        let workout = TestFixtures.makeWorkout(name: "Push Day")
-        context.insert(workout)
-
-        // Existing exercise that will be updated
-        let existingWE = TestFixtures.makeWorkoutExercise(
-            exercise: exerciseA, order: 0, sets: [(60, 8)], in: context
-        )
-        workout.exercises.append(existingWE)
-
-        // Another existing exercise that will be removed (not in remote)
-        let removedWE = WorkoutExercise(order: 1, exercise: exerciseB)
-        context.insert(removedWE)
-        workout.exercises.append(removedWE)
-        try context.save()
-
-        let exerciseRepo = SwiftDataExerciseRepository(context: context)
-
-        // DTO has: existing exercise (updated order), plus a new exercise
-        let existingSetDTO = WorkoutSetDTO(
-            id: existingWE.sets[0].id, order: 0, weight: 70.0, weightUnit: "kg",
-            reps: 6, isCompleted: true, completedAt: Date(), notes: nil
-        )
-        let existingWEDTO = WorkoutExerciseDTO(
-            id: existingWE.id, exerciseId: exerciseA.id, order: 0,
-            notes: "updated notes", restSeconds: 60, sets: [existingSetDTO]
-        )
-        let newSetDTO = WorkoutSetDTO(
-            id: UUID(), order: 0, weight: 100.0, weightUnit: "kg",
-            reps: 3, isCompleted: true, completedAt: Date(), notes: nil
-        )
-        let newWEDTO = WorkoutExerciseDTO(
-            id: UUID(), exerciseId: exerciseB.id, order: 1,
-            notes: "new from server", restSeconds: 120, sets: [newSetDTO]
-        )
-
-        let dto = WorkoutDTO(
-            id: workout.id, templateId: nil, name: "Updated Push Day",
-            startedAt: workout.startedAt, completedAt: nil, notes: nil,
-            lastModified: Date(timeIntervalSinceNow: 100),
-            exercises: [existingWEDTO, newWEDTO]
-        )
-
-        try await SyncMapper.applyDTO(dto, to: workout, exerciseRepository: exerciseRepo)
-
-        #expect(workout.name == "Updated Push Day")
-        #expect(workout.exercises.count == 2)
-
-        // Check existing exercise was updated
-        let updated = workout.exercises.first { $0.id == existingWE.id }
-        #expect(updated != nil)
-        #expect(updated?.notes == "updated notes")
-        #expect(updated?.restSeconds == 60)
-        #expect(updated?.sets[0].weight == 70.0)
-        #expect(updated?.sets[0].reps == 6)
-
-        // Check new exercise was inserted
-        let inserted = workout.exercises.first { $0.id == newWEDTO.id }
-        #expect(inserted != nil)
-        #expect(inserted?.exercise?.id == exerciseB.id)
-        #expect(inserted?.sets.count == 1)
-        #expect(inserted?.sets[0].weight == 100.0)
-
-        // Check removed exercise is gone
-        let removed = workout.exercises.first { $0.id == removedWE.id }
-        #expect(removed == nil)
-    }
-
-    @Test("applyDTO merges template exercises: inserts new, updates existing, removes deleted")
-    @MainActor
-    func applyTemplateDTOMergesExercises() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let exercise = TestFixtures.makeExercise(name: "OHP")
-        context.insert(exercise)
-
-        let template = TestFixtures.makeTemplate(name: "Push Day")
-        context.insert(template)
-
-        let existingTE = TemplateExercise(order: 0, exercise: exercise, defaultSets: 3, defaultReps: 8)
-        context.insert(existingTE)
-        template.exercises.append(existingTE)
-        try context.save()
-
-        let exerciseRepo = SwiftDataExerciseRepository(context: context)
-
-        let updatedTEDTO = TemplateExerciseDTO(
-            id: existingTE.id, exerciseId: exercise.id, order: 0,
-            defaultSets: 5, defaultReps: 5, defaultWeight: 60.0,
-            defaultRestSeconds: 120, notes: "updated"
-        )
-        let dto = TemplateDTO(
-            id: template.id, name: "Updated Push Day", notes: nil,
-            createdAt: template.createdAt, updatedAt: Date(),
-            lastPerformedAt: nil, timesPerformed: 10,
-            lastModified: Date(timeIntervalSinceNow: 100),
-            exercises: [updatedTEDTO]
-        )
-
-        try await SyncMapper.applyDTO(dto, to: template, exerciseRepository: exerciseRepo)
-
-        #expect(template.name == "Updated Push Day")
-        #expect(template.exercises.count == 1)
-        #expect(template.exercises[0].defaultSets == 5)
-        #expect(template.exercises[0].defaultReps == 5)
-        #expect(template.exercises[0].defaultWeight == 60.0)
     }
 }

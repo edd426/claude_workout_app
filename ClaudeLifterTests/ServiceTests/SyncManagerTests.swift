@@ -1,807 +1,504 @@
 import Testing
 import Foundation
+import SwiftData
 @testable import ClaudeLifter
 
-@Suite("SyncManager Tests")
+/// Everything a snapshot-sync test needs, built around one in-memory store.
+/// A struct (not locals) so the ModelContainer is RETAINED for the whole test —
+/// iOS traps message-lessly when a ModelContext outlives its container.
 @MainActor
-struct SyncManagerTests {
-    // MARK: - Push
+private struct SyncTestEnv {
+    let container: ModelContainer
+    let context: ModelContext
+    let workoutRepo: SwiftDataWorkoutRepository
+    let templateRepo: SwiftDataTemplateRepository
+    let exerciseRepo: SwiftDataExerciseRepository
+    let bodyWeightRepo: SwiftDataBodyWeightRepository
+    let network: MockNetworkService
+    let settings: SettingsManager
+    let manager: SyncManager
 
-    @Test("push collects pending workouts and calls network POST")
-    func pushCollectsPendingWorkouts() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let pending = Workout(name: "Push Day", startedAt: .now, syncStatus: .pending)
-        context.insert(pending)
-        try context.save()
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let network = MockNetworkService()
-        network.setResponse(
-            SyncPushResponse(
-                accepted: 1, conflicts: 0, serverTimestamp: Date(),
-                results: [SyncPushRecordResult(id: pending.id, collection: "workouts", status: "accepted")]
-            ),
-            forEndpoint: "/api/sync/push"
-        )
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-push-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
+    init(serverURL: String = "https://example.com") throws {
+        container = try makeTestContainer()
+        context = container.mainContext
+        workoutRepo = SwiftDataWorkoutRepository(context: context)
+        templateRepo = SwiftDataTemplateRepository(context: context)
+        exerciseRepo = SwiftDataExerciseRepository(context: context)
+        bodyWeightRepo = SwiftDataBodyWeightRepository(context: context)
+        network = MockNetworkService()
+        settings = SettingsManager(defaults: UserDefaults(suiteName: "sync-test-\(UUID())")!)
+        settings.serverURL = serverURL
+        manager = SyncManager(
             workoutRepository: workoutRepo,
             templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
+            exerciseRepository: exerciseRepo,
+            bodyWeightRepository: bodyWeightRepo,
             networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
             settings: settings
         )
+    }
+}
 
-        try await manager.push()
+private func makePushResponse(revision: Int = 1, serverTime: Date = Date(timeIntervalSinceReferenceDate: 800_000_000)) -> SnapshotPushResponse {
+    SnapshotPushResponse(
+        revision: revision,
+        serverTime: serverTime,
+        counts: [
+            "workouts": SnapshotCollectionCounts(upserted: 0, deleted: 0),
+            "templates": SnapshotCollectionCounts(upserted: 0, deleted: 0),
+            "customExercises": SnapshotCollectionCounts(upserted: 0, deleted: 0),
+            "bodyWeightEntries": SnapshotCollectionCounts(upserted: 0, deleted: 0),
+        ]
+    )
+}
 
-        #expect(network.postCallCount == 1)
-        #expect(network.lastPostEndpoint == "/api/sync/push")
+@Suite("SyncManager Snapshot Push")
+@MainActor
+struct SyncManagerSnapshotPushTests {
+    @Test("snapshot push serializes full state: all four types, nothing else")
+    func snapshotContainsAllFourTypesAndNothingElse() async throws {
+        // Arrange — one of everything, including types that must NOT sync
+        let env = try SyncTestEnv()
+        let custom = TestFixtures.makeExercise(name: "My Cable Fly", isCustom: true)
+        let bundled = TestFixtures.makeExercise(name: "Bench Press", isCustom: false)
+        env.context.insert(custom)
+        env.context.insert(bundled)
+        env.context.insert(Workout(name: "Push Day", startedAt: .now, syncStatus: .pending))
+        env.context.insert(WorkoutTemplate(name: "Push Template"))
+        env.context.insert(BodyWeightEntry(weightKg: 82.5))
+        env.context.insert(TestFixtures.makeChatMessage(content: "not synced"))
+        env.context.insert(TestFixtures.makeInsight(content: "not synced"))
+        env.context.insert(TestFixtures.makeTrainingPreference(key: "style", value: "not synced"))
+        try env.context.save()
+        env.network.pushSnapshotResult = makePushResponse()
+
+        // Act
+        try await env.manager.pushSnapshot()
+
+        // Assert — request carries exactly the four mirrored collections
+        let request = try #require(env.network.lastSnapshotRequest)
+        #expect(request.schemaVersion == 2)
+        #expect(request.snapshot.workouts.count == 1)
+        #expect(request.snapshot.templates.count == 1)
+        #expect(request.snapshot.customExercises.count == 1)
+        #expect(request.snapshot.customExercises.first?.name == "My Cable Fly")
+        #expect(request.snapshot.bodyWeightEntries.count == 1)
     }
 
-    @Test("push marks workouts as synced after success")
-    func pushMarksSynced() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
+    @Test("snapshot is full state even when only some records are pending")
+    func snapshotIsFullStateNotDelta() async throws {
+        // Arrange — one already-synced and one pending workout
+        let env = try SyncTestEnv()
+        env.context.insert(Workout(name: "Old Synced", startedAt: .now, syncStatus: .synced))
+        env.context.insert(Workout(name: "New Pending", startedAt: .now, syncStatus: .pending))
+        let syncedTemplate = WorkoutTemplate(name: "Synced Template")
+        syncedTemplate.syncStatus = .synced
+        env.context.insert(syncedTemplate)
+        try env.context.save()
+        env.network.pushSnapshotResult = makePushResponse()
 
-        let pending = Workout(name: "Leg Day", startedAt: .now, syncStatus: .pending)
-        context.insert(pending)
-        try context.save()
+        // Act
+        try await env.manager.pushSnapshot()
 
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let network = MockNetworkService()
-        network.setResponse(
-            SyncPushResponse(
-                accepted: 1, conflicts: 0, serverTimestamp: Date(),
-                results: [SyncPushRecordResult(id: pending.id, collection: "workouts", status: "accepted")]
-            ),
-            forEndpoint: "/api/sync/push"
-        )
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-synced-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        try await manager.push()
-
-        let workouts = try await workoutRepo.fetchAll()
-        #expect(workouts[0].syncStatus == .synced)
+        // Assert — both workouts and the synced template are in the snapshot
+        let request = try #require(env.network.lastSnapshotRequest)
+        #expect(request.snapshot.workouts.count == 2)
+        #expect(request.snapshot.templates.count == 1)
     }
 
-    @Test("push keeps rejected records pending and marks accepted synced")
-    func pushKeepsRejectedPending() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
+    @Test("successful push marks records synced and stores revision + timestamp")
+    func successfulPushMarksSyncedAndStoresRevision() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        let workout = Workout(name: "Push Day", startedAt: .now, syncStatus: .pending)
+        let template = WorkoutTemplate(name: "Template")
+        let entry = BodyWeightEntry(weightKg: 81.0)
+        env.context.insert(workout)
+        env.context.insert(template)
+        env.context.insert(entry)
+        try env.context.save()
+        let serverTime = Date(timeIntervalSinceReferenceDate: 790_000_000)
+        env.network.pushSnapshotResult = makePushResponse(revision: 42, serverTime: serverTime)
 
-        let accepted = Workout(name: "Accepted", startedAt: .now, syncStatus: .pending)
-        let rejected = Workout(name: "Rejected", startedAt: .now, syncStatus: .pending)
-        let errored = Workout(name: "Errored", startedAt: .now, syncStatus: .pending)
-        context.insert(accepted)
-        context.insert(rejected)
-        context.insert(errored)
-        try context.save()
+        // Act
+        try await env.manager.pushSnapshot()
 
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let network = MockNetworkService()
-        network.setResponse(
-            SyncPushResponse(
-                accepted: 1, conflicts: 1, serverTimestamp: Date(),
-                results: [
-                    SyncPushRecordResult(id: accepted.id, collection: "workouts", status: "accepted"),
-                    SyncPushRecordResult(id: rejected.id, collection: "workouts", status: "conflict"),
-                    SyncPushRecordResult(id: errored.id, collection: "workouts", status: "error")
-                ]
-            ),
-            forEndpoint: "/api/sync/push"
-        )
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-reject-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: SwiftDataTemplateRepository(context: context),
-            chatRepository: SwiftDataChatMessageRepository(context: context),
-            insightRepository: SwiftDataInsightRepository(context: context),
-            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        try await manager.push()
-
-        // Rejected and errored records must stay .pending so they retry;
-        // marking them .synced is the issue-#74 silent data loss.
-        #expect(accepted.syncStatus == .synced)
-        #expect(rejected.syncStatus == .pending)
-        #expect(errored.syncStatus == .pending)
+        // Assert
+        #expect(workout.syncStatus == .synced)
+        #expect(template.syncStatus == .synced)
+        #expect(entry.syncStatus == .synced)
+        #expect(env.manager.lastRevision == 42)
+        #expect(env.settings.lastSyncRevision == 42)
+        #expect(env.manager.lastSyncDate == serverTime)
+        #expect(env.settings.lastSyncTimestamp == serverTime)
     }
 
-    @Test("push against a server without per-record results marks nothing synced")
-    func pushLegacyServerMarksNothingSynced() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
+    @Test("failed push keeps records pending and stores no revision")
+    func failedPushKeepsPending() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        let workout = Workout(name: "Keep Pending", startedAt: .now, syncStatus: .pending)
+        env.context.insert(workout)
+        try env.context.save()
+        env.network.errorToThrow = SyncError.serverError(500)
 
-        let pending = Workout(name: "Keep Me Pending", startedAt: .now, syncStatus: .pending)
-        context.insert(pending)
-        try context.save()
-
-        let network = MockNetworkService()
-        // Legacy server response: no `results` field.
-        network.setResponse(
-            SyncPushResponse(accepted: 1, conflicts: 0, serverTimestamp: Date()),
-            forEndpoint: "/api/sync/push"
-        )
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-legacy-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: SwiftDataWorkoutRepository(context: context),
-            templateRepository: SwiftDataTemplateRepository(context: context),
-            chatRepository: SwiftDataChatMessageRepository(context: context),
-            insightRepository: SwiftDataInsightRepository(context: context),
-            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
+        // Act + Assert
         await #expect(throws: SyncError.self) {
-            try await manager.push()
+            try await env.manager.pushSnapshot()
         }
-        #expect(pending.syncStatus == .pending)
-    }
-
-    @Test("edit made while push is in flight is not marked synced")
-    func inFlightEditStaysPending() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let workout = Workout(name: "Edited Mid-Push", startedAt: .now, syncStatus: .pending)
-        context.insert(workout)
-        try context.save()
-
-        let network = MockNetworkService()
-        network.setResponse(
-            SyncPushResponse(
-                accepted: 1, conflicts: 0, serverTimestamp: Date(),
-                results: [SyncPushRecordResult(id: workout.id, collection: "workouts", status: "accepted")]
-            ),
-            forEndpoint: "/api/sync/push"
-        )
-        // Simulate the user editing the workout while the POST is in flight.
-        network.onPost = {
-            workout.recordChange()
-        }
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-inflight-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: SwiftDataWorkoutRepository(context: context),
-            templateRepository: SwiftDataTemplateRepository(context: context),
-            chatRepository: SwiftDataChatMessageRepository(context: context),
-            insightRepository: SwiftDataInsightRepository(context: context),
-            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        try await manager.push()
-
-        // The mid-flight edit set lastModified past the pushed snapshot; the
-        // server acknowledged the OLD payload, so the edit must remain pending.
         #expect(workout.syncStatus == .pending)
+        #expect(env.manager.lastRevision == nil)
+        #expect(env.settings.lastSyncRevision == nil)
     }
 
-    @Test("push skips network call when nothing is pending")
-    func pushSkipsWhenNothingPending() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let network = MockNetworkService()
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-skip-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        try await manager.push()
-
-        #expect(network.postCallCount == 0)
-    }
-
-    // MARK: - Pull
-
-    @Test("pull calls network POST to /api/sync/pull")
-    func pullCallsNetwork() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let network = MockNetworkService()
-        let pullResponse = SyncPullResponse(
-            workouts: [],
-            templates: [],
-            chat: [],
-            insights: [],
-            preferences: [],
-            serverTimestamp: Date()
-        )
-        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-pull-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        #expect(network.postCallCount == 1)
-        #expect(network.lastPostEndpoint == "/api/sync/pull")
-    }
-
-    @Test("pull updates lastSyncDate after success")
-    func pullUpdatesLastSyncDate() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let network = MockNetworkService()
-        let serverTime = Date(timeIntervalSinceReferenceDate: 10000)
-        let pullResponse = SyncPullResponse(
-            workouts: [],
-            templates: [],
-            chat: [],
-            insights: [],
-            preferences: [],
-            serverTimestamp: serverTime
-        )
-        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-lastSync-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        #expect(manager.lastSyncDate == serverTime)
-    }
-
-    // MARK: - syncIfNeeded
-
-    @Test("syncIfNeeded does nothing when server URL not configured")
-    func syncIfNeededSkipsWhenNotConfigured() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let network = MockNetworkService()
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-notConfigured-\(UUID())")!)
-        // serverURL left empty
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        await manager.syncIfNeeded()
-
-        #expect(network.postCallCount == 0)
-    }
-
-    // MARK: - Pull inserts new records
-
-    @Test("pull inserts new workouts from server")
-    func pullInsertsNewWorkouts() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let exercise = TestFixtures.makeExercise(name: "Bench Press")
-        context.insert(exercise)
-        try context.save()
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-        let exerciseRepo = SwiftDataExerciseRepository(context: context)
-
-        let setDTO = WorkoutSetDTO(
-            id: UUID(), order: 0, weight: 80.0, weightUnit: "kg",
-            reps: 5, isCompleted: true, completedAt: Date(), notes: nil
-        )
-        let weDTO = WorkoutExerciseDTO(
-            id: UUID(), exerciseId: exercise.id, order: 0,
-            notes: nil, restSeconds: 90, sets: [setDTO]
-        )
-        let workoutDTO = WorkoutDTO(
-            id: UUID(), templateId: nil, name: "Server Workout",
-            startedAt: Date(), completedAt: Date(), notes: nil,
-            lastModified: Date(), exercises: [weDTO]
-        )
-
-        let network = MockNetworkService()
-        let pullResponse = SyncPullResponse(
-            workouts: [workoutDTO],
-            templates: [],
-            chat: [],
-            insights: [],
-            preferences: [],
-            serverTimestamp: Date()
-        )
-        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-pull-insert-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: exerciseRepo,
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        let workouts = try await workoutRepo.fetchAll()
-        #expect(workouts.count == 1)
-        #expect(workouts[0].name == "Server Workout")
-        #expect(workouts[0].exercises.count == 1)
-        #expect(workouts[0].exercises[0].sets.count == 1)
-    }
-
-    @Test("restore round-trip: pull inserts new templates with their exercises")
-    func restoreRoundTripInsertsTemplatesWithExercises() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let exercise = TestFixtures.makeExercise(name: "Bench Press")
-        context.insert(exercise)
-        try context.save()
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let teDTO = TemplateExerciseDTO(
-            id: UUID(), exerciseId: exercise.id, order: 0,
-            defaultSets: 3, defaultReps: 8, defaultWeight: 60.0,
-            defaultRestSeconds: 90, notes: nil
-        )
-        let templateDTO = TemplateDTO(
-            id: UUID(), name: "Server Push Day", notes: nil,
-            createdAt: Date(), updatedAt: Date(), lastPerformedAt: nil,
-            timesPerformed: 0, lastModified: Date(), exercises: [teDTO]
-        )
-
-        let network = MockNetworkService()
-        network.setResponse(
-            SyncPullResponse(
-                workouts: [], templates: [templateDTO], chat: [],
-                insights: [], preferences: [], serverTimestamp: Date()
-            ),
-            forEndpoint: "/api/sync/pull"
-        )
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-restore-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        // Mirrors DependencyContainer's SyncManager construction. Guards issue #73:
-        // production omitted exerciseRepository, so a fresh install restored nothing.
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        let templates = try await templateRepo.fetchAll()
-        #expect(templates.count == 1)
-        #expect(templates.first?.name == "Server Push Day")
-        #expect(templates.first?.exercises.count == 1)
-        #expect(templates.first?.exercises.first?.defaultSets == 3)
-    }
-
-    @Test("pull inserts new insights from server")
-    func pullInsertsNewInsights() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-        let exerciseRepo = SwiftDataExerciseRepository(context: context)
-
-        let insightDTO = InsightDTO(
-            id: UUID(), content: "Train legs!", type: "warning",
-            generatedAt: Date(), isRead: false, lastModified: Date()
-        )
-
-        let network = MockNetworkService()
-        let pullResponse = SyncPullResponse(
-            workouts: [],
-            templates: [],
-            chat: [],
-            insights: [insightDTO],
-            preferences: [],
-            serverTimestamp: Date()
-        )
-        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-pull-insight-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: exerciseRepo,
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        let insights = try await insightRepo.fetchAll()
-        #expect(insights.count == 1)
-        #expect(insights[0].content == "Train legs!")
-    }
-
-    // MARK: - First-sync nil timestamp (#54)
-
-    @Test("pull with nil lastSyncTimestamp sends request and succeeds")
-    func pullWithNilLastSyncTimestampSendsRequestAndSucceeds() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let network = MockNetworkService()
-        let serverTime = Date(timeIntervalSinceReferenceDate: 50000)
-        let pullResponse = SyncPullResponse(
-            workouts: [],
-            templates: [],
-            chat: [],
-            insights: [],
-            preferences: [],
-            serverTimestamp: serverTime
-        )
-        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
-
-        // Fresh SettingsManager — lastSyncTimestamp is nil (simulates first install)
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-nil-timestamp-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-        #expect(settings.lastSyncTimestamp == nil)
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        #expect(network.postCallCount == 1)
-        #expect(network.lastPostEndpoint == "/api/sync/pull")
-        #expect(manager.lastSyncDate == serverTime)
-        #expect(settings.lastSyncTimestamp == serverTime)
-    }
-
-    @Test("pull with nil timestamp merges new workouts from server")
-    func pullWithNilTimestampMergesNewWorkouts() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        // Insert an exercise so the workout can reference it
-        let exercise = TestFixtures.makeExercise(name: "Bench Press")
-        context.insert(exercise)
-        try context.save()
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-        let exerciseRepo = SwiftDataExerciseRepository(context: context)
-
-        let setDTO = WorkoutSetDTO(
-            id: UUID(), order: 0, weight: 100.0, weightUnit: "kg",
-            reps: 5, isCompleted: true, completedAt: Date(), notes: nil
-        )
-        let weDTO = WorkoutExerciseDTO(
-            id: UUID(), exerciseId: exercise.id, order: 0,
-            notes: nil, restSeconds: 90, sets: [setDTO]
-        )
-        let workoutDTO = WorkoutDTO(
-            id: UUID(), templateId: nil, name: "First Sync Workout",
-            startedAt: Date(), completedAt: Date(), notes: nil,
-            lastModified: Date(), exercises: [weDTO]
-        )
-
-        let network = MockNetworkService()
-        let pullResponse = SyncPullResponse(
-            workouts: [workoutDTO],
-            templates: [],
-            chat: [],
-            insights: [],
-            preferences: [],
-            serverTimestamp: Date()
-        )
-        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
-
-        // Fresh settings — nil lastSyncTimestamp
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-nil-merge-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-        #expect(settings.lastSyncTimestamp == nil)
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: exerciseRepo,
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        let workouts = try await workoutRepo.fetchAll()
-        #expect(workouts.count == 1)
-        #expect(workouts[0].name == "First Sync Workout")
-        #expect(workouts[0].exercises.count == 1)
-        #expect(workouts[0].exercises[0].sets.count == 1)
-    }
-
-    // MARK: - mergePullResponse uses per-ID lookups (Task 4)
-
-    @Test("mergePullResponse uses fetch(id:) not fetchAll for workouts")
-    func mergePullUsesPerIdLookupForWorkouts() async throws {
-        let mockWorkoutRepo = MockWorkoutRepository()
-        let mockTemplateRepo = MockTemplateRepository()
-        let mockChatRepo = MockChatMessageRepository()
-        let mockInsightRepo = MockInsightRepository()
-        let mockPrefRepo = MockTrainingPreferenceRepository()
-        let mockExerciseRepo = MockExerciseRepository()
-
-        let exercise = TestFixtures.makeExercise(name: "Bench Press")
-        mockExerciseRepo.exercises = [exercise]
-
-        let network = MockNetworkService()
-        let workoutDTO = WorkoutDTO(
-            id: UUID(), templateId: nil, name: "Server Workout",
-            startedAt: Date(), completedAt: nil, notes: nil,
-            lastModified: Date(), exercises: []
-        )
-        let pullResponse = SyncPullResponse(
-            workouts: [workoutDTO],
-            templates: [],
-            chat: [],
-            insights: [],
-            preferences: [],
-            serverTimestamp: Date()
-        )
-        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-perid-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: mockWorkoutRepo,
-            templateRepository: mockTemplateRepo,
-            chatRepository: mockChatRepo,
-            insightRepository: mockInsightRepo,
-            preferenceRepository: mockPrefRepo,
-            networkService: network,
-            exerciseRepository: mockExerciseRepo,
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        // Should NOT have called fetchAll on workout repo during merge
-        #expect(mockWorkoutRepo.fetchAllCallCount == 0)
-        // Should have saved the new workout
-        #expect(mockWorkoutRepo.saveCallCount == 1)
-    }
-
-    @Test("mergePullResponse uses fetch(id:) not fetchAll for templates")
-    func mergePullUsesPerIdLookupForTemplates() async throws {
-        let mockWorkoutRepo = MockWorkoutRepository()
-        let mockTemplateRepo = MockTemplateRepository()
-        let mockChatRepo = MockChatMessageRepository()
-        let mockInsightRepo = MockInsightRepository()
-        let mockPrefRepo = MockTrainingPreferenceRepository()
-        let mockExerciseRepo = MockExerciseRepository()
-
-        let network = MockNetworkService()
-        let templateDTO = TemplateDTO(
-            id: UUID(), name: "Server Template", notes: nil,
-            createdAt: Date(), updatedAt: Date(), lastPerformedAt: nil,
-            timesPerformed: 0, lastModified: Date(), exercises: []
-        )
-        let pullResponse = SyncPullResponse(
-            workouts: [],
-            templates: [templateDTO],
-            chat: [],
-            insights: [],
-            preferences: [],
-            serverTimestamp: Date()
-        )
-        network.setResponse(pullResponse, forEndpoint: "/api/sync/pull")
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-perid-tmpl-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: mockWorkoutRepo,
-            templateRepository: mockTemplateRepo,
-            chatRepository: mockChatRepo,
-            insightRepository: mockInsightRepo,
-            preferenceRepository: mockPrefRepo,
-            networkService: network,
-            exerciseRepository: mockExerciseRepo,
-            settings: settings
-        )
-
-        try await manager.pull()
-
-        #expect(mockTemplateRepo.fetchAllCallCount == 0)
-        #expect(mockTemplateRepo.saveCallCount == 1)
-    }
-
-    // MARK: - Error handling
-
-    @Test("syncError is set when network throws")
-    func syncErrorSetOnNetworkFailure() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-
-        let pending = Workout(name: "Push Day", startedAt: .now, syncStatus: .pending)
-        context.insert(pending)
-        try context.save()
-
-        let workoutRepo = SwiftDataWorkoutRepository(context: context)
-        let templateRepo = SwiftDataTemplateRepository(context: context)
-        let chatRepo = SwiftDataChatMessageRepository(context: context)
-        let insightRepo = SwiftDataInsightRepository(context: context)
-        let prefRepo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let network = MockNetworkService()
-        network.errorToThrow = SyncError.networkUnavailable
-
-        let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-error-\(UUID())")!)
-        settings.serverURL = "https://example.com"
-
-        let manager = SyncManager(
-            workoutRepository: workoutRepo,
-            templateRepository: templateRepo,
-            chatRepository: chatRepo,
-            insightRepository: insightRepo,
-            preferenceRepository: prefRepo,
-            networkService: network,
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-
-        do {
-            try await manager.push()
-            Issue.record("Expected error to be thrown")
-        } catch {
-            #expect(error is SyncError)
+    @Test("record edited while push is in flight stays pending")
+    func inFlightEditStaysPending() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        let edited = Workout(name: "Edited Mid-Push", startedAt: .now, syncStatus: .pending)
+        let untouched = Workout(name: "Untouched", startedAt: .now, syncStatus: .pending)
+        env.context.insert(edited)
+        env.context.insert(untouched)
+        try env.context.save()
+        env.network.pushSnapshotResult = makePushResponse()
+        env.network.onPushSnapshot = {
+            edited.recordChange()
         }
+
+        // Act
+        try await env.manager.pushSnapshot()
+
+        // Assert — server acknowledged the OLD payload; the edit must re-push
+        #expect(edited.syncStatus == .pending)
+        #expect(untouched.syncStatus == .synced)
+    }
+
+    @Test("double push is idempotent: same full state both times, records stay synced")
+    func doublePushIsIdempotent() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        env.context.insert(Workout(name: "Push Day", startedAt: .now, syncStatus: .pending))
+        env.context.insert(WorkoutTemplate(name: "Template"))
+        try env.context.save()
+        env.network.pushSnapshotResult = makePushResponse(revision: 7)
+
+        // Act
+        try await env.manager.pushSnapshot()
+        let firstRequest = try #require(env.network.lastSnapshotRequest)
+        env.network.pushSnapshotResult = makePushResponse(revision: 8)
+        try await env.manager.pushSnapshot()
+        let secondRequest = try #require(env.network.lastSnapshotRequest)
+
+        // Assert — identical record sets both times, latest revision wins
+        #expect(env.network.pushSnapshotCallCount == 2)
+        #expect(firstRequest.snapshot.workouts.map(\.id) == secondRequest.snapshot.workouts.map(\.id))
+        #expect(firstRequest.snapshot.templates.map(\.id) == secondRequest.snapshot.templates.map(\.id))
+        let workouts = try await env.workoutRepo.fetchAll()
+        #expect(workouts.allSatisfy { $0.syncStatus == .synced })
+        #expect(env.manager.lastRevision == 8)
+    }
+}
+
+@Suite("SyncManager syncIfNeeded")
+@MainActor
+struct SyncIfNeededTests {
+    @Test("does nothing when server URL not configured")
+    func skipsWhenNotConfigured() async throws {
+        let env = try SyncTestEnv(serverURL: "")
+        env.context.insert(Workout(name: "Pending", startedAt: .now, syncStatus: .pending))
+        try env.context.save()
+
+        await env.manager.syncIfNeeded()
+
+        #expect(env.network.pushSnapshotCallCount == 0)
+    }
+
+    @Test("skips the network when nothing is pending")
+    func skipsWhenNothingPending() async throws {
+        let env = try SyncTestEnv()
+        env.context.insert(Workout(name: "Synced", startedAt: .now, syncStatus: .synced))
+        try env.context.save()
+
+        await env.manager.syncIfNeeded()
+
+        #expect(env.network.pushSnapshotCallCount == 0)
+    }
+
+    @Test("pushes a snapshot when any record is pending")
+    func pushesWhenPending() async throws {
+        let env = try SyncTestEnv()
+        env.context.insert(BodyWeightEntry(weightKg: 80.0, syncStatus: .pending))
+        try env.context.save()
+        env.network.pushSnapshotResult = makePushResponse()
+
+        await env.manager.syncIfNeeded()
+
+        #expect(env.network.pushSnapshotCallCount == 1)
+        #expect(env.manager.syncError == nil)
+    }
+
+    @Test("records the error message when the push fails")
+    func recordsErrorOnFailure() async throws {
+        let env = try SyncTestEnv()
+        env.context.insert(Workout(name: "Pending", startedAt: .now, syncStatus: .pending))
+        try env.context.save()
+        env.network.errorToThrow = SyncError.unauthorized
+
+        await env.manager.syncIfNeeded()
+
+        #expect(env.manager.syncError != nil)
+    }
+}
+
+@Suite("SyncManager Restore")
+@MainActor
+struct SyncManagerRestoreTests {
+    /// Snapshot used by most restore tests: one custom exercise, one template
+    /// referencing it, one workout referencing a bundled exercise plus one
+    /// UNKNOWN exercise id, and one body-weight entry.
+    private func makeServerSnapshot(
+        bundledExerciseId: UUID,
+        customExerciseId: UUID = UUID(),
+        unknownExerciseId: UUID = UUID()
+    ) -> SnapshotFetchResponse {
+        let customDTO = ExerciseDTO(
+            id: customExerciseId,
+            name: "Cloud Custom Fly",
+            force: "push", level: nil, mechanic: "isolation", equipment: "cable",
+            instructions: ["Squeeze"], primaryMuscles: ["chest"], secondaryMuscles: [],
+            isCustom: true, externalId: nil, notes: "seat at 4",
+            imageURL: nil, photoURL: nil,
+            tags: [ExerciseTagDTO(category: "muscle_group", value: "chest")]
+        )
+        let templateDTO = TemplateDTO(
+            id: UUID(), name: "Cloud Template", notes: nil,
+            createdAt: .now, updatedAt: .now, lastPerformedAt: nil,
+            timesPerformed: 2, lastModified: .now,
+            exercises: [
+                TemplateExerciseDTO(
+                    id: UUID(), exerciseId: customExerciseId, order: 0,
+                    defaultSets: 3, defaultReps: 12, defaultWeight: 25,
+                    defaultRestSeconds: 60, notes: nil
+                )
+            ]
+        )
+        let workoutDTO = WorkoutDTO(
+            id: UUID(), templateId: nil, name: "Cloud Workout",
+            startedAt: .now, completedAt: .now, notes: nil, lastModified: .now,
+            exercises: [
+                WorkoutExerciseDTO(
+                    id: UUID(), exerciseId: bundledExerciseId, order: 0,
+                    notes: nil, restSeconds: 90,
+                    sets: [WorkoutSetDTO(
+                        id: UUID(), order: 0, weight: 80, weightUnit: "kg",
+                        reps: 8, isCompleted: true, completedAt: .now, notes: nil
+                    )]
+                ),
+                WorkoutExerciseDTO(
+                    id: UUID(), exerciseId: unknownExerciseId, order: 1,
+                    notes: nil, restSeconds: 90,
+                    sets: [WorkoutSetDTO(
+                        id: UUID(), order: 0, weight: 40, weightUnit: "kg",
+                        reps: 10, isCompleted: true, completedAt: .now, notes: nil
+                    )]
+                ),
+            ]
+        )
+        let bodyWeightDTO = BodyWeightEntryDTO(
+            id: UUID(), weightKg: 79.5, recordedAt: .now,
+            source: "manual", healthKitSampleUUID: nil, lastModified: .now
+        )
+        return SnapshotFetchResponse(
+            revision: 42,
+            serverTime: Date(timeIntervalSinceReferenceDate: 795_000_000),
+            snapshot: SyncSnapshot(
+                workouts: [workoutDTO],
+                templates: [templateDTO],
+                customExercises: [customDTO],
+                bodyWeightEntries: [bodyWeightDTO]
+            )
+        )
+    }
+
+    @Test("restore replaces local workouts, templates, custom exercises, and body weight")
+    func restoreReplacesLocalState() async throws {
+        // Arrange — local state that must all disappear
+        let env = try SyncTestEnv()
+        let bundled = TestFixtures.makeExercise(name: "Bench Press", isCustom: false)
+        let localCustom = TestFixtures.makeExercise(name: "Doomed Custom", isCustom: true)
+        env.context.insert(bundled)
+        env.context.insert(localCustom)
+        env.context.insert(Workout(name: "Doomed Workout", startedAt: .now))
+        env.context.insert(WorkoutTemplate(name: "Doomed Template"))
+        env.context.insert(BodyWeightEntry(weightKg: 99.9))
+        try env.context.save()
+        env.network.fetchSnapshotResult = makeServerSnapshot(bundledExerciseId: bundled.id)
+
+        // Act
+        let summary = try await env.manager.restoreFromSnapshot()
+
+        // Assert — cloud state replaced local state wholesale
+        let workouts = try await env.workoutRepo.fetchAll()
+        #expect(workouts.count == 1)
+        #expect(workouts.first?.name == "Cloud Workout")
+        let templates = try await env.templateRepo.fetchAll()
+        #expect(templates.count == 1)
+        #expect(templates.first?.name == "Cloud Template")
+        let customs = try await env.exerciseRepo.fetchAll().filter(\.isCustom)
+        #expect(!customs.contains { $0.name == "Doomed Custom" })
+        #expect(customs.contains { $0.name == "Cloud Custom Fly" })
+        let entries = try await env.bodyWeightRepo.fetchAll()
+        #expect(entries.count == 1)
+        #expect(entries.first?.weightKg == 79.5)
+        // Bundled library untouched
+        #expect(try await env.exerciseRepo.fetch(id: bundled.id) != nil)
+        #expect(summary.workouts == 1)
+        #expect(summary.templates == 1)
+        #expect(summary.customExercises == 1)
+        #expect(summary.bodyWeightEntries == 1)
+        #expect(summary.revision == 42)
+    }
+
+    @Test("restore creates a placeholder exercise for unresolvable exerciseIds")
+    func restorePlaceholdersUnknownExercises() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        let bundled = TestFixtures.makeExercise(name: "Bench Press", isCustom: false)
+        env.context.insert(bundled)
+        try env.context.save()
+        let unknownId = UUID()
+        env.network.fetchSnapshotResult = makeServerSnapshot(
+            bundledExerciseId: bundled.id, unknownExerciseId: unknownId
+        )
+
+        // Act
+        let summary = try await env.manager.restoreFromSnapshot()
+
+        // Assert — the workout kept BOTH exercises; sets survived on the placeholder
+        let workout = try #require(try await env.workoutRepo.fetchAll().first)
+        #expect(workout.exercises.count == 2)
+        let placeholder = try #require(try await env.exerciseRepo.fetch(id: unknownId))
+        #expect(placeholder.name == "Unknown exercise (restored)")
+        #expect(placeholder.isCustom == true)
+        let placeholderWE = try #require(workout.exercises.first { $0.exercise?.id == unknownId })
+        #expect(placeholderWE.sets.count == 1)
+        #expect(placeholderWE.sets.first?.weight == 40)
+        #expect(summary.placeholderExercises == 1)
+    }
+
+    @Test("restore never touches chat, insights, or preferences")
+    func restoreNeverTouchesChatInsightsPreferences() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        let bundled = TestFixtures.makeExercise(name: "Bench Press", isCustom: false)
+        env.context.insert(bundled)
+        let chat = TestFixtures.makeChatMessage(content: "keep me")
+        let insight = TestFixtures.makeInsight(content: "keep me too")
+        let pref = TestFixtures.makeTrainingPreference(key: "injury", value: "bad shoulder")
+        env.context.insert(chat)
+        env.context.insert(insight)
+        env.context.insert(pref)
+        try env.context.save()
+        env.network.fetchSnapshotResult = makeServerSnapshot(bundledExerciseId: bundled.id)
+
+        // Act
+        _ = try await env.manager.restoreFromSnapshot()
+
+        // Assert
+        let chats = try env.context.fetch(FetchDescriptor<AIChatMessage>())
+        #expect(chats.count == 1)
+        let insights = try env.context.fetch(FetchDescriptor<ProactiveInsight>())
+        #expect(insights.count == 1)
+        let prefs = try env.context.fetch(FetchDescriptor<TrainingPreference>())
+        #expect(prefs.count == 1)
+        #expect(prefs.first?.value == "bad shoulder")
+    }
+
+    @Test("restored records are synced — restore does not trigger an immediate re-push")
+    func restoredRecordsAreSynced() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        let bundled = TestFixtures.makeExercise(name: "Bench Press", isCustom: false)
+        env.context.insert(bundled)
+        try env.context.save()
+        env.network.fetchSnapshotResult = makeServerSnapshot(bundledExerciseId: bundled.id)
+
+        // Act
+        _ = try await env.manager.restoreFromSnapshot()
+
+        // Assert — local state now equals the mirror at that revision
+        let workouts = try await env.workoutRepo.fetchAll()
+        #expect(workouts.allSatisfy { $0.syncStatus == .synced })
+        let templates = try await env.templateRepo.fetchAll()
+        #expect(templates.allSatisfy { $0.syncStatus == .synced })
+        let entries = try await env.bodyWeightRepo.fetchAll()
+        #expect(entries.allSatisfy { $0.syncStatus == .synced })
+        #expect(env.manager.lastRevision == 42)
+        #expect(env.settings.lastSyncRevision == 42)
+        await env.manager.syncIfNeeded()
+        #expect(env.network.pushSnapshotCallCount == 0)
+    }
+
+    @Test("restored custom exercise carries its tags")
+    func restoredCustomExerciseCarriesTags() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        let bundled = TestFixtures.makeExercise(name: "Bench Press", isCustom: false)
+        env.context.insert(bundled)
+        try env.context.save()
+        let customId = UUID()
+        env.network.fetchSnapshotResult = makeServerSnapshot(
+            bundledExerciseId: bundled.id, customExerciseId: customId
+        )
+
+        // Act
+        _ = try await env.manager.restoreFromSnapshot()
+
+        // Assert
+        let custom = try #require(try await env.exerciseRepo.fetch(id: customId))
+        #expect(custom.tags.count == 1)
+        #expect(custom.tags.first?.category == "muscle_group")
+        #expect(custom.tags.first?.value == "chest")
+    }
+
+    @Test("restore from a fresh mirror (revision 0, empty arrays) refuses to wipe local data")
+    func restoreFromFreshMirrorRefusesToWipe() async throws {
+        // Arrange — server has never received a push: revision 0, all empty
+        let env = try SyncTestEnv()
+        env.context.insert(Workout(name: "Precious Local Workout", startedAt: .now))
+        try env.context.save()
+        env.network.fetchSnapshotResult = SnapshotFetchResponse(
+            revision: 0,
+            serverTime: .now,
+            snapshot: SyncSnapshot(
+                workouts: [], templates: [], customExercises: [], bodyWeightEntries: []
+            )
+        )
+
+        // Act + Assert — treated as "nothing to restore", local data survives
+        await #expect(throws: SyncError.self) {
+            _ = try await env.manager.restoreFromSnapshot()
+        }
+        let workouts = try await env.workoutRepo.fetchAll()
+        #expect(workouts.count == 1)
+        #expect(workouts.first?.name == "Precious Local Workout")
+    }
+
+    @Test("failed snapshot fetch leaves local data untouched")
+    func failedFetchLeavesLocalDataUntouched() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        env.context.insert(Workout(name: "Safe Workout", startedAt: .now))
+        try env.context.save()
+        env.network.errorToThrow = SyncError.serverError(503)
+
+        // Act + Assert
+        await #expect(throws: SyncError.self) {
+            _ = try await env.manager.restoreFromSnapshot()
+        }
+        let workouts = try await env.workoutRepo.fetchAll()
+        #expect(workouts.count == 1)
+        #expect(workouts.first?.name == "Safe Workout")
     }
 }
 
@@ -809,122 +506,122 @@ struct SyncManagerTests {
 @MainActor
 struct SyncStateTests {
     /// Build a SyncManager with isolated UserDefaults; only `settings.serverURL`
-    /// matters for these tests. All other deps are inert.
-    private func makeManager(serverURL: String = "") throws -> (SyncManager, SettingsManager) {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-        let settings = SettingsManager(
-            defaults: UserDefaults(suiteName: "sync-status-\(UUID())")!
-        )
-        settings.serverURL = serverURL
-
-        let manager = SyncManager(
-            workoutRepository: SwiftDataWorkoutRepository(context: context),
-            templateRepository: SwiftDataTemplateRepository(context: context),
-            chatRepository: SwiftDataChatMessageRepository(context: context),
-            insightRepository: SwiftDataInsightRepository(context: context),
-            preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
-            networkService: MockNetworkService(),
-            exerciseRepository: SwiftDataExerciseRepository(context: context),
-            settings: settings
-        )
-        return (manager, settings)
+    /// matters for these tests. Returns the env so the container stays retained.
+    private func makeEnv(serverURL: String = "") throws -> SyncTestEnv {
+        try SyncTestEnv(serverURL: serverURL)
     }
 
     @Test("status is .disabled when serverURL is empty")
     func disabledWhenNoServerURL() throws {
-        let (manager, _) = try makeManager(serverURL: "")
-        #expect(manager.state == SyncState.disabled)
+        let env = try makeEnv(serverURL: "")
+        #expect(env.manager.state == SyncState.disabled)
     }
 
     @Test("status is .pending when configured but never synced and online")
     func pendingWhenConfiguredAndIdle() throws {
-        let (manager, _) = try makeManager(serverURL: "https://example.com")
-        manager.isConnected = true
-        #expect(manager.state == SyncState.pending)
+        let env = try makeEnv(serverURL: "https://example.com")
+        env.manager.isConnected = true
+        #expect(env.manager.state == SyncState.pending)
     }
 
     @Test("status is .offline when configured but no connectivity")
     func offlineWhenDisconnected() throws {
-        let (manager, _) = try makeManager(serverURL: "https://example.com")
-        manager.isConnected = false
-        #expect(manager.state == SyncState.offline)
+        let env = try makeEnv(serverURL: "https://example.com")
+        env.manager.isConnected = false
+        #expect(env.manager.state == SyncState.offline)
     }
 
     @Test("status is .syncing while a sync is in flight")
     func syncingWhenInFlight() throws {
-        let (manager, _) = try makeManager(serverURL: "https://example.com")
-        manager.isConnected = true
-        manager.isSyncing = true
-        #expect(manager.state == SyncState.syncing)
+        let env = try makeEnv(serverURL: "https://example.com")
+        env.manager.isConnected = true
+        env.manager.isSyncing = true
+        #expect(env.manager.state == SyncState.syncing)
     }
 
     @Test("status is .error when last attempt failed")
     func errorAfterFailure() throws {
-        let (manager, _) = try makeManager(serverURL: "https://example.com")
-        manager.isConnected = true
-        manager.syncError = "401 Unauthorized"
-        if case .error(let msg) = manager.state {
+        let env = try makeEnv(serverURL: "https://example.com")
+        env.manager.isConnected = true
+        env.manager.syncError = "401 Unauthorized"
+        if case .error(let msg) = env.manager.state {
             #expect(msg == "401 Unauthorized")
         } else {
-            Issue.record("expected .error, got \(manager.state)")
+            Issue.record("expected .error, got \(env.manager.state)")
         }
     }
 
     @Test("status is .synced when a successful sync timestamp exists")
     func syncedWhenTimestampSet() throws {
-        let (manager, _) = try makeManager(serverURL: "https://example.com")
-        manager.isConnected = true
+        let env = try makeEnv(serverURL: "https://example.com")
+        env.manager.isConnected = true
         let when = Date(timeIntervalSince1970: 1_700_000_000)
-        manager.lastSyncDate = when
-        if case .synced(let date) = manager.state {
+        env.manager.lastSyncDate = when
+        if case .synced(let date) = env.manager.state {
             #expect(date == when)
         } else {
-            Issue.record("expected .synced, got \(manager.state)")
+            Issue.record("expected .synced, got \(env.manager.state)")
         }
     }
 
+    @Test("manager seeds lastRevision from settings on init")
+    func seedsRevisionFromSettings() throws {
+        let defaults = UserDefaults(suiteName: "sync-seed-\(UUID())")!
+        let settings = SettingsManager(defaults: defaults)
+        settings.lastSyncRevision = 17
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let manager = SyncManager(
+            workoutRepository: SwiftDataWorkoutRepository(context: context),
+            templateRepository: SwiftDataTemplateRepository(context: context),
+            exerciseRepository: SwiftDataExerciseRepository(context: context),
+            bodyWeightRepository: SwiftDataBodyWeightRepository(context: context),
+            networkService: MockNetworkService(),
+            settings: settings
+        )
+        #expect(manager.lastRevision == 17)
+        _ = container
+    }
+
     // Priority order: disabled > offline > syncing > error > synced > pending.
-    // The intent is to surface the most actionable state first.
 
     @Test("disabled wins over every other condition")
     func disabledOverridesAll() throws {
-        let (manager, settings) = try makeManager(serverURL: "")
-        manager.isConnected = false
-        manager.isSyncing = true
-        manager.syncError = "boom"
-        manager.lastSyncDate = .now
-        _ = settings
-        #expect(manager.state == SyncState.disabled)
+        let env = try makeEnv(serverURL: "")
+        env.manager.isConnected = false
+        env.manager.isSyncing = true
+        env.manager.syncError = "boom"
+        env.manager.lastSyncDate = .now
+        #expect(env.manager.state == SyncState.disabled)
     }
 
     @Test("offline beats error and synced when connectivity is gone")
     func offlineBeatsLowerPriority() throws {
-        let (manager, _) = try makeManager(serverURL: "https://example.com")
-        manager.isConnected = false
-        manager.syncError = "previous failure"
-        manager.lastSyncDate = .now
-        #expect(manager.state == SyncState.offline)
+        let env = try makeEnv(serverURL: "https://example.com")
+        env.manager.isConnected = false
+        env.manager.syncError = "previous failure"
+        env.manager.lastSyncDate = .now
+        #expect(env.manager.state == SyncState.offline)
     }
 
     @Test("syncing beats error and synced while running")
     func syncingBeatsLowerPriority() throws {
-        let (manager, _) = try makeManager(serverURL: "https://example.com")
-        manager.isConnected = true
-        manager.isSyncing = true
-        manager.syncError = "previous failure"
-        manager.lastSyncDate = .now
-        #expect(manager.state == SyncState.syncing)
+        let env = try makeEnv(serverURL: "https://example.com")
+        env.manager.isConnected = true
+        env.manager.isSyncing = true
+        env.manager.syncError = "previous failure"
+        env.manager.lastSyncDate = .now
+        #expect(env.manager.state == SyncState.syncing)
     }
 
     @Test("error beats synced when both are present and online idle")
     func errorBeatsSynced() throws {
-        let (manager, _) = try makeManager(serverURL: "https://example.com")
-        manager.isConnected = true
-        manager.syncError = "401"
-        manager.lastSyncDate = .now
-        if case .error = manager.state {} else {
-            Issue.record("expected .error, got \(manager.state)")
+        let env = try makeEnv(serverURL: "https://example.com")
+        env.manager.isConnected = true
+        env.manager.syncError = "401"
+        env.manager.lastSyncDate = .now
+        if case .error = env.manager.state {} else {
+            Issue.record("expected .error, got \(env.manager.state)")
         }
     }
 }

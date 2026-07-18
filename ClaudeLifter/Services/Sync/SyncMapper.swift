@@ -1,5 +1,11 @@
 import Foundation
 
+/// Model ↔ wire-DTO conversion for the snapshot mirror (issue #78) and for
+/// BackupService's on-disk backup format.
+///
+/// The pull-merge machinery (applyDTO, last-write-wins field merging) was
+/// deleted with the bidirectional sync design — the phone is authoritative,
+/// so DTOs only flow model → wire on push, and wire → NEW model on restore.
 enum SyncMapper {
     // MARK: - Model → DTO
 
@@ -75,24 +81,34 @@ enum SyncMapper {
         )
     }
 
-    static func toDTO(_ message: AIChatMessage) -> ChatMessageDTO {
-        ChatMessageDTO(
-            id: message.id,
-            workoutId: message.workoutId,
-            role: message.role.rawValue,
-            content: message.content,
-            timestamp: message.timestamp
+    static func toDTO(_ exercise: Exercise) -> ExerciseDTO {
+        ExerciseDTO(
+            id: exercise.id,
+            name: exercise.name,
+            force: exercise.force,
+            level: exercise.level,
+            mechanic: exercise.mechanic,
+            equipment: exercise.equipment,
+            instructions: exercise.instructions,
+            primaryMuscles: exercise.primaryMuscles,
+            secondaryMuscles: exercise.secondaryMuscles,
+            isCustom: exercise.isCustom,
+            externalId: exercise.externalId,
+            notes: exercise.notes,
+            imageURL: exercise.imageURL,
+            photoURL: exercise.photoURL,
+            tags: exercise.tags.map { ExerciseTagDTO(category: $0.category, value: $0.value) }
         )
     }
 
-    static func toDTO(_ insight: ProactiveInsight) -> InsightDTO {
-        InsightDTO(
-            id: insight.id,
-            content: insight.content,
-            type: insight.type.rawValue,
-            generatedAt: insight.generatedAt,
-            isRead: insight.isRead,
-            lastModified: insight.lastModified
+    static func toDTO(_ entry: BodyWeightEntry) -> BodyWeightEntryDTO {
+        BodyWeightEntryDTO(
+            id: entry.id,
+            weightKg: entry.weightKg,
+            recordedAt: entry.recordedAt,
+            source: entry.source,
+            healthKitSampleUUID: entry.healthKitSampleUUID,
+            lastModified: entry.lastModified
         )
     }
 
@@ -104,182 +120,6 @@ enum SyncMapper {
             source: pref.source,
             lastModified: pref.lastModified
         )
-    }
-
-    // MARK: - DTO → Model (update existing model from DTO, last-write-wins)
-
-    /// Full merge including nested exercises and sets.
-    @MainActor
-    static func applyDTO(
-        _ dto: WorkoutDTO,
-        to workout: Workout,
-        exerciseRepository: any ExerciseRepository
-    ) async throws {
-        // Update scalar fields
-        workout.name = dto.name
-        workout.templateId = dto.templateId
-        workout.completedAt = dto.completedAt
-        workout.notes = dto.notes
-        workout.lastModified = dto.lastModified
-        workout.syncStatus = .synced
-
-        // Merge exercises
-        let localExercisesById = Dictionary(uniqueKeysWithValues: workout.exercises.map { ($0.id, $0) })
-        let remoteIds = Set(dto.exercises.map(\.id))
-
-        // Remove locals not in remote
-        workout.exercises.removeAll { !remoteIds.contains($0.id) }
-
-        // Insert or update
-        for exerciseDTO in dto.exercises {
-            if let local = localExercisesById[exerciseDTO.id] {
-                applyDTO(exerciseDTO, to: local)
-            } else {
-                var exercise = try await exerciseRepository.fetch(id: exerciseDTO.exerciseId)
-                if exercise == nil, let name = exerciseDTO.exerciseName {
-                    exercise = try await exerciseRepository.fuzzySearch(query: name).first
-                }
-                if let exercise {
-                    let we = WorkoutExercise(
-                        id: exerciseDTO.id,
-                        order: exerciseDTO.order,
-                        exercise: exercise,
-                        notes: exerciseDTO.notes,
-                        restSeconds: exerciseDTO.restSeconds
-                    )
-                    for setDTO in exerciseDTO.sets {
-                        let set = WorkoutSet(
-                            id: setDTO.id,
-                            order: setDTO.order,
-                            weight: setDTO.weight,
-                            weightUnit: WeightUnit(rawValue: setDTO.weightUnit) ?? .kg,
-                            reps: setDTO.reps,
-                            isCompleted: setDTO.isCompleted,
-                            completedAt: setDTO.completedAt,
-                            notes: setDTO.notes
-                        )
-                        we.sets.append(set)
-                    }
-                    workout.exercises.append(we)
-                }
-            }
-        }
-    }
-
-    /// Full merge including nested template exercises.
-    @MainActor
-    static func applyDTO(
-        _ dto: TemplateDTO,
-        to template: WorkoutTemplate,
-        exerciseRepository: any ExerciseRepository
-    ) async throws {
-        // Update scalar fields
-        template.name = dto.name
-        template.notes = dto.notes
-        template.updatedAt = dto.updatedAt
-        template.lastPerformedAt = dto.lastPerformedAt
-        template.timesPerformed = dto.timesPerformed
-        template.lastModified = dto.lastModified
-        template.syncStatus = .synced
-
-        // Merge exercises
-        let localExercisesById = Dictionary(uniqueKeysWithValues: template.exercises.map { ($0.id, $0) })
-        let remoteIds = Set(dto.exercises.map(\.id))
-
-        // Remove locals not in remote
-        template.exercises.removeAll { !remoteIds.contains($0.id) }
-
-        // Insert or update
-        for teDTO in dto.exercises {
-            if let local = localExercisesById[teDTO.id] {
-                applyDTO(teDTO, to: local)
-            } else {
-                var exercise = try await exerciseRepository.fetch(id: teDTO.exerciseId)
-                if exercise == nil, let name = teDTO.exerciseName {
-                    exercise = try await exerciseRepository.fuzzySearch(query: name).first
-                }
-                if let exercise {
-                    let te = TemplateExercise(
-                        id: teDTO.id,
-                        order: teDTO.order,
-                        exercise: exercise,
-                        defaultSets: teDTO.defaultSets,
-                        defaultReps: teDTO.defaultReps,
-                        defaultWeight: teDTO.defaultWeight,
-                        defaultRestSeconds: teDTO.defaultRestSeconds,
-                        notes: teDTO.notes
-                    )
-                    template.exercises.append(te)
-                }
-            }
-        }
-    }
-
-    static func applyDTO(_ dto: InsightDTO, to insight: ProactiveInsight) {
-        insight.content = dto.content
-        insight.isRead = dto.isRead
-        insight.lastModified = dto.lastModified
-        insight.syncStatus = .synced
-    }
-
-    static func applyDTO(_ dto: PreferenceDTO, to pref: TrainingPreference) {
-        pref.value = dto.value
-        pref.source = dto.source
-        pref.lastModified = dto.lastModified
-        pref.syncStatus = .synced
-    }
-
-    // MARK: - Nested DTO → Model helpers
-
-    static func applyDTO(_ dto: WorkoutExerciseDTO, to we: WorkoutExercise) {
-        we.order = dto.order
-        we.notes = dto.notes
-        we.restSeconds = dto.restSeconds
-
-        // Merge sets
-        let localSetsById = Dictionary(uniqueKeysWithValues: we.sets.map { ($0.id, $0) })
-        let remoteSetIds = Set(dto.sets.map(\.id))
-
-        // Remove locals not in remote
-        we.sets.removeAll { !remoteSetIds.contains($0.id) }
-
-        // Insert or update
-        for setDTO in dto.sets {
-            if let localSet = localSetsById[setDTO.id] {
-                applyDTO(setDTO, to: localSet)
-            } else {
-                let newSet = WorkoutSet(
-                    id: setDTO.id,
-                    order: setDTO.order,
-                    weight: setDTO.weight,
-                    weightUnit: WeightUnit(rawValue: setDTO.weightUnit) ?? .kg,
-                    reps: setDTO.reps,
-                    isCompleted: setDTO.isCompleted,
-                    completedAt: setDTO.completedAt,
-                    notes: setDTO.notes
-                )
-                we.sets.append(newSet)
-            }
-        }
-    }
-
-    static func applyDTO(_ dto: WorkoutSetDTO, to set: WorkoutSet) {
-        set.order = dto.order
-        set.weight = dto.weight
-        set.weightUnit = WeightUnit(rawValue: dto.weightUnit) ?? .kg
-        set.reps = dto.reps
-        set.isCompleted = dto.isCompleted
-        set.completedAt = dto.completedAt
-        set.notes = dto.notes
-    }
-
-    static func applyDTO(_ dto: TemplateExerciseDTO, to te: TemplateExercise) {
-        te.order = dto.order
-        te.defaultSets = dto.defaultSets
-        te.defaultReps = dto.defaultReps
-        te.defaultWeight = dto.defaultWeight
-        te.defaultRestSeconds = dto.defaultRestSeconds
-        te.notes = dto.notes
     }
 
     // MARK: - Factory methods (create new model from DTO)
@@ -373,13 +213,35 @@ enum SyncMapper {
         return template
     }
 
-    static func createInsight(from dto: InsightDTO) -> ProactiveInsight {
-        ProactiveInsight(
+    /// Builds the Exercise WITHOUT its tags. Tags are relationship objects;
+    /// the caller attaches them after the exercise is inserted into a context
+    /// (the pattern ExerciseImportService and BackupService use).
+    static func createExercise(from dto: ExerciseDTO) -> Exercise {
+        Exercise(
             id: dto.id,
-            content: dto.content,
-            type: InsightType(rawValue: dto.type) ?? .suggestion,
-            generatedAt: dto.generatedAt,
-            isRead: dto.isRead,
+            name: dto.name,
+            force: dto.force,
+            level: dto.level,
+            mechanic: dto.mechanic,
+            equipment: dto.equipment,
+            instructions: dto.instructions,
+            primaryMuscles: dto.primaryMuscles,
+            secondaryMuscles: dto.secondaryMuscles,
+            isCustom: dto.isCustom,
+            externalId: dto.externalId,
+            notes: dto.notes,
+            imageURL: dto.imageURL,
+            photoURL: dto.photoURL
+        )
+    }
+
+    static func createBodyWeightEntry(from dto: BodyWeightEntryDTO) -> BodyWeightEntry {
+        BodyWeightEntry(
+            id: dto.id,
+            weightKg: dto.weightKg,
+            recordedAt: dto.recordedAt,
+            source: dto.source,
+            healthKitSampleUUID: dto.healthKitSampleUUID,
             syncStatus: .synced,
             lastModified: dto.lastModified
         )

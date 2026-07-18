@@ -60,25 +60,9 @@ struct InsightRepositoryTests {
         #expect(insight.isRead == true)
     }
 
-    @Test("fetchPending returns insights with pending syncStatus")
-    @MainActor
-    func fetchPending() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-        let repo = SwiftDataInsightRepository(context: context)
-
-        let pending = ProactiveInsight(content: "Pending insight", type: .suggestion)
-        pending.syncStatus = .pending
-        let synced = ProactiveInsight(content: "Synced insight", type: .warning)
-        synced.syncStatus = .synced
-        context.insert(pending)
-        context.insert(synced)
-        try context.save()
-
-        let results = try await repo.fetchPending()
-        #expect(results.count == 1)
-        #expect(results[0].content == "Pending insight")
-    }
+    // fetchPending was removed with insight sync (issue #78) — insights are
+    // local-only now; the one-way snapshot mirror covers workouts, templates,
+    // custom exercises, and body weight.
 
     @Test("fetchAll returns insights sorted by generatedAt descending")
     @MainActor

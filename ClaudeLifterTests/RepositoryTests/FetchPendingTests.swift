@@ -89,63 +89,9 @@ struct FetchPendingTests {
         #expect(results[0].name == "Pending")
     }
 
-    // MARK: - ChatMessageRepository
-
-    @Test("ChatMessageRepository fetchPending returns only pending messages")
-    @MainActor
-    func chatFetchPending() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-        let repo = SwiftDataChatMessageRepository(context: context)
-
-        let pending = AIChatMessage(role: .user, content: "Pending", syncStatus: .pending)
-        let synced = AIChatMessage(role: .assistant, content: "Synced", syncStatus: .synced)
-        context.insert(pending)
-        context.insert(synced)
-        try context.save()
-
-        let results = try await repo.fetchPending()
-        #expect(results.count == 1)
-        #expect(results[0].content == "Pending")
-    }
-
-    // MARK: - InsightRepository
-
-    @Test("InsightRepository fetchPending returns only pending insights")
-    @MainActor
-    func insightFetchPending() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-        let repo = SwiftDataInsightRepository(context: context)
-
-        let pending = ProactiveInsight(content: "Pending insight", type: .suggestion, syncStatus: .pending)
-        let synced = ProactiveInsight(content: "Synced insight", type: .warning, syncStatus: .synced)
-        context.insert(pending)
-        context.insert(synced)
-        try context.save()
-
-        let results = try await repo.fetchPending()
-        #expect(results.count == 1)
-        #expect(results[0].content == "Pending insight")
-    }
-
-    // MARK: - TrainingPreferenceRepository
-
-    @Test("TrainingPreferenceRepository fetchPending returns only pending preferences")
-    @MainActor
-    func prefFetchPending() async throws {
-        let container = try makeTestContainer()
-        let context = container.mainContext
-        let repo = SwiftDataTrainingPreferenceRepository(context: context)
-
-        let pending = TrainingPreference(key: "style", value: "strength", syncStatus: .pending)
-        let synced = TrainingPreference(key: "injury", value: "none", syncStatus: .synced)
-        context.insert(pending)
-        context.insert(synced)
-        try context.save()
-
-        let results = try await repo.fetchPending()
-        #expect(results.count == 1)
-        #expect(results[0].key == "style")
-    }
+    // Chat messages, insights, and preferences no longer participate in sync
+    // (issue #78: one-way snapshot mirror covers workouts, templates, custom
+    // exercises, and body weight only), so their repositories no longer expose
+    // fetchPending. BodyWeightRepository's fetchPending is covered in
+    // BodyWeightRepositoryTests.
 }

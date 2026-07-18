@@ -4,16 +4,55 @@ final class NetworkService: NetworkServiceProtocol, @unchecked Sendable {
     private let settings: SettingsManager
     private let session: URLSession
 
-    private var encoder: JSONEncoder {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        return e
+    private var encoder: JSONEncoder { Self.makeWireEncoder() }
+    private var decoder: JSONDecoder { Self.makeWireDecoder() }
+
+    // MARK: - Wire codecs
+    //
+    // The v2 snapshot contract mandates ISO 8601 with fractional seconds
+    // (e.g. "2026-07-18T18:00:00.000Z"). Foundation's stock `.iso8601`
+    // strategies neither emit nor parse fractional seconds, so both
+    // directions are custom. Decoding is tolerant: it accepts fractional
+    // and plain-second timestamps.
+
+    // ISO8601DateFormatter is documented thread-safe (unlike NSDateFormatter
+    // pre-iOS 7), and these are configured once and never mutated again —
+    // hence nonisolated(unsafe) rather than a per-call allocation.
+    nonisolated(unsafe) private static let isoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    nonisolated(unsafe) private static let isoPlain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    static func makeWireEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(isoFractional.string(from: date))
+        }
+        return encoder
     }
 
-    private var decoder: JSONDecoder {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
-        return d
+    static func makeWireDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = isoFractional.date(from: string) ?? isoPlain.date(from: string) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Not an ISO 8601 date: \(string)"
+            )
+        }
+        return decoder
     }
 
     init(settings: SettingsManager, session: URLSession = .shared) {
@@ -98,6 +137,14 @@ final class NetworkService: NetworkServiceProtocol, @unchecked Sendable {
                 }
             }
         }
+    }
+
+    func pushSnapshot(_ request: SnapshotPushRequest) async throws -> SnapshotPushResponse {
+        try await post(endpoint: "/api/sync/snapshot", body: request)
+    }
+
+    func fetchSnapshot() async throws -> SnapshotFetchResponse {
+        try await get(endpoint: "/api/sync/snapshot", queryItems: [])
     }
 
     func uploadBlob(url: URL, data: Data, contentType: String) async throws {

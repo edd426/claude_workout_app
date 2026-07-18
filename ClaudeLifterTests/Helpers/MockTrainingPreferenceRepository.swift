@@ -33,8 +33,4 @@ final class MockTrainingPreferenceRepository: TrainingPreferenceRepository {
         preferences.removeAll { $0.key == key }
     }
 
-    func fetchPending() async throws -> [TrainingPreference] {
-        if let error = errorToThrow { throw error }
-        return preferences.filter { $0.syncStatus == .pending }
-    }
 }

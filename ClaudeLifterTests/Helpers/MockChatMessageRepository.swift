@@ -31,8 +31,4 @@ final class MockChatMessageRepository: ChatMessageRepository {
         }
     }
 
-    func fetchPending() async throws -> [AIChatMessage] {
-        if let error = errorToThrow { throw error }
-        return messages.filter { $0.syncStatus == .pending }
-    }
 }

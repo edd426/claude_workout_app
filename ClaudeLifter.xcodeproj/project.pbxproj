@@ -49,6 +49,7 @@
 		F2F44536F3189079D30AD77C /* InsightGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 779F20945A833E8211DA4D0B /* InsightGenerationService.swift */; };
 		74C04EE368165956542037D6 /* PRDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDFC961F735951E3447D508A /* PRDetectionService.swift */; };
 		5872FF64569B72EAD5E9180C /* ProxiedAnthropicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DB6B91FD5E20633DE9D9909 /* ProxiedAnthropicService.swift */; };
+		1B40FA3DB92FCB0E44DD5F7F /* RestTimerNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 534E1D6A2B20EBF345BA4056 /* RestTimerNotificationScheduler.swift */; };
 		80C31B958DED2E5A665DC426 /* RestTimerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7340E3D45C26DFC6DD81D572 /* RestTimerService.swift */; };
 		1D314075C6BBC031825BD896 /* AddExerciseTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434300F5979D665A9FEDEAB8 /* AddExerciseTool.swift */; };
 		384D47CAE7729162CFA82571 /* ClaudeTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C3D02A87E8873628EED035 /* ClaudeTool.swift */; };
@@ -132,6 +133,7 @@
 		57B50D38BFC35B9CE81137C1 /* MockInsightGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF9E610DA69697073FA94F75 /* MockInsightGenerationService.swift */; };
 		8DF037FDBBFA11DCD4918753 /* MockInsightRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF5085E2591D9D33466039F /* MockInsightRepository.swift */; };
 		C443511381F97AA1A4AF91DF /* MockNetworkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32EB615C09D872B5642099AE /* MockNetworkService.swift */; };
+		ED11E6E44FEBA57CF6B25039 /* MockNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2A4B1B64DC6C4A0351FED4 /* MockNotificationScheduler.swift */; };
 		4A511DC84B22381F76C649F3 /* MockPRDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E536544FD38BA651DBDA6B /* MockPRDetectionService.swift */; };
 		8D92469E5160C8F834DF5551 /* MockTemplateRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957BB74AD69F17E7FB43F720 /* MockTemplateRepository.swift */; };
 		8B66BC2F8398E1784EC7864F /* MockTrainingPreferenceRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB3164B4FD512A54F95A65DD /* MockTrainingPreferenceRepository.swift */; };
@@ -268,6 +270,7 @@
 		779F20945A833E8211DA4D0B /* InsightGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightGenerationService.swift; sourceTree = "<group>"; };
 		DDFC961F735951E3447D508A /* PRDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PRDetectionService.swift; sourceTree = "<group>"; };
 		3DB6B91FD5E20633DE9D9909 /* ProxiedAnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxiedAnthropicService.swift; sourceTree = "<group>"; };
+		534E1D6A2B20EBF345BA4056 /* RestTimerNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimerNotificationScheduler.swift; sourceTree = "<group>"; };
 		7340E3D45C26DFC6DD81D572 /* RestTimerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimerService.swift; sourceTree = "<group>"; };
 		434300F5979D665A9FEDEAB8 /* AddExerciseTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddExerciseTool.swift; sourceTree = "<group>"; };
 		43C3D02A87E8873628EED035 /* ClaudeTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTool.swift; sourceTree = "<group>"; };
@@ -351,6 +354,7 @@
 		AF9E610DA69697073FA94F75 /* MockInsightGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockInsightGenerationService.swift; sourceTree = "<group>"; };
 		FEF5085E2591D9D33466039F /* MockInsightRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockInsightRepository.swift; sourceTree = "<group>"; };
 		32EB615C09D872B5642099AE /* MockNetworkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockNetworkService.swift; sourceTree = "<group>"; };
+		8E2A4B1B64DC6C4A0351FED4 /* MockNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockNotificationScheduler.swift; sourceTree = "<group>"; };
 		D8E536544FD38BA651DBDA6B /* MockPRDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPRDetectionService.swift; sourceTree = "<group>"; };
 		957BB74AD69F17E7FB43F720 /* MockTemplateRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockTemplateRepository.swift; sourceTree = "<group>"; };
 		AB3164B4FD512A54F95A65DD /* MockTrainingPreferenceRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockTrainingPreferenceRepository.swift; sourceTree = "<group>"; };
@@ -560,6 +564,7 @@
 				779F20945A833E8211DA4D0B,
 				DDFC961F735951E3447D508A,
 				3DB6B91FD5E20633DE9D9909,
+				534E1D6A2B20EBF345BA4056,
 				7340E3D45C26DFC6DD81D572,
 			);
 			path = Services;
@@ -762,6 +767,7 @@
 				AF9E610DA69697073FA94F75,
 				FEF5085E2591D9D33466039F,
 				32EB615C09D872B5642099AE,
+				8E2A4B1B64DC6C4A0351FED4,
 				D8E536544FD38BA651DBDA6B,
 				957BB74AD69F17E7FB43F720,
 				AB3164B4FD512A54F95A65DD,
@@ -1027,6 +1033,7 @@
 				F2F44536F3189079D30AD77C /* InsightGenerationService.swift in Sources */,
 				74C04EE368165956542037D6 /* PRDetectionService.swift in Sources */,
 				5872FF64569B72EAD5E9180C /* ProxiedAnthropicService.swift in Sources */,
+				1B40FA3DB92FCB0E44DD5F7F /* RestTimerNotificationScheduler.swift in Sources */,
 				80C31B958DED2E5A665DC426 /* RestTimerService.swift in Sources */,
 				1D314075C6BBC031825BD896 /* AddExerciseTool.swift in Sources */,
 				384D47CAE7729162CFA82571 /* ClaudeTool.swift in Sources */,
@@ -1117,6 +1124,7 @@
 				57B50D38BFC35B9CE81137C1 /* MockInsightGenerationService.swift in Sources */,
 				8DF037FDBBFA11DCD4918753 /* MockInsightRepository.swift in Sources */,
 				C443511381F97AA1A4AF91DF /* MockNetworkService.swift in Sources */,
+				ED11E6E44FEBA57CF6B25039 /* MockNotificationScheduler.swift in Sources */,
 				4A511DC84B22381F76C649F3 /* MockPRDetectionService.swift in Sources */,
 				8D92469E5160C8F834DF5551 /* MockTemplateRepository.swift in Sources */,
 				8B66BC2F8398E1784EC7864F /* MockTrainingPreferenceRepository.swift in Sources */,

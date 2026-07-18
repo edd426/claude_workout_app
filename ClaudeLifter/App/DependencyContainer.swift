@@ -19,6 +19,12 @@ final class DependencyContainer {
     let backupService: any BackupServiceProtocol
     let bodyWeightRepository: any BodyWeightRepository
     let healthKitService: any HealthKitServiceProtocol
+    /// Shared rest-timer tick source — one instance for the app instead of
+    /// per-view instantiation (issue #77).
+    let restTimerService: any RestTimerServiceProtocol
+    /// Schedules the rest-complete local notification so the chime fires
+    /// while the phone is locked (issue #77).
+    let notificationScheduler: any NotificationScheduling
     let syncManager: SyncManager
     /// Exposed so ViewModels (ChatViewModel especially) can read the user's
     /// selected AI model. Previously this was built inside init() but not
@@ -58,6 +64,8 @@ final class DependencyContainer {
         self.imageUploadService = ImageUploadService(networkService: network)
         self.bodyWeightRepository = SwiftDataBodyWeightRepository(context: modelContext)
         self.healthKitService = HealthKitService()
+        self.restTimerService = RestTimerService()
+        self.notificationScheduler = UserNotificationScheduler()
 
         // Use proxy when serverURL is configured (Phase 2), fall back to direct API key (Phase 1)
         let anthropic: any AnthropicServiceProtocol

@@ -3,12 +3,22 @@ import Combine
 
 struct RestTimerOverlayView: View {
     @State private var vm: RestTimerViewModel
-    @State private var timerService = RestTimerService()
+    private let timerService: any RestTimerServiceProtocol
     @State private var cancellable: AnyCancellable?
+    @Environment(\.scenePhase) private var scenePhase
     let onDismiss: () -> Void
 
-    init(durationSeconds: Int, onDismiss: @escaping () -> Void) {
-        _vm = State(initialValue: RestTimerViewModel(durationSeconds: durationSeconds))
+    init(
+        durationSeconds: Int,
+        timerService: any RestTimerServiceProtocol,
+        notificationScheduler: any NotificationScheduling,
+        onDismiss: @escaping () -> Void
+    ) {
+        _vm = State(initialValue: RestTimerViewModel(
+            durationSeconds: durationSeconds,
+            notificationScheduler: notificationScheduler
+        ))
+        self.timerService = timerService
         self.onDismiss = onDismiss
     }
 
@@ -34,6 +44,13 @@ struct RestTimerOverlayView: View {
             cancellable = timerService.tickPublisher.sink { vm.tick() }
         }
         .onDisappear { timerService.stop() }
+        .onChange(of: scenePhase) { _, phase in
+            // Recompute from the clock the moment the app returns to the
+            // foreground — time spent suspended (phone locked between sets)
+            // must count, and completion fires immediately if the deadline
+            // passed while locked (issue #77).
+            if phase == .active { vm.refreshFromClock() }
+        }
         .onChange(of: vm.isExpired) { _, expired in
             if expired { onDismiss() }
         }

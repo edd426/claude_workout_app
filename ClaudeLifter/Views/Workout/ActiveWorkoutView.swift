@@ -11,6 +11,7 @@ struct ActiveWorkoutView: View {
     @State private var showExercisePicker = false
     @State private var showCancelDialog = false
     @Environment(AppState.self) private var appState
+    @Environment(\.dependencies) private var dependencies
 
     var body: some View {
         Group {
@@ -102,7 +103,13 @@ struct ActiveWorkoutView: View {
             .scrollDismissesKeyboard(.interactively)
 
             if showRestTimer {
-                RestTimerOverlayView(durationSeconds: restDuration) {
+                // Shared instances from the DI container (issue #77); the
+                // fallbacks only exist for previews without an environment.
+                RestTimerOverlayView(
+                    durationSeconds: restDuration,
+                    timerService: dependencies?.restTimerService ?? RestTimerService(),
+                    notificationScheduler: dependencies?.notificationScheduler ?? UserNotificationScheduler()
+                ) {
                     showRestTimer = false
                 }
                 .padding()

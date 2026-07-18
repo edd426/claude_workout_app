@@ -323,7 +323,8 @@ final class ChatViewModel {
                     template: template,
                     workoutRepository: self.workoutRepository,
                     autoFillService: autoFillService,
-                    templateRepository: self.templateRepository
+                    templateRepository: self.templateRepository,
+                    settings: self.settings
                 )
                 await vm.startWorkout()
                 appState.startWorkout(id: vm.workout?.id ?? UUID(), vm: vm)

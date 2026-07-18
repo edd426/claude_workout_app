@@ -87,14 +87,40 @@ final class ActiveWorkoutViewModel {
         self.settings = settings
     }
 
+    /// Resumes an existing in-progress workout (crash recovery, #75). The
+    /// workout is adopted as-is — logged sets, exercises, and notes intact —
+    /// instead of building a new session from a template.
+    init(
+        resuming workout: Workout,
+        workoutRepository: any WorkoutRepository,
+        autoFillService: any AutoFillServiceProtocol,
+        templateRepository: (any TemplateRepository)? = nil,
+        prDetectionService: (any PRDetectionServiceProtocol)? = nil,
+        settings: SettingsManager? = nil
+    ) {
+        self.template = nil
+        self.adHocName = nil
+        self.workoutRepository = workoutRepository
+        self.autoFillService = autoFillService
+        self.templateRepository = templateRepository
+        self.prDetectionService = prDetectionService
+        self.settings = settings
+        self.workout = workout
+    }
+
     func startWorkout() async {
-        // Clean up any prior in-progress workouts before starting a new one.
-        // Per product: at most one workout is active at a time. Before today
-        // saveDraft() left behind a `completedAt == nil` row for every force-
-        // quit or Exit-with-Save, and they piled up forever because the app
-        // had no UI to resume or discard them. Just delete them so history
-        // only contains genuinely completed sessions.
-        await discardStaleInProgressWorkouts()
+        // A resumed session (init(resuming:)) is already fully constructed —
+        // never rebuild it or run cleanup over it. ActiveWorkoutView fires
+        // this from .task, so it must be idempotent.
+        guard workout == nil else { return }
+
+        // Clean up genuinely empty ghost sessions (no exercises, no notes)
+        // left behind by a crash between "start" and the first mutation.
+        // Non-empty drafts are deliberately kept: they are surfaced on the
+        // Home screen for an explicit Resume/Discard choice (#75). The old
+        // blanket delete here silently destroyed "Save progress as draft"
+        // data every time a new workout started.
+        await discardEmptyGhostSessions()
 
         if let template {
             await startFromTemplate(template)
@@ -103,21 +129,21 @@ final class ActiveWorkoutViewModel {
         }
     }
 
-    /// Deletes every in-progress workout (completedAt == nil). Called at the
-    /// start of a new session so that drafts from a previous session don't
-    /// linger in history. Also exposed to the Coach via the
-    /// `discard_stale_workouts` tool.
-    private func discardStaleInProgressWorkouts() async {
+    /// Deletes only in-progress workouts with zero user-visible content —
+    /// no exercises (hence no sets, completed or otherwise) and no notes.
+    /// Anything with content is the user's data and requires an explicit
+    /// Discard on the Home screen's resume prompt (#75).
+    private func discardEmptyGhostSessions() async {
         do {
             let all = try await workoutRepository.fetchAll()
-            for w in all where w.completedAt == nil {
+            for w in all where w.completedAt == nil && w.isEmptyGhostSession {
                 try? await workoutRepository.delete(w)
             }
         } catch {
             // Non-fatal — if the cleanup fails we still proceed with the new
-            // workout. The duplicates aren't preventing the user from
-            // starting, they're just ugly in history.
-            print("⚠️ discardStaleInProgressWorkouts failed: \(error)")
+            // workout. The ghosts aren't preventing the user from starting,
+            // they're just ugly in history.
+            print("⚠️ discardEmptyGhostSessions failed: \(error)")
         }
     }
 
@@ -308,5 +334,15 @@ final class ActiveWorkoutViewModel {
 
     private func saveWorkout(_ w: Workout) async throws {
         try await workoutRepository.save(w)
+    }
+}
+
+extension Workout {
+    /// True when this session contains nothing the user could miss: no
+    /// exercises (hence no sets) and no notes. Only such sessions may be
+    /// deleted without an explicit user choice (#75). Shared by the
+    /// start-workout cleanup and the Home screen's resume detection.
+    var isEmptyGhostSession: Bool {
+        exercises.isEmpty && (notes ?? "").isEmpty
     }
 }

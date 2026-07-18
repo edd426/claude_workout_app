@@ -118,6 +118,7 @@
 		A6561E854F4137DCE189325B /* ExerciseCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38AA7F3DEA42BB23873FA3CF /* ExerciseCardView.swift */; };
 		3FFA31DADD610FBC28E081E2 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 872C18983FC82204C6673019 /* HomeView.swift */; };
 		0063A185AE0B214715BA9FBA /* RestTimerOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 251A036C35AA00E683BDB9BD /* RestTimerOverlayView.swift */; };
+		790A2E66A6B1A9D8A9CDFB78 /* ResumeWorkoutCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47E66131E8982224C5E417AE /* ResumeWorkoutCard.swift */; };
 		2A214A37B94DED7CBCD858C8 /* SetRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 312CDB66507E64087F645623 /* SetRowView.swift */; };
 		39ED1AD66A8E287CBEAB90AC /* WorkoutSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9112E64C3083491FD6334D9B /* WorkoutSummaryView.swift */; };
 		6B13333443AEDD7615DC85AA /* ClaudeLifterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A37442BD01F482A5FA2B78 /* ClaudeLifterTests.swift */; };
@@ -182,6 +183,7 @@
 		FAE36F47262C670CBD18C189 /* BrandThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8700759E0BEF9D81F22B0BA /* BrandThemeTests.swift */; };
 		C736F5D1E91B33CB3462C165 /* CalendarViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC30A61797E98CE80A83F037 /* CalendarViewModelTests.swift */; };
 		98132E2BB9E8D4E727066208 /* ChatViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4511E83651E2500A6E72D6D8 /* ChatViewModelTests.swift */; };
+		28426E8743F9BFFA58D03268 /* CrashRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0CEBE64639FAD70716AA1D /* CrashRecoveryTests.swift */; };
 		9D77C0AD9475269F6392DC6F /* CreateExerciseViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD33FCCC2826B84E9B95FC84 /* CreateExerciseViewModelTests.swift */; };
 		20F178975B299F43207CA68E /* ExerciseLibraryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E508D41C1E0E51EDCAE86FCD /* ExerciseLibraryViewModelTests.swift */; };
 		4813B1ECDEF37E3FECE94FD5 /* HistoryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27F62B35213EBC9B0E172B26 /* HistoryViewModelTests.swift */; };
@@ -339,6 +341,7 @@
 		38AA7F3DEA42BB23873FA3CF /* ExerciseCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseCardView.swift; sourceTree = "<group>"; };
 		872C18983FC82204C6673019 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		251A036C35AA00E683BDB9BD /* RestTimerOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimerOverlayView.swift; sourceTree = "<group>"; };
+		47E66131E8982224C5E417AE /* ResumeWorkoutCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumeWorkoutCard.swift; sourceTree = "<group>"; };
 		312CDB66507E64087F645623 /* SetRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetRowView.swift; sourceTree = "<group>"; };
 		9112E64C3083491FD6334D9B /* WorkoutSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSummaryView.swift; sourceTree = "<group>"; };
 		B5A37442BD01F482A5FA2B78 /* ClaudeLifterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeLifterTests.swift; sourceTree = "<group>"; };
@@ -403,6 +406,7 @@
 		B8700759E0BEF9D81F22B0BA /* BrandThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandThemeTests.swift; sourceTree = "<group>"; };
 		BC30A61797E98CE80A83F037 /* CalendarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViewModelTests.swift; sourceTree = "<group>"; };
 		4511E83651E2500A6E72D6D8 /* ChatViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelTests.swift; sourceTree = "<group>"; };
+		4F0CEBE64639FAD70716AA1D /* CrashRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashRecoveryTests.swift; sourceTree = "<group>"; };
 		BD33FCCC2826B84E9B95FC84 /* CreateExerciseViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateExerciseViewModelTests.swift; sourceTree = "<group>"; };
 		E508D41C1E0E51EDCAE86FCD /* ExerciseLibraryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseLibraryViewModelTests.swift; sourceTree = "<group>"; };
 		27F62B35213EBC9B0E172B26 /* HistoryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewModelTests.swift; sourceTree = "<group>"; };
@@ -716,6 +720,7 @@
 				38AA7F3DEA42BB23873FA3CF,
 				872C18983FC82204C6673019,
 				251A036C35AA00E683BDB9BD,
+				47E66131E8982224C5E417AE,
 				312CDB66507E64087F645623,
 				9112E64C3083491FD6334D9B,
 			);
@@ -844,6 +849,7 @@
 				B8700759E0BEF9D81F22B0BA,
 				BC30A61797E98CE80A83F037,
 				4511E83651E2500A6E72D6D8,
+				4F0CEBE64639FAD70716AA1D,
 				BD33FCCC2826B84E9B95FC84,
 				E508D41C1E0E51EDCAE86FCD,
 				27F62B35213EBC9B0E172B26,
@@ -1102,6 +1108,7 @@
 				A6561E854F4137DCE189325B /* ExerciseCardView.swift in Sources */,
 				3FFA31DADD610FBC28E081E2 /* HomeView.swift in Sources */,
 				0063A185AE0B214715BA9FBA /* RestTimerOverlayView.swift in Sources */,
+				790A2E66A6B1A9D8A9CDFB78 /* ResumeWorkoutCard.swift in Sources */,
 				2A214A37B94DED7CBCD858C8 /* SetRowView.swift in Sources */,
 				39ED1AD66A8E287CBEAB90AC /* WorkoutSummaryView.swift in Sources */,
 			);
@@ -1173,6 +1180,7 @@
 				FAE36F47262C670CBD18C189 /* BrandThemeTests.swift in Sources */,
 				C736F5D1E91B33CB3462C165 /* CalendarViewModelTests.swift in Sources */,
 				98132E2BB9E8D4E727066208 /* ChatViewModelTests.swift in Sources */,
+				28426E8743F9BFFA58D03268 /* CrashRecoveryTests.swift in Sources */,
 				9D77C0AD9475269F6392DC6F /* CreateExerciseViewModelTests.swift in Sources */,
 				20F178975B299F43207CA68E /* ExerciseLibraryViewModelTests.swift in Sources */,
 				4813B1ECDEF37E3FECE94FD5 /* HistoryViewModelTests.swift in Sources */,

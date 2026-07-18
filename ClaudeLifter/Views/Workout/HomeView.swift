@@ -33,6 +33,11 @@ struct HomeView: View {
                 )
                 await vm?.loadTemplates()
             }
+            // Crash recovery (#75): surface any in-progress workout left
+            // behind by a crash, force-quit, or explicit draft save.
+            if !appState.isWorkoutActive {
+                await vm?.checkForResumableWorkout()
+            }
             if bodyWeightVM == nil {
                 bodyWeightVM = BodyWeightViewModel(
                     repository: deps.bodyWeightRepository,
@@ -54,7 +59,12 @@ struct HomeView: View {
         // double-call of loadTemplates from .task + .onAppear).
         .onChange(of: appState.isWorkoutActive) { wasActive, isActive in
             if wasActive && !isActive {
-                Task { await vm?.loadTemplates() }
+                Task {
+                    await vm?.loadTemplates()
+                    // A workout just ended — a saved draft (Exit → "Save
+                    // progress as draft") becomes resumable right away (#75).
+                    await vm?.checkForResumableWorkout()
+                }
             }
         }
         .sheet(isPresented: $showTemplateEditor) {
@@ -77,6 +87,13 @@ struct HomeView: View {
                 // serverURL guard. Rendered as a no-op for every other state, so
                 // the configured-and-working case adds no chrome here.
                 SyncStateBanner(state: deps.syncManager.state)
+            }
+            if let vm, let resumable = vm.resumableWorkout {
+                ResumeWorkoutCard(
+                    workout: resumable,
+                    onResume: { resumeWorkout(resumable) },
+                    onDiscard: { Task { await vm.discardResumableWorkout() } }
+                )
             }
             if let bodyWeightVM {
                 BodyWeightCard(vm: bodyWeightVM)
@@ -161,6 +178,22 @@ struct HomeView: View {
         path = NavigationPath()
         let workoutId = UUID()
         appState.startWorkout(id: workoutId, vm: workoutVM)
+    }
+
+    /// Crash recovery (#75): re-adopts an in-progress workout as the active
+    /// session with all logged sets intact.
+    private func resumeWorkout(_ workout: Workout) {
+        guard let deps else { return }
+        let workoutVM = ActiveWorkoutViewModel(
+            resuming: workout,
+            workoutRepository: deps.workoutRepository,
+            autoFillService: deps.autoFillService,
+            templateRepository: deps.templateRepository,
+            settings: deps.settings
+        )
+        path = NavigationPath()
+        vm?.resumableWorkout = nil
+        appState.startWorkout(id: workout.id, vm: workoutVM)
     }
 
     private func startAdHocWorkout() {

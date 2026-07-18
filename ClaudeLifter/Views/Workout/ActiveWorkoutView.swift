@@ -70,6 +70,41 @@ struct ActiveWorkoutView: View {
     }
 
     private var workoutContent: some View {
+        VStack(spacing: 0) {
+            errorBanner
+            workoutScrollArea
+        }
+    }
+
+    /// Surfaces ViewModel errors — most importantly a failed draft save,
+    /// which previously happened silently and could lose logged sets on the
+    /// next crash (#75). Same visual pattern as ChatView's error banner.
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let errorMsg = vm.errorMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(errorMsg)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    vm.errorMessage = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Dismiss error")
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .accessibilityIdentifier("workoutErrorBanner")
+        }
+    }
+
+    private var workoutScrollArea: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 LazyVStack(spacing: 12) {

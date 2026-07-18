@@ -1,3 +1,11 @@
+/**
+ * DEPRECATED (issue #78): bidirectional last-write-wins sync is replaced by
+ * the one-way snapshot mirror — POST/GET /api/sync/snapshot (syncSnapshot.ts).
+ * This endpoint is kept fully intact ONLY because the currently installed
+ * phone build still calls it; remove it once that build is reinstalled with
+ * the snapshot-sync client. Do not extend it.
+ */
+
 import {
   app,
   HttpRequest,

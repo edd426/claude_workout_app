@@ -37,6 +37,60 @@ export interface SyncPushResponse {
   results: SyncPushRecordResult[];
 }
 
+// ─── Snapshot sync (issue #78, wire contract v2) ─────────────────────────────
+// The phone is authoritative; Azure is a read-mostly mirror. A push is always
+// the complete state of each collection — full-state replace, not deltas.
+
+export const SNAPSHOT_SCHEMA_VERSION = 2;
+
+export interface SnapshotCollections {
+  workouts: Record<string, unknown>[];
+  templates: Record<string, unknown>[];
+  customExercises: Record<string, unknown>[];
+  bodyWeightEntries: Record<string, unknown>[];
+}
+
+export interface SnapshotPushRequest {
+  schemaVersion: number;
+  snapshot: SnapshotCollections;
+}
+
+export interface SnapshotContainerCounts {
+  upserted: number;
+  deleted: number;
+}
+
+export interface SnapshotCounts {
+  workouts: SnapshotContainerCounts;
+  templates: SnapshotContainerCounts;
+  customExercises: SnapshotContainerCounts;
+  bodyWeightEntries: SnapshotContainerCounts;
+}
+
+export interface SnapshotPushResponse {
+  revision: number;
+  serverTime: string;
+  counts: SnapshotCounts;
+}
+
+export interface SnapshotReadResponse {
+  revision: number;
+  serverTime: string;
+  snapshot: SnapshotCollections;
+}
+
+/**
+ * Revision metadata, persisted as the single doc id "snapshot" in the
+ * `syncMeta` container. `revision` counts successful pushes (monotonically
+ * increasing, server-assigned); `serverTime` is when the last successful
+ * push was applied.
+ */
+export interface SyncMetaDoc {
+  id: string;
+  revision: number;
+  serverTime: string;
+}
+
 export interface SasRequest {
   path: string;
   mode: "upload" | "download";

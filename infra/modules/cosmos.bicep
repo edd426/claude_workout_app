@@ -82,6 +82,17 @@ var containers = [
     name: 'preferences'
     partitionKeyPath: '/id'
   }
+  // Snapshot sync (issue #78): body-weight entries mirrored from the phone.
+  {
+    name: 'bodyWeightEntries'
+    partitionKeyPath: '/id'
+  }
+  // Snapshot sync (issue #78): single metadata doc { id: 'snapshot',
+  // revision, serverTime } — server-assigned revision counter.
+  {
+    name: 'syncMeta'
+    partitionKeyPath: '/id'
+  }
 ]
 
 // Containers intentionally omit `options.throughput` and `options.autoscaleSettings`.

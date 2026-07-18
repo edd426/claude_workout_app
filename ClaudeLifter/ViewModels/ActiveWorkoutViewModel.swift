@@ -17,6 +17,16 @@ final class ActiveWorkoutViewModel {
     private let autoFillService: any AutoFillServiceProtocol
     private let prDetectionService: (any PRDetectionServiceProtocol)?
     private let templateRepository: (any TemplateRepository)?
+    /// Global user preferences. Optional so existing construction sites keep
+    /// compiling; when nil, newly created sets fall back to kg (#83).
+    private let settings: SettingsManager?
+
+    /// The unit newly created sets default to (#83). Reads the live
+    /// SettingsManager so mid-workout preference changes are respected.
+    /// Per-set override remains possible — this is only the creation default.
+    private var defaultWeightUnit: WeightUnit {
+        settings?.weightUnit ?? .kg
+    }
 
     /// Handle for any in-flight save triggered by a mutation. Exposed so
     /// tests can `await` it before tearing down the SwiftData container,
@@ -49,7 +59,8 @@ final class ActiveWorkoutViewModel {
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
         templateRepository: (any TemplateRepository)? = nil,
-        prDetectionService: (any PRDetectionServiceProtocol)? = nil
+        prDetectionService: (any PRDetectionServiceProtocol)? = nil,
+        settings: SettingsManager? = nil
     ) {
         self.template = template
         self.adHocName = nil
@@ -57,13 +68,15 @@ final class ActiveWorkoutViewModel {
         self.autoFillService = autoFillService
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
+        self.settings = settings
     }
 
     init(
         adHocName: String,
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
-        prDetectionService: (any PRDetectionServiceProtocol)? = nil
+        prDetectionService: (any PRDetectionServiceProtocol)? = nil,
+        settings: SettingsManager? = nil
     ) {
         self.template = nil
         self.adHocName = adHocName
@@ -71,6 +84,7 @@ final class ActiveWorkoutViewModel {
         self.autoFillService = autoFillService
         self.templateRepository = nil
         self.prDetectionService = prDetectionService
+        self.settings = settings
     }
 
     func startWorkout() async {
@@ -135,7 +149,9 @@ final class ActiveWorkoutViewModel {
                 let set = WorkoutSet(
                     order: i,
                     weight: autoFill?.weight ?? templateExercise.defaultWeight,
-                    weightUnit: autoFill?.weightUnit ?? .kg,
+                    // Last session's unit carries forward (per-set continuity);
+                    // without history, fall back to the global preference (#83).
+                    weightUnit: autoFill?.weightUnit ?? defaultWeightUnit,
                     reps: autoFill?.reps ?? templateExercise.defaultReps
                 )
                 we.sets.append(set)
@@ -150,12 +166,20 @@ final class ActiveWorkoutViewModel {
         }
     }
 
-    func completeSet(_ set: WorkoutSet) {
-        set.isCompleted = true
-        set.completedAt = .now
-        lastCompletedSet = set
+    // MARK: - Mutation API (#76)
+    //
+    // EVERY mutation of the active workout — weight/reps edits, set
+    // completion, add/remove set, add/remove exercise — must go through one
+    // of the methods below so that a single code path (`persistMutation`)
+    // bumps the parent Workout's `lastModified`, re-queues it as `.pending`
+    // for sync, and persists via the repository. Views must never write to
+    // WorkoutSet/WorkoutExercise directly.
+
+    /// Shared tail of every mutation: sync bookkeeping + debounced save.
+    /// `recordChange()` runs synchronously so sync state is correct even if
+    /// the app dies before the async save lands.
+    private func persistMutation() {
         workout?.recordChange()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         pendingSave?.cancel()
         // [weak self] so the Task is a no-op if the VM has been released
         // (e.g. at end of a test) — otherwise saveDraft touches `workout`
@@ -165,6 +189,39 @@ final class ActiveWorkoutViewModel {
             guard let self else { return }
             await self.saveDraft()
         }
+    }
+
+    func updateSetWeight(_ set: WorkoutSet, weight: Double?) {
+        guard set.weight != weight else { return }
+        set.weight = weight
+        persistMutation()
+    }
+
+    func updateSetReps(_ set: WorkoutSet, reps: Int?) {
+        guard set.reps != reps else { return }
+        set.reps = reps
+        persistMutation()
+    }
+
+    func completeSet(_ set: WorkoutSet) {
+        set.isCompleted = true
+        set.completedAt = .now
+        lastCompletedSet = set
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        persistMutation()
+    }
+
+    func addSet(to workoutExercise: WorkoutExercise) {
+        let nextOrder = (workoutExercise.sets.map(\.order).max() ?? -1) + 1
+        workoutExercise.sets.append(
+            WorkoutSet(order: nextOrder, weightUnit: defaultWeightUnit)
+        )
+        persistMutation()
+    }
+
+    func removeSet(_ set: WorkoutSet, from workoutExercise: WorkoutExercise) {
+        workoutExercise.sets.removeAll { $0.id == set.id }
+        persistMutation()
     }
 
     func addExercise(_ exercise: Exercise) {
@@ -173,61 +230,14 @@ final class ActiveWorkoutViewModel {
         let we = WorkoutExercise(order: order, exercise: exercise)
         workout.exercises.append(we)
         for i in 0..<3 {
-            we.sets.append(WorkoutSet(order: i))
+            we.sets.append(WorkoutSet(order: i, weightUnit: defaultWeightUnit))
         }
-        workout.recordChange()
-        pendingSave?.cancel()
-        // [weak self] so the Task is a no-op if the VM has been released
-        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
-        // through a SwiftData context that has already been reset and
-        // crashes in BackingData.
-        pendingSave = Task { [weak self] in
-            guard let self else { return }
-            await self.saveDraft()
-        }
+        persistMutation()
     }
 
     func removeExercise(_ workoutExercise: WorkoutExercise) {
         workout?.exercises.removeAll { $0.id == workoutExercise.id }
-        workout?.recordChange()
-        pendingSave?.cancel()
-        // [weak self] so the Task is a no-op if the VM has been released
-        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
-        // through a SwiftData context that has already been reset and
-        // crashes in BackingData.
-        pendingSave = Task { [weak self] in
-            guard let self else { return }
-            await self.saveDraft()
-        }
-    }
-
-    func removeSet(_ set: WorkoutSet, from workoutExercise: WorkoutExercise) {
-        workoutExercise.sets.removeAll { $0.id == set.id }
-        workout?.recordChange()
-        pendingSave?.cancel()
-        // [weak self] so the Task is a no-op if the VM has been released
-        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
-        // through a SwiftData context that has already been reset and
-        // crashes in BackingData.
-        pendingSave = Task { [weak self] in
-            guard let self else { return }
-            await self.saveDraft()
-        }
-    }
-
-    /// Called by views when a set's weight/reps change via binding — so the
-    /// parent Workout's lastModified reflects the edit and sync LWW is correct.
-    func recordSetEdit(_ workoutExercise: WorkoutExercise) {
-        workout?.recordChange()
-        pendingSave?.cancel()
-        // [weak self] so the Task is a no-op if the VM has been released
-        // (e.g. at end of a test) — otherwise saveDraft touches `workout`
-        // through a SwiftData context that has already been reset and
-        // crashes in BackingData.
-        pendingSave = Task { [weak self] in
-            guard let self else { return }
-            await self.saveDraft()
-        }
+        persistMutation()
     }
 
     func saveDraft() async {
@@ -241,7 +251,13 @@ final class ActiveWorkoutViewModel {
             return
         }
         workout.recordChange()
-        try? await saveWorkout(workout)
+        do {
+            try await saveWorkout(workout)
+        } catch {
+            // Never swallow a failed draft save — the user would silently
+            // lose logged sets on the next crash/force-quit (#76).
+            errorMessage = error.localizedDescription
+        }
     }
 
     func cancelWorkout() async {

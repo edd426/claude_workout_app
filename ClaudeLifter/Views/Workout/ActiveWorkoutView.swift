@@ -80,9 +80,14 @@ struct ActiveWorkoutView: View {
                                 restDuration = we.restSeconds
                                 showRestTimer = true
                             },
+                            onEditWeight: { set, weight in
+                                vm.updateSetWeight(set, weight: weight)
+                            },
+                            onEditReps: { set, reps in
+                                vm.updateSetReps(set, reps: reps)
+                            },
                             onAddSet: {
-                                let nextOrder = (we.sets.map(\.order).max() ?? -1) + 1
-                                we.sets.append(WorkoutSet(order: nextOrder))
+                                vm.addSet(to: we)
                             },
                             onRemoveSet: { set in
                                 vm.removeSet(set, from: we)

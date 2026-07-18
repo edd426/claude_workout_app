@@ -58,6 +58,11 @@ final class HistoryViewModel {
     }
 
     func updateWorkout(_ workout: Workout) async {
+        // History edits mutate nested sets/exercises directly in the detail
+        // view; without recordChange() here the edit never bumped the parent
+        // Workout's lastModified nor re-queued it as .pending, so it was
+        // invisible to sync last-write-wins (#76).
+        workout.recordChange()
         do {
             try await workoutRepository.save(workout)
         } catch {

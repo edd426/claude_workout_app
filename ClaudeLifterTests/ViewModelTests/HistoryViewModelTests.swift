@@ -108,6 +108,23 @@ struct HistoryViewModelTests {
         #expect(repo.savedWorkouts.first?.name == "Updated Push Day")
     }
 
+    @Test("updateWorkout marks workout pending and bumps lastModified before saving")
+    func updateWorkoutMarksPendingAndBumpsLastModified() async {
+        let workout = TestFixtures.makeWorkout(name: "Push Day")
+        workout.syncStatus = .synced
+        workout.lastModified = .distantPast
+        let repo = MockWorkoutRepository()
+        repo.workouts = [workout]
+        let vm = HistoryViewModel(workoutRepository: repo)
+        await vm.loadWorkouts()
+
+        await vm.updateWorkout(workout)
+
+        #expect(workout.syncStatus == .pending, "History edits must re-queue the workout for sync")
+        #expect(workout.lastModified > .distantPast, "History edits must bump lastModified for LWW")
+        #expect(repo.saveCallCount == 1)
+    }
+
     @Test("updateWorkout with error sets errorMessage")
     func updateWorkoutWithErrorSetsMessage() async {
         let workout = TestFixtures.makeWorkout(name: "Push Day")

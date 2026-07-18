@@ -3,6 +3,8 @@ import SwiftUI
 struct ExerciseCardView: View {
     let workoutExercise: WorkoutExercise
     let onCompleteSet: (WorkoutSet) -> Void
+    let onEditWeight: (WorkoutSet, Double) -> Void
+    let onEditReps: (WorkoutSet, Int) -> Void
     let onAddSet: () -> Void
     var onRemoveSet: ((WorkoutSet) -> Void)? = nil
 
@@ -16,7 +18,12 @@ struct ExerciseCardView: View {
             Divider()
             ForEach(sortedSets, id: \.id) { set in
                 HStack {
-                    SetRowView(set: set, onComplete: onCompleteSet)
+                    SetRowView(
+                        set: set,
+                        onComplete: onCompleteSet,
+                        onEditWeight: onEditWeight,
+                        onEditReps: onEditReps
+                    )
                     if sortedSets.count > 1, let onRemoveSet {
                         Button {
                             onRemoveSet(set)

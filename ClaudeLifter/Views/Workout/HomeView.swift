@@ -152,7 +152,8 @@ struct HomeView: View {
             template: template,
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
-            templateRepository: deps.templateRepository
+            templateRepository: deps.templateRepository,
+            settings: deps.settings
         )
         // Clear any pushed navigation (e.g. TemplatePreviewView) so the root
         // swap to ActiveWorkoutView is actually visible to the user. Without
@@ -167,7 +168,8 @@ struct HomeView: View {
         let workoutVM = ActiveWorkoutViewModel(
             adHocName: "Quick Workout",
             workoutRepository: deps.workoutRepository,
-            autoFillService: deps.autoFillService
+            autoFillService: deps.autoFillService,
+            settings: deps.settings
         )
         path = NavigationPath()
         let workoutId = UUID()

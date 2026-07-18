@@ -144,8 +144,15 @@ final class ActiveWorkoutViewModel {
                 exercise: exercise,
                 restSeconds: templateExercise.defaultRestSeconds
             )
-            let autoFill = try? await autoFillService.lastPerformed(exerciseId: exercise.id)
+            // Per-set-index auto-fill from the previous session (#82):
+            // set 1 → set 1, set 2 → set 2, … preserving warm-up → top-set
+            // structure. Empty when there's no history → template defaults.
+            let autoFills = (try? await autoFillService.autoFillValues(
+                exerciseId: exercise.id,
+                setCount: templateExercise.defaultSets
+            )) ?? []
             for i in 0..<templateExercise.defaultSets {
+                let autoFill = i < autoFills.count ? autoFills[i] : nil
                 let set = WorkoutSet(
                     order: i,
                     weight: autoFill?.weight ?? templateExercise.defaultWeight,

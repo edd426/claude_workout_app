@@ -1,26 +1,3 @@
-export interface Exercise {
-  id: string;
-  name: string;
-  force?: string;
-  level?: string;
-  mechanic?: string;
-  equipment?: string;
-  instructions?: string[];
-  imageURL?: string;
-  photoURL?: string;
-  notes?: string;
-  tags?: ExerciseTag[];
-  isCustom: boolean;
-  primaryMuscles?: string[];
-  secondaryMuscles?: string[];
-}
-
-export interface ExerciseTag {
-  id: string;
-  category: string;
-  value: string;
-}
-
 export interface WorkoutTemplate {
   id: string;
   name: string;

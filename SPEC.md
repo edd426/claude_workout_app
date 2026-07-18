@@ -489,30 +489,29 @@ Allow Claude Code and claude.ai to query and modify workout data directly, using
 
 ### Architecture
 
-Follow the same pattern as `personal_memory`:
+The MCP server is a thin HTTP client of the Functions API (issue #79 re-route — no direct Azure SDK access):
 - TypeScript + `@modelcontextprotocol/sdk`
 - Stdio transport for Claude Code
-- Connects to the same Cosmos DB and Blob Storage as the app
-- Uses `DefaultAzureCredential` for Azure auth
+- All data access goes through the Functions API read endpoints with the shared `x-api-key` — one auth path, one data-access layer (no `DefaultAzureCredential`, no Cosmos data-plane RBAC needed)
 
-### MCP Tools
+### MCP Tools (read-only)
+
+Write tools (`create_template`, `update_template`, `delete_template`, `create_program`) and `search_exercises` are disabled until the write path is redesigned with a seeded exercise catalog and validation (see #79).
 
 | Tool | Description |
 |------|------------|
 | `list_templates` | List all workout templates |
 | `get_template` | Get a template with its exercises |
-| `create_template` | Create a new workout template |
-| `update_template` | Modify a template |
-| `delete_template` | Delete a template |
 | `list_workouts` | List workout sessions (with date filtering) |
 | `get_workout` | Get full workout detail (exercises, sets, weights) |
 | `get_exercise_history` | Get historical data for a specific exercise |
-| `search_exercises` | Search exercise library by name, muscle group, equipment |
 | `get_stats` | Get summary statistics (PRs, volume trends, frequency) |
 | `get_calendar` | Get workout frequency data for a date range |
-| `create_program` | Create a multi-day training program (multiple templates) |
+| `health` | Connectivity + auth diagnostic against the Functions API |
 
 ### Configuration (Claude Code)
+
+See `infra/mcp/README.md` for current Claude Code and Claude Desktop config. Env vars:
 
 ```json
 {
@@ -520,11 +519,10 @@ Follow the same pattern as `personal_memory`:
     "workout": {
       "command": "node",
       "args": ["dist/server.js"],
-      "cwd": "/path/to/workout-mcp",
+      "cwd": "/path/to/claude_workout_app/infra/mcp",
       "env": {
-        "AZURE_STORAGE_ACCOUNT_URL": "https://stworkout{suffix}.blob.core.windows.net",
-        "COSMOS_DB_ENDPOINT": "https://cosmos-workout-prod.documents.azure.com",
-        "COSMOS_DB_DATABASE": "workout-db"
+        "FUNCTIONS_BASE_URL": "https://func-workout-prod.azurewebsites.net",
+        "FUNCTIONS_API_KEY": "<Function App API_KEY app setting>"
       }
     }
   }

@@ -1,87 +1,26 @@
-import { getContainer } from "../shared/cosmos.js";
-import type { WorkoutTemplate, TemplateExercise } from "../shared/types.js";
+/**
+ * Read-only template tools — issue #79.
+ * Thin wrappers over the Functions API. Write operations (create/update/
+ * delete) are disabled until the write path is redesigned.
+ */
+
+import { apiGet, ApiError } from "../shared/http.js";
+import type { WorkoutTemplate } from "../shared/types.js";
 
 export async function listTemplates(): Promise<WorkoutTemplate[]> {
-  const container = getContainer("templates");
-  const { resources } = await container.items
-    .query("SELECT * FROM c ORDER BY c.name")
-    .fetchAll();
-  return resources as WorkoutTemplate[];
+  const { templates } = await apiGet<{ templates: WorkoutTemplate[] }>(
+    "templates"
+  );
+  return templates;
 }
 
 export async function getTemplate(id: string): Promise<WorkoutTemplate | null> {
   try {
-    const container = getContainer("templates");
-    const { resource } = await container.item(id, id).read();
-    return (resource as WorkoutTemplate) ?? null;
-  } catch (err: unknown) {
-    if (isNotFound(err)) return null;
+    return await apiGet<WorkoutTemplate>(
+      `templates/${encodeURIComponent(id)}`
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
     throw err;
   }
-}
-
-export async function createTemplate(
-  name: string,
-  exercises: TemplateExercise[],
-  notes?: string,
-): Promise<WorkoutTemplate> {
-  const container = getContainer("templates");
-  const now = new Date().toISOString();
-  const template: WorkoutTemplate = {
-    id: crypto.randomUUID(),
-    name,
-    notes,
-    createdAt: now,
-    updatedAt: now,
-    timesPerformed: 0,
-    exercises: exercises.map((e, i) => ({ ...e, order: i })),
-    lastModified: now,
-    syncStatus: "synced",
-  };
-  const { resource } = await container.items.create(template);
-  return resource as WorkoutTemplate;
-}
-
-export async function updateTemplate(
-  id: string,
-  updates: Partial<Pick<WorkoutTemplate, "name" | "notes" | "exercises">>,
-): Promise<WorkoutTemplate | null> {
-  const existing = await getTemplate(id);
-  if (!existing) return null;
-
-  const now = new Date().toISOString();
-  const updated: WorkoutTemplate = {
-    ...existing,
-    ...updates,
-    updatedAt: now,
-    lastModified: now,
-    syncStatus: "synced",
-  };
-  if (updates.exercises) {
-    updated.exercises = updates.exercises.map((e, i) => ({ ...e, order: i }));
-  }
-
-  const container = getContainer("templates");
-  const { resource } = await container.item(id, id).replace(updated);
-  return resource as WorkoutTemplate;
-}
-
-export async function deleteTemplate(id: string): Promise<boolean> {
-  try {
-    const container = getContainer("templates");
-    await container.item(id, id).delete();
-    return true;
-  } catch (err: unknown) {
-    if (isNotFound(err)) return false;
-    throw err;
-  }
-}
-
-function isNotFound(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: number }).code === 404
-  );
 }

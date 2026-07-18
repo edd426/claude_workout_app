@@ -1,40 +1,20 @@
+/**
+ * Tests for read-only template tools — issue #79.
+ * Tools are thin wrappers over the Functions API HTTP client.
+ */
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { WorkoutTemplate, TemplateExercise } from "../src/shared/types.js";
+import type { WorkoutTemplate } from "../src/shared/types.js";
 
-// Mock the cosmos module before importing tools
-const mockFetchAll = vi.fn();
-const mockRead = vi.fn();
-const mockCreate = vi.fn();
-const mockReplace = vi.fn();
-const mockDelete = vi.fn();
+const mockApiGet = vi.fn();
 
-vi.mock("../src/shared/cosmos.js", () => ({
-  getContainer: () => ({
-    items: {
-      query: () => ({ fetchAll: mockFetchAll }),
-      create: mockCreate,
-    },
-    item: () => ({
-      read: mockRead,
-      replace: mockReplace,
-      delete: mockDelete,
-    }),
-  }),
-}));
+vi.mock("../src/shared/http.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/shared/http.js")>();
+  return { ...actual, apiGet: mockApiGet };
+});
 
-const { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate } =
-  await import("../src/tools/templates.js");
-
-const sampleExercise: TemplateExercise = {
-  id: "te-1",
-  order: 0,
-  exerciseId: "ex-1",
-  exerciseName: "Bench Press",
-  defaultSets: 3,
-  defaultReps: 10,
-  defaultWeight: 60,
-  defaultRestSeconds: 90,
-};
+const { ApiError } = await import("../src/shared/http.js");
+const { listTemplates, getTemplate } = await import("../src/tools/templates.js");
 
 const sampleTemplate: WorkoutTemplate = {
   id: "tmpl-1",
@@ -42,126 +22,61 @@ const sampleTemplate: WorkoutTemplate = {
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
   timesPerformed: 5,
-  exercises: [sampleExercise],
+  exercises: [
+    {
+      id: "te-1",
+      order: 0,
+      exerciseId: "ex-1",
+      exerciseName: "Bench Press",
+      defaultSets: 3,
+      defaultReps: 10,
+      defaultWeight: 60,
+      defaultRestSeconds: 90,
+    },
+  ],
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mockApiGet.mockReset();
 });
 
-describe("Template Tools", () => {
-  // Test 1: list_templates
-  it("should list all templates", async () => {
-    mockFetchAll.mockResolvedValue({ resources: [sampleTemplate] });
+describe("listTemplates", () => {
+  it("fetches GET templates and unwraps the templates array", async () => {
+    mockApiGet.mockResolvedValue({ templates: [sampleTemplate] });
 
     const result = await listTemplates();
 
+    expect(mockApiGet).toHaveBeenCalledWith("templates");
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("Push Day");
   });
+});
 
-  // Test 2: get_template returns template
-  it("should get a template by ID", async () => {
-    mockRead.mockResolvedValue({ resource: sampleTemplate });
+describe("getTemplate", () => {
+  it("fetches GET templates/{id}", async () => {
+    mockApiGet.mockResolvedValue(sampleTemplate);
 
     const result = await getTemplate("tmpl-1");
 
+    expect(mockApiGet).toHaveBeenCalledWith("templates/tmpl-1");
     expect(result).not.toBeNull();
-    expect(result!.name).toBe("Push Day");
     expect(result!.exercises).toHaveLength(1);
   });
 
-  // Test 3: create_template
-  it("should create a new template", async () => {
-    mockCreate.mockResolvedValue({ resource: { ...sampleTemplate, id: "new-id" } });
-
-    const result = await createTemplate("Leg Day", [sampleExercise]);
-
-    expect(mockCreate).toHaveBeenCalledOnce();
-    const created = mockCreate.mock.calls[0][0];
-    expect(created.name).toBe("Leg Day");
-    expect(created.exercises[0].order).toBe(0);
-    expect(created.timesPerformed).toBe(0);
+  it("URL-encodes the id", async () => {
+    mockApiGet.mockResolvedValue(sampleTemplate);
+    await getTemplate("a/b c");
+    expect(mockApiGet).toHaveBeenCalledWith("templates/a%2Fb%20c");
   });
 
-  // Test: create_template sets lastModified and syncStatus
-  it("should set lastModified and syncStatus on created template", async () => {
-    mockCreate.mockResolvedValue({ resource: sampleTemplate });
-
-    await createTemplate("Push Day", [sampleExercise]);
-
-    const created = mockCreate.mock.calls[0][0];
-    expect(created.lastModified).toBeDefined();
-    expect(typeof created.lastModified).toBe("string");
-    // Verify it's a valid ISO date string
-    expect(new Date(created.lastModified).toISOString()).toBe(created.lastModified);
-    expect(created.syncStatus).toBe("synced");
-  });
-
-  // Test: update_template sets lastModified and syncStatus
-  it("should set lastModified and syncStatus on updated template", async () => {
-    mockRead.mockResolvedValue({ resource: sampleTemplate });
-    mockReplace.mockResolvedValue({
-      resource: { ...sampleTemplate, name: "Updated" },
-    });
-
-    await updateTemplate("tmpl-1", { name: "Updated" });
-
-    const replaced = mockReplace.mock.calls[0][0];
-    expect(replaced.lastModified).toBeDefined();
-    expect(typeof replaced.lastModified).toBe("string");
-    expect(new Date(replaced.lastModified).toISOString()).toBe(replaced.lastModified);
-    expect(replaced.syncStatus).toBe("synced");
-  });
-
-  // Test 4: update_template
-  it("should update an existing template", async () => {
-    mockRead.mockResolvedValue({ resource: sampleTemplate });
-    mockReplace.mockResolvedValue({
-      resource: { ...sampleTemplate, name: "Pull Day" },
-    });
-
-    const result = await updateTemplate("tmpl-1", { name: "Pull Day" });
-
-    expect(result).not.toBeNull();
-    expect(mockReplace).toHaveBeenCalledOnce();
-    const replaced = mockReplace.mock.calls[0][0];
-    expect(replaced.name).toBe("Pull Day");
-  });
-
-  // Test 5: delete_template
-  it("should delete a template", async () => {
-    mockDelete.mockResolvedValue({});
-
-    const result = await deleteTemplate("tmpl-1");
-
-    expect(result).toBe(true);
-    expect(mockDelete).toHaveBeenCalledOnce();
-  });
-
-  // Test 14: error handling for missing template
-  it("should return null for non-existent template", async () => {
-    mockRead.mockRejectedValue({ code: 404 });
-
-    const result = await getTemplate("non-existent");
-
+  it("returns null on 404", async () => {
+    mockApiGet.mockRejectedValue(new ApiError(404, "Template not found: nope"));
+    const result = await getTemplate("nope");
     expect(result).toBeNull();
   });
 
-  // Test 15: input validation - create requires exercises
-  it("should create template with exercise ordering", async () => {
-    const exercises: TemplateExercise[] = [
-      { ...sampleExercise, id: "te-1", exerciseName: "Bench Press" },
-      { ...sampleExercise, id: "te-2", exerciseName: "Incline Press" },
-      { ...sampleExercise, id: "te-3", exerciseName: "Flyes" },
-    ];
-    mockCreate.mockResolvedValue({ resource: sampleTemplate });
-
-    await createTemplate("Push Day", exercises);
-
-    const created = mockCreate.mock.calls[0][0];
-    expect(created.exercises[0].order).toBe(0);
-    expect(created.exercises[1].order).toBe(1);
-    expect(created.exercises[2].order).toBe(2);
+  it("rethrows non-404 errors", async () => {
+    mockApiGet.mockRejectedValue(new ApiError(500, "server exploded"));
+    await expect(getTemplate("tmpl-1")).rejects.toThrow("server exploded");
   });
 });

@@ -13,7 +13,8 @@ review/merge.
 |---|---|---|
 | Functions inbox endpoints | deployed live | `az functionapp function list` shows `inboxEnqueue`, `inboxList`, `inboxAck` |
 | Cosmos `inbox` container | created | pk `/id` |
-| Swift suite | **650 passed** | `xcodebuild test`, iPhone 13 Pro Max / iOS 26.5 |
+| Swift Testing suites | **650 passed** | `xcodebuild test`, iPhone 13 Pro Max / iOS 26.5 |
+| XCUITest | 4 failing — pre-existing #96 | identical on the pre-change baseline; makes `xcodebuild test` exit 65 |
 | Functions (Jest) | **145 passed** | `npm test` in `infra/functions` |
 | MCP (vitest) | **52 passed**, tsc clean, builds | `infra/mcp` |
 | Write path end-to-end | **proven in production** | 4 templates created via MCP, drained by the phone, full exercise lists — no #79 regression |
@@ -66,3 +67,8 @@ Design: `infra/MCP_WRITE_PATH.md` — trust it and `syncSnapshot.ts` over SPEC �
 - Static typechecks are not a test run. Two separate rounds of this work passed
   typechecking and still failed the simulator suite (once a real product defect,
   once non-UUID test fixtures). Always run `xcodebuild test`.
+- **`xcodebuild test` exits 65 even when your change is fine**, because the four
+  #96 UI tests are permanently red. Grepping only Swift Testing's `✘` format
+  misses them — they are XCUITest and print `Test Case '-[...]' failed`. Read the
+  `Failing tests:` block and diff it against a baseline run before concluding
+  anything, and never pipe `xcodebuild` through `tail` without `set -o pipefail`.

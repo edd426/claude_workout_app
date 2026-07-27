@@ -23,9 +23,19 @@ relaunches the server from the new `dist/` and the write tools appear.
 | App on phone | **installed** | `devicectl install` → `com.eddelord.ClaudeLifter`, 2026-07-27 20:52 |
 | Functions read path post-deploy | **no regression** | MCP `health` → `authValid: true`; `list_templates` returns the same 3 templates |
 
-Branch `feat/mcp-write-inbox`, **uncommitted**. Design: `infra/MCP_WRITE_PATH.md`.
+Branch `feat/mcp-write-inbox`, committed as `d98ecf8` and pushed. Design:
+`infra/MCP_WRITE_PATH.md`.
 
-## The one remaining task
+## The one remaining task — DONE 2026-07-27
+
+All four templates were created via `create_program`, drained by the phone, and
+verified with `list_templates`: each has its full exercise list, so the #79
+regression did **not** recur. The three unused pre-existing templates (Full Body
+Basics, Push Day, Pull Day) were deleted; the April 24 Pull Day *session* survives
+in history with a dangling `templateId`. Those deletions exposed **#97** — see
+"Known-open" below.
+
+The original brief follows, for reference.
 
 Create four workout templates via MCP. They are the program in
 `~/Documents/Analysis/fitness_and_wellness/gym_restart_program.md`, whose first
@@ -89,6 +99,11 @@ failed.** Do not paper over it.
 
 ## Known-open, deliberately not blocking
 
+- **#97** — the `requiresApproval` gate has no client implementation.
+  `InboxApplier` gates only on `status == "pending"` and never reads
+  `requiresApproval`, so approval-required ops apply **unprompted** and then ack
+  `pending → applied`, which the server rejects. The op ends `failed` while having
+  fully succeeded — so `failed` is not evidence an op did not happen.
 - **#95** — apply/ack is not transactional. A dropped ack after a successful local
   apply re-serves the operation and creates a *duplicate* template. If duplicates
   appear, that is why. Delete the extra and fix #95.

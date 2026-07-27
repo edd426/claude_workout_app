@@ -1,10 +1,9 @@
 # ClaudeLifter Workout MCP Server
 
-Read-only MCP server exposing ClaudeLifter workout data to Claude Code and
-Claude Desktop (claude.ai), using Max-subscription tokens instead of API
-billing.
+MCP server exposing ClaudeLifter workout data and durable inbox writes to
+Claude Code and Claude Desktop.
 
-## Architecture (v2 — issue #79)
+## Architecture
 
 The server is a **thin HTTP client of the Azure Functions API**. It
 authenticates with the same `x-api-key` shared secret the iOS app uses — no
@@ -15,23 +14,18 @@ Claude Code / Claude Desktop
         │ stdio
         ▼
   workout MCP server ──(HTTPS + x-api-key)──▶ Azure Functions API ──▶ Cosmos DB
+          │                                                │
+          └── bundled exercise catalog                     └── inbox → iPhone
 ```
 
 v1 connected to Cosmos DB directly via `DefaultAzureCredential` and failed
 with 403 on every query (no data-plane role assignment was provisioned).
 v2 removes that entire auth path: one auth mechanism, one data-access layer.
 
-## Read-only status
-
-This server is **read-only**. The write tools (`create_template`,
-`update_template`, `delete_template`, `create_program`) are hard-disabled and
-return an explanatory error: the old direct-to-Cosmos write path produced
-templates the iOS app could not resolve (invented `exerciseId`s, DTO drift).
-Writes return once the write path is redesigned — tracked in issue #79.
-
-`search_exercises` is also disabled: the app bundles the exercise library
-locally and never syncs it, so the cloud `exercises` container is empty and
-searches would silently return nothing.
+Read tools query the phone-authoritative cloud mirror. Write tools enqueue
+operations in `/api/inbox`; the iPhone drains and applies that inbox during
+sync. Every template exercise uses a stable `externalId`, validated against a
+slim build-time catalog before any write request is sent.
 
 ## Tools
 
@@ -44,6 +38,13 @@ searches would silently return nothing.
 | `get_exercise_history` | Past sets for one exercise across workouts |
 | `get_stats` | Summary statistics: totals, PRs, workouts/week |
 | `get_calendar` | Per-day workout frequency for a date range |
+| `search_exercises` | Ranked bundled-catalog search merged with synced custom exercises |
+| `create_template` | Validate exercise IDs and enqueue a template |
+| `update_template` | Enqueue a template update for approval |
+| `delete_template` | Enqueue a template deletion for approval |
+| `create_program` | Validate all templates, then enqueue each |
+| `create_custom_exercise` | Enqueue a custom exercise |
+| `list_pending_writes` | List inbox operations by status |
 | `health` | Diagnostic: Functions API connectivity + auth status + base URL |
 
 If something isn't working, call the `health` tool first — it reports whether
@@ -66,7 +67,7 @@ Never commit the API key; keep it in your local MCP config only.
 ```bash
 cd infra/mcp
 npm install
-npm run build   # emits dist/src/server.js
+npm run build   # emits dist/src/server.js and dist/catalog-index.json
 ```
 
 ### Claude Code
@@ -118,8 +119,8 @@ claude mcp add workout \
 
 ## Backing API endpoints
 
-The Functions API endpoints backing these tools (all `GET`, all requiring
-`x-api-key`, all bounded/validated):
+The Functions API endpoints backing these tools all require `x-api-key`
+except health:
 
 | Endpoint | Query params |
 |----------|--------------|
@@ -130,6 +131,8 @@ The Functions API endpoints backing these tools (all `GET`, all requiring
 | `/api/exercises/{exerciseId}/history` | `limit` (default 20, max 100) |
 | `/api/stats` | `startDate`, `endDate` (scan capped at 500 most recent workouts) |
 | `/api/calendar` | `startDate`, `endDate` (both required) |
+| `/api/sync/snapshot` | supplies `snapshot.customExercises` for catalog search |
+| `/api/inbox` | `GET ?status=` lists operations; `POST` enqueues one |
 | `/api/health` | — (anonymous) |
 
 ## Development

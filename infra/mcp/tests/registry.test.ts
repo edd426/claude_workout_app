@@ -1,19 +1,13 @@
-/**
- * Tests for the MCP tool registry — issue #79.
- *
- * Read-only ship: 7 read tools + health are exposed. Write tools
- * (create_template, update_template, delete_template, create_program) are
- * hard-disabled with a clear error referencing issue #79, and
- * search_exercises explains that the exercise library is not synced.
- */
+/** Tests for the MCP tool registry and inbox write path — issue #88. */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockApiGet = vi.fn();
+const mockApiPost = vi.fn();
 
 vi.mock("../src/shared/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/shared/http.js")>();
-  return { ...actual, apiGet: mockApiGet };
+  return { ...actual, apiGet: mockApiGet, apiPost: mockApiPost };
 });
 
 const { ApiError } = await import("../src/shared/http.js");
@@ -21,65 +15,236 @@ const { TOOLS, handleToolCall } = await import("../src/registry.js");
 
 beforeEach(() => {
   mockApiGet.mockReset();
+  mockApiPost.mockReset();
 });
 
 describe("tool listing", () => {
-  it("exposes exactly the read-only toolset plus health", () => {
+  it("exposes the read and inbox-write toolsets with nothing disabled", () => {
     const names = TOOLS.map((t) => t.name).sort();
     expect(names).toEqual(
       [
+        "create_custom_exercise",
+        "create_program",
+        "create_template",
+        "delete_template",
         "get_calendar",
         "get_exercise_history",
         "get_stats",
         "get_template",
         "get_workout",
         "health",
+        "list_pending_writes",
         "list_templates",
         "list_workouts",
+        "search_exercises",
+        "update_template",
       ].sort()
     );
-  });
-
-  it("does not list write tools or search_exercises", () => {
-    const names = TOOLS.map((t) => t.name);
-    for (const removed of [
-      "create_template",
-      "update_template",
-      "delete_template",
-      "create_program",
-      "search_exercises",
-    ]) {
-      expect(names).not.toContain(removed);
-    }
-  });
-});
-
-describe("disabled write tools", () => {
-  it.each([
-    "create_template",
-    "update_template",
-    "delete_template",
-    "create_program",
-  ])("%s returns a clear disabled error referencing #79", async (name) => {
-    const result = await handleToolCall(name, {});
-
-    expect(result.isError).toBe(true);
-    const text = result.content[0].text;
-    expect(text).toMatch(/read-only/i);
-    expect(text).toContain("#79");
-    expect(mockApiGet).not.toHaveBeenCalled();
   });
 });
 
 describe("search_exercises", () => {
-  it("explains the exercise library is not synced instead of returning empty results", async () => {
-    const result = await handleToolCall("search_exercises", { name: "bench" });
+  it("returns real bundled exercises and merges matching cloud custom exercises", async () => {
+    mockApiGet.mockResolvedValue({
+      revision: 3,
+      serverTime: "2026-07-27T10:00:00Z",
+      snapshot: {
+        workouts: [],
+        templates: [],
+        bodyWeightEntries: [],
+        customExercises: [
+          {
+            id: "custom-uuid",
+            externalId: "custom:bench-pullover",
+            name: "Bench Pullover",
+            primaryMuscles: ["chest"],
+            equipment: "dumbbell",
+            isCustom: true,
+          },
+          {
+            id: "other-uuid",
+            externalId: "custom:standing-calf-bounce",
+            name: "Standing Calf Bounce",
+            primaryMuscles: ["calves"],
+            equipment: null,
+            isCustom: true,
+          },
+        ],
+      },
+    });
+
+    const result = await handleToolCall("search_exercises", { query: "bench" });
+
+    expect(result.isError).toBeUndefined();
+    const exercises = JSON.parse(result.content[0].text);
+    expect(exercises).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalId: "Bench_Dips",
+          name: "Bench Dips",
+          primaryMuscles: ["triceps"],
+          equipment: "body only",
+        }),
+        expect.objectContaining({
+          externalId: "custom:bench-pullover",
+          name: "Bench Pullover",
+          primaryMuscles: ["chest"],
+          equipment: "dumbbell",
+        }),
+      ])
+    );
+    expect(mockApiGet).toHaveBeenCalledWith("sync/snapshot");
+  });
+});
+
+const benchExercise = {
+  externalId: "Barbell_Bench_Press_-_Medium_Grip",
+  order: 0,
+  defaultSets: 3,
+  defaultReps: 8,
+  defaultWeight: 80,
+  defaultRestSeconds: 120,
+  notes: "Pause on chest",
+};
+
+describe("inbox write dispatch", () => {
+  it("create_template validates a real externalId and posts the wire body", async () => {
+    mockApiPost.mockResolvedValue({ id: "op-1", status: "pending" });
+    const payload = {
+      name: "Push Day",
+      notes: "Heavy day",
+      exercises: [benchExercise],
+    };
+
+    const result = await handleToolCall("create_template", payload);
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiPost).toHaveBeenCalledWith("inbox", {
+      op: "createTemplate",
+      payload,
+    });
+  });
+
+  it("rejects an invented externalId with named suggestions and no HTTP call", async () => {
+    const result = await handleToolCall("create_template", {
+      name: "Imaginary Day",
+      exercises: [
+        {
+          ...benchExercise,
+          externalId: "Totally_Made_Up_Exercise",
+        },
+      ],
+    });
 
     expect(result.isError).toBe(true);
-    const text = result.content[0].text;
-    expect(text).toMatch(/exercise library/i);
-    expect(text).toMatch(/not synced/i);
+    expect(result.content[0].text).toContain("Totally_Made_Up_Exercise");
+    expect(result.content[0].text).toMatch(/suggestions?:/i);
+    expect(result.content[0].text).toMatch(
+      /[A-Za-z]+ [A-Za-z]+.*\([A-Za-z0-9_:-]+\)/
+    );
     expect(mockApiGet).not.toHaveBeenCalled();
+    expect(mockApiPost).not.toHaveBeenCalled();
+  });
+
+  it("create_program validates every template before enqueueing any", async () => {
+    const result = await handleToolCall("create_program", {
+      templates: [
+        {
+          name: "Valid Push",
+          exercises: [benchExercise],
+        },
+        {
+          name: "Invalid Pull",
+          exercises: [
+            {
+              ...benchExercise,
+              externalId: "Totally_Made_Up_Exercise",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Totally_Made_Up_Exercise");
+    expect(mockApiGet).not.toHaveBeenCalled();
+    expect(mockApiPost).not.toHaveBeenCalled();
+  });
+
+  it("update_template and delete_template enqueue the right operations", async () => {
+    mockApiPost
+      .mockResolvedValueOnce({ id: "op-update", status: "pending" })
+      .mockResolvedValueOnce({ id: "op-delete", status: "pending" });
+
+    const updatePayload = {
+      id: "template-1",
+      name: "Push A",
+      exercises: [benchExercise],
+    };
+    const deletePayload = { id: "template-2", name: "Push B" };
+
+    const updateResult = await handleToolCall(
+      "update_template",
+      updatePayload
+    );
+    const deleteResult = await handleToolCall(
+      "delete_template",
+      deletePayload
+    );
+
+    expect(updateResult.isError).toBeUndefined();
+    expect(deleteResult.isError).toBeUndefined();
+    expect(mockApiPost).toHaveBeenNthCalledWith(1, "inbox", {
+      op: "updateTemplate",
+      payload: updatePayload,
+    });
+    expect(mockApiPost).toHaveBeenNthCalledWith(2, "inbox", {
+      op: "deleteTemplate",
+      payload: deletePayload,
+    });
+  });
+
+  it("create_custom_exercise enqueues the right operation", async () => {
+    mockApiPost.mockResolvedValue({ id: "op-custom", status: "pending" });
+    const payload = {
+      name: "Cable Cross-body Raise",
+      equipment: "cable",
+      primaryMuscles: ["shoulders"],
+      secondaryMuscles: ["traps"],
+      instructions: ["Raise across the body."],
+      notes: "Keep it strict",
+    };
+
+    const result = await handleToolCall("create_custom_exercise", payload);
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiPost).toHaveBeenCalledWith("inbox", {
+      op: "createCustomExercise",
+      payload,
+    });
+  });
+
+  it("list_pending_writes surfaces failed operations and their errors", async () => {
+    mockApiGet.mockResolvedValue({
+      operations: [
+        {
+          id: "op-failed",
+          op: "createTemplate",
+          status: "failed",
+          error: "Unresolved externalIds: Missing_Lift",
+        },
+      ],
+    });
+
+    const result = await handleToolCall("list_pending_writes", {
+      status: "failed",
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiGet).toHaveBeenCalledWith("inbox", { status: "failed" });
+    const operations = JSON.parse(result.content[0].text);
+    expect(operations[0].status).toBe("failed");
+    expect(operations[0].error).toContain("Missing_Lift");
   });
 });
 

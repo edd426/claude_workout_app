@@ -14,6 +14,7 @@ private struct SyncTestEnv {
     let templateRepo: SwiftDataTemplateRepository
     let exerciseRepo: SwiftDataExerciseRepository
     let bodyWeightRepo: SwiftDataBodyWeightRepository
+    let inboxApplier: InboxApplier
     let network: MockNetworkService
     let settings: SettingsManager
     let manager: SyncManager
@@ -25,6 +26,10 @@ private struct SyncTestEnv {
         templateRepo = SwiftDataTemplateRepository(context: context)
         exerciseRepo = SwiftDataExerciseRepository(context: context)
         bodyWeightRepo = SwiftDataBodyWeightRepository(context: context)
+        inboxApplier = InboxApplier(
+            templateRepository: templateRepo,
+            exerciseRepository: exerciseRepo
+        )
         network = MockNetworkService()
         settings = SettingsManager(defaults: UserDefaults(suiteName: "sync-test-\(UUID())")!)
         settings.serverURL = serverURL
@@ -34,7 +39,8 @@ private struct SyncTestEnv {
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
             networkService: network,
-            settings: settings
+            settings: settings,
+            inboxApplier: inboxApplier
         )
     }
 }
@@ -210,10 +216,11 @@ struct SyncIfNeededTests {
 
         await env.manager.syncIfNeeded()
 
+        #expect(env.network.fetchInboxCallCount == 0)
         #expect(env.network.pushSnapshotCallCount == 0)
     }
 
-    @Test("skips the network when nothing is pending")
+    @Test("skips snapshot push when inbox is empty and nothing is pending")
     func skipsWhenNothingPending() async throws {
         let env = try SyncTestEnv()
         env.context.insert(Workout(name: "Synced", startedAt: .now, syncStatus: .synced))
@@ -221,6 +228,7 @@ struct SyncIfNeededTests {
 
         await env.manager.syncIfNeeded()
 
+        #expect(env.network.fetchInboxCallCount == 1)
         #expect(env.network.pushSnapshotCallCount == 0)
     }
 
@@ -577,7 +585,11 @@ struct SyncStateTests {
             exerciseRepository: SwiftDataExerciseRepository(context: context),
             bodyWeightRepository: SwiftDataBodyWeightRepository(context: context),
             networkService: MockNetworkService(),
-            settings: settings
+            settings: settings,
+            inboxApplier: InboxApplier(
+                templateRepository: SwiftDataTemplateRepository(context: context),
+                exerciseRepository: SwiftDataExerciseRepository(context: context)
+            )
         )
         #expect(manager.lastRevision == 17)
         _ = container

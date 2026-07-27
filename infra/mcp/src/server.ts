@@ -1,10 +1,9 @@
 /**
  * ClaudeLifter workout MCP server — issue #79.
  *
- * v2: read-only, re-routed through the Azure Functions API with the shared
- * x-api-key auth (no more DefaultAzureCredential / Cosmos data-plane access).
- * Tool schemas and dispatch live in registry.ts so they can be unit-tested
- * without a stdio transport.
+ * Reads and durable inbox writes are routed through the Azure Functions API
+ * with shared x-api-key auth. Tool schemas and dispatch live in registry.ts
+ * so they can be unit-tested without a stdio transport.
  *
  * Required environment variables: FUNCTIONS_BASE_URL, FUNCTIONS_API_KEY.
  * See infra/mcp/README.md for Claude Code / Claude Desktop configuration.

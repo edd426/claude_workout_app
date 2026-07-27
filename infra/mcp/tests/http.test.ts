@@ -8,7 +8,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { apiGet, ApiError } = await import("../src/shared/http.js");
+const http = await import("../src/shared/http.js");
+const { apiGet, ApiError } = http;
 
 const BASE_URL = "https://func-workout-prod.azurewebsites.net";
 const API_KEY = "super-secret-key";
@@ -118,5 +119,57 @@ describe("apiGet", () => {
       expect((err as Error).message).toContain(BASE_URL);
       expect((err as Error).message).not.toContain(API_KEY);
     }
+  });
+});
+
+describe("apiPost", () => {
+  it("is exposed by the shared HTTP layer", () => {
+    expect("apiPost" in http).toBe(true);
+  });
+
+  it("posts JSON to {base}/api/{path} with the API key", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ id: "op-1" }));
+
+    const apiPost = (
+      http as typeof http & {
+        apiPost<T>(path: string, body: unknown): Promise<T>;
+      }
+    ).apiPost;
+    const result = await apiPost<{ id: string }>("inbox", {
+      op: "deleteTemplate",
+      payload: { id: "template-1", name: "Push Day" },
+    });
+
+    expect(result).toEqual({ id: "op-1" });
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(String(url)).toBe(`${BASE_URL}/api/inbox`);
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": API_KEY,
+      },
+    });
+    expect(JSON.parse(init.body)).toEqual({
+      op: "deleteTemplate",
+      payload: { id: "template-1", name: "Push Day" },
+    });
+  });
+
+  it("reports POST and the server detail for non-2xx responses", async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({ error: "Malformed payload: name is required" }, 400)
+    );
+
+    const apiPost = (
+      http as typeof http & {
+        apiPost<T>(path: string, body: unknown): Promise<T>;
+      }
+    ).apiPost;
+
+    await expect(apiPost("inbox", {})).rejects.toThrow(
+      /Malformed payload: name is required.*POST \/api\/inbox/
+    );
   });
 });

@@ -93,6 +93,12 @@ var containers = [
     name: 'syncMeta'
     partitionKeyPath: '/id'
   }
+  // MCP write path (issue #88): durable operations drained by the phone.
+  // Deliberately separate from the snapshot-reconciled containers.
+  {
+    name: 'inbox'
+    partitionKeyPath: '/id'
+  }
 ]
 
 // Containers intentionally omit `options.throughput` and `options.autoscaleSettings`.

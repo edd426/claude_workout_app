@@ -74,6 +74,7 @@ final class SyncManager {
     private let bodyWeightRepository: any BodyWeightRepository
     private let networkService: any NetworkServiceProtocol
     private let settings: SettingsManager
+    private let inboxApplier: InboxApplier
 
     private var pathMonitor: NWPathMonitor?
     private let monitorQueue = DispatchQueue(label: "com.claudelifter.sync.monitor")
@@ -84,7 +85,8 @@ final class SyncManager {
         exerciseRepository: any ExerciseRepository,
         bodyWeightRepository: any BodyWeightRepository,
         networkService: any NetworkServiceProtocol,
-        settings: SettingsManager
+        settings: SettingsManager,
+        inboxApplier: InboxApplier
     ) {
         self.workoutRepository = workoutRepository
         self.templateRepository = templateRepository
@@ -92,6 +94,7 @@ final class SyncManager {
         self.bodyWeightRepository = bodyWeightRepository
         self.networkService = networkService
         self.settings = settings
+        self.inboxApplier = inboxApplier
         self.lastSyncDate = settings.lastSyncTimestamp
         self.lastRevision = settings.lastSyncRevision
     }
@@ -127,9 +130,24 @@ final class SyncManager {
         defer { isSyncing = false }
 
         do {
+            // Inbox work must run before the pending guard. An idle phone has
+            // no pending local records until this step creates one.
+            var inboxAppliedChange = false
+            let inbox = try await networkService.fetchInbox()
+            if !inbox.operations.isEmpty {
+                let results = await inboxApplier.process(inbox.operations)
+                inboxAppliedChange = results.contains { $0.status == .applied }
+                _ = try await networkService.ackInbox(
+                    InboxAckRequest(results: results)
+                )
+            }
+
             // Any record turning .pending means a snapshot push is due. The
             // snapshot itself is always FULL state — pending is only the trigger.
-            guard try await hasPendingChanges() else { return }
+            let hasPending = try await hasPendingChanges()
+            // Exercise has no per-record syncStatus, so an inbox-created custom
+            // exercise also uses the applied result as its same-cycle trigger.
+            guard inboxAppliedChange || hasPending else { return }
             try await pushSnapshot()
         } catch {
             syncError = error.localizedDescription

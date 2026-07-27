@@ -1,29 +1,52 @@
-/**
- * MCP tool registry — issue #79.
- *
- * Read-only ship: the server exposes 7 read tools + a health diagnostic.
- * All data access goes through the Azure Functions API (shared/http.ts).
- *
- * Write tools (create_template, update_template, delete_template,
- * create_program) are hard-disabled: the old direct-to-Cosmos write path
- * produced templates the iOS app could not resolve (invented exerciseIds,
- * DTO drift). They return a clear error until the write path is redesigned.
- *
- * search_exercises is likewise disabled: the app never syncs the exercise
- * library to the cloud, so the exercises container is empty and searches
- * would silently return nothing.
- */
+/** MCP tool registry. Reads and durable inbox writes use the Functions API. */
 
 import { listTemplates, getTemplate } from "./tools/templates.js";
 import { listWorkouts, getWorkout } from "./tools/workouts.js";
 import { getExerciseHistory } from "./tools/exercises.js";
 import { getStats, getCalendar } from "./tools/stats.js";
 import { health } from "./tools/health.js";
+import { searchExercises } from "./tools/catalog.js";
+import {
+  createCustomExercise,
+  createProgram,
+  createTemplate,
+  deleteTemplate,
+  listPendingWrites,
+  updateTemplate,
+} from "./tools/writes.js";
 
 export interface ToolResult {
   content: { type: "text"; text: string }[];
   isError?: boolean;
 }
+
+const templateExerciseSchema = {
+  type: "object" as const,
+  properties: {
+    externalId: {
+      type: "string",
+      description:
+        "Stable external ID returned by search_exercises; never invent one",
+    },
+    order: { type: "integer", minimum: 0 },
+    defaultSets: { type: "integer", minimum: 1 },
+    defaultReps: { type: "integer", minimum: 1 },
+    defaultWeight: { type: "number" },
+    defaultRestSeconds: { type: "integer", minimum: 0 },
+    notes: { type: "string" },
+  },
+  required: ["externalId", "order", "defaultSets", "defaultReps"],
+};
+
+const createTemplateProperties = {
+  name: { type: "string", description: "Template name" },
+  notes: { type: "string", description: "Optional template notes" },
+  exercises: {
+    type: "array",
+    items: templateExerciseSchema,
+    description: "Ordered exercises using exact externalId values",
+  },
+};
 
 export const TOOLS = [
   {
@@ -119,27 +142,122 @@ export const TOOLS = [
       "configured base URL",
     inputSchema: { type: "object" as const, properties: {} },
   },
+  {
+    name: "search_exercises",
+    description:
+      "Search the bundled exercise catalog and synced custom exercises by name",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        query: {
+          type: "string",
+          description: "Exercise name or partial name",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "create_template",
+    description:
+      "Validate exercise externalIds and enqueue a template for the app",
+    inputSchema: {
+      type: "object" as const,
+      properties: createTemplateProperties,
+      required: ["name", "exercises"],
+    },
+  },
+  {
+    name: "update_template",
+    description:
+      "Validate any exercise externalIds and enqueue a template update for approval",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Template UUID" },
+        name: { type: "string" },
+        notes: { type: "string" },
+        exercises: {
+          type: "array",
+          items: templateExerciseSchema,
+          description: "Replacement exercise list",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "delete_template",
+    description: "Enqueue a template deletion for approval",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Template UUID" },
+        name: {
+          type: "string",
+          description: "Template name shown in the approval prompt",
+        },
+      },
+      required: ["id", "name"],
+    },
+  },
+  {
+    name: "create_program",
+    description:
+      "Validate all templates first, then enqueue each template creation",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        templates: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: createTemplateProperties,
+            required: ["name", "exercises"],
+          },
+        },
+      },
+      required: ["templates"],
+    },
+  },
+  {
+    name: "create_custom_exercise",
+    description: "Enqueue creation of a custom exercise on the app",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string" },
+        equipment: { type: "string" },
+        primaryMuscles: { type: "array", items: { type: "string" } },
+        secondaryMuscles: { type: "array", items: { type: "string" } },
+        instructions: { type: "array", items: { type: "string" } },
+        notes: { type: "string" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "list_pending_writes",
+    description:
+      "List inbox operations by status, including failures and their errors",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        status: {
+          type: "string",
+          enum: [
+            "pending",
+            "awaitingApproval",
+            "applied",
+            "rejected",
+            "failed",
+          ],
+          description: "Defaults to pending",
+        },
+      },
+    },
+  },
 ];
-
-const DISABLED_WRITE_TOOLS = new Set([
-  "create_template",
-  "update_template",
-  "delete_template",
-  "create_program",
-]);
-
-const WRITE_DISABLED_MESSAGE =
-  "This MCP server is read-only: write tools are disabled until the write " +
-  "path is redesigned (issue #79). The previous direct-to-Cosmos writes " +
-  "produced templates the iOS app could not resolve. Create or edit " +
-  "templates in the ClaudeLifter app instead.";
-
-const SEARCH_UNAVAILABLE_MESSAGE =
-  "search_exercises is unavailable: the exercise library is not synced to " +
-  "the cloud (the app bundles it locally), so the exercises container is " +
-  "empty and searches would return misleading empty results. Browse " +
-  "exercises in the ClaudeLifter app, or use get_exercise_history with a " +
-  "known exerciseId. (issue #79)";
 
 function textResult(value: unknown): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
@@ -180,13 +298,6 @@ export async function handleToolCall(
   name: string,
   args?: Record<string, unknown>
 ): Promise<ToolResult> {
-  if (DISABLED_WRITE_TOOLS.has(name)) {
-    return errorResult(WRITE_DISABLED_MESSAGE);
-  }
-  if (name === "search_exercises") {
-    return errorResult(SEARCH_UNAVAILABLE_MESSAGE);
-  }
-
   try {
     switch (name) {
       case "list_templates":
@@ -240,6 +351,33 @@ export async function handleToolCall(
 
       case "health":
         return textResult(await health());
+
+      case "search_exercises":
+        return textResult(
+          await searchExercises(requireString(args, "query"))
+        );
+
+      case "create_template":
+        return textResult(await createTemplate(args));
+
+      case "update_template":
+        return textResult(await updateTemplate(args));
+
+      case "delete_template":
+        return textResult(await deleteTemplate(args));
+
+      case "create_program":
+        return textResult(await createProgram(args));
+
+      case "create_custom_exercise":
+        return textResult(await createCustomExercise(args));
+
+      case "list_pending_writes":
+        return textResult(
+          await listPendingWrites({
+            status: optionalString(args, "status"),
+          })
+        );
 
       default:
         return errorResult(`Unknown tool: ${name}`);

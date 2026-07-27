@@ -1,8 +1,4 @@
-/**
- * Read-only template tools — issue #79.
- * Thin wrappers over the Functions API. Write operations (create/update/
- * delete) are disabled until the write path is redesigned.
- */
+/** Read-side template tools. Inbox write tools live in writes.ts. */
 
 import { apiGet, ApiError } from "../shared/http.js";
 import type { WorkoutTemplate } from "../shared/types.js";

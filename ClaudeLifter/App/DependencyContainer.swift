@@ -18,6 +18,7 @@ final class DependencyContainer {
     let insightGenerationService: any InsightGenerationServiceProtocol
     let backupService: any BackupServiceProtocol
     let bodyWeightRepository: any BodyWeightRepository
+    let inboxApplier: InboxApplier
     let healthKitService: any HealthKitServiceProtocol
     /// Shared rest-timer tick source — one instance for the app instead of
     /// per-view instantiation (issue #77).
@@ -64,6 +65,11 @@ final class DependencyContainer {
         self.imageUploadService = ImageUploadService(networkService: network)
         let bodyWeightRepo = SwiftDataBodyWeightRepository(context: modelContext)
         self.bodyWeightRepository = bodyWeightRepo
+        let inboxApplier = InboxApplier(
+            templateRepository: templateRepo,
+            exerciseRepository: exerciseRepo
+        )
+        self.inboxApplier = inboxApplier
         self.healthKitService = HealthKitService()
         self.restTimerService = RestTimerService()
         self.notificationScheduler = UserNotificationScheduler()
@@ -89,7 +95,8 @@ final class DependencyContainer {
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
             networkService: network,
-            settings: settings
+            settings: settings,
+            inboxApplier: inboxApplier
         )
     }
 }

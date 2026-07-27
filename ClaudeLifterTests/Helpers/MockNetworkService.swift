@@ -96,6 +96,35 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
         return result
     }
 
+    // MARK: - MCP write inbox (issue #88)
+
+    var fetchInboxCallCount = 0
+    var fetchInboxResult = InboxListResponse(operations: [])
+
+    func fetchInbox() async throws -> InboxListResponse {
+        fetchInboxCallCount += 1
+        if let error = errorToThrow { throw error }
+        return fetchInboxResult
+    }
+
+    var ackInboxCallCount = 0
+    var lastInboxAckRequest: InboxAckRequest?
+    var ackInboxResult = InboxAckResponse(
+        counts: InboxAckCounts(
+            updated: 0,
+            unchanged: 0,
+            notFound: 0,
+            invalid: 0
+        )
+    )
+
+    func ackInbox(_ request: InboxAckRequest) async throws -> InboxAckResponse {
+        ackInboxCallCount += 1
+        lastInboxAckRequest = request
+        if let error = errorToThrow { throw error }
+        return ackInboxResult
+    }
+
     func uploadBlob(url: URL, data: Data, contentType: String) async throws {
         uploadBlobCallCount += 1
         if let error = errorToThrow { throw error }

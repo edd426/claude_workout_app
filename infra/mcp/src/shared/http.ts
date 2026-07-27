@@ -84,3 +84,44 @@ export async function apiGet<T = unknown>(
 
   return (await response.json()) as T;
 }
+
+export async function apiPost<T = unknown>(
+  path: string,
+  body: unknown
+): Promise<T> {
+  const { baseUrl, apiKey } = getConfig();
+  const url = new URL(`${baseUrl}/api/${path}`);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Cannot reach Functions API at ${baseUrl}: ${detail}`);
+  }
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const responseBody = (await response.json()) as { error?: string };
+      detail = responseBody?.error ?? "";
+    } catch {
+      // Non-JSON error body — status alone will have to do.
+    }
+    throw new ApiError(
+      response.status,
+      `Functions API returned ${response.status}` +
+        (detail ? `: ${detail}` : "") +
+        ` (POST /api/${path})`
+    );
+  }
+
+  return (await response.json()) as T;
+}

@@ -47,21 +47,31 @@ Full specification: @SPEC.md
 
 ## Current Phase
 
-**Phase 2 — Cloud Sync + Images** (Phase 1 complete: 166/166 tests passing)
+**Phases 1–2 complete. Phase 3 all but Live Activities.** The app is deployed and in
+daily use; work is now issue-driven, not phase-driven — **the open GitHub issues are
+the real backlog**, not this list.
 
-- [ ] Azure Bicep infrastructure (Cosmos DB, Storage, Function App)
-- [ ] Azure Functions API (sync/pull, sync/push, images/sas, chat proxy, insights, health)
-- [ ] Model updates (syncStatus/lastModified on WorkoutTemplate, ProactiveInsight, TrainingPreference)
-- [ ] Sync DTOs + SyncMapper (Codable model ↔ JSON conversion)
-- [ ] NetworkService (URLSession wrapper with auth)
-- [ ] SyncManager (NWPathMonitor, pull/push, BGAppRefreshTask, last-write-wins)
-- [ ] API key proxy (Anthropic key moves from device to Azure Function)
-- [ ] Calendar heatmap (monthly view with workout intensity shading)
-- [ ] Photo capture (PhotosPicker + Azure Blob upload via SAS tokens)
-- [ ] InsightRepository (ProactiveInsight CRUD)
-- [ ] Settings updates (server URL, sync status indicator)
+Phase 2 — Cloud Sync + Images: **done and deployed** (Bicep infra; Functions API;
+sync DTOs + `SyncMapper`; `NetworkService`; `SyncManager`; Anthropic key proxied via
+`ProxiedAnthropicService`; `CalendarHeatmapView`; `PhotoCaptureView` + SAS upload;
+`InsightRepository`; Settings server URL + sync status).
 
-See SPEC.md §7 for Azure Backend details, §11 for Phase 2 scope.
+Phase 3 — MCP + Advanced AI: **done** except Live Activities. MCP server ships read
+tools (#79) and inbox-based writes (#88); proactive insights, 15 chat tools incl.
+template/program generation, `PRDetectionService`, and `ChartsView` all exist.
+Also shipped beyond the original plan: body-weight tracking + HealthKit (#80),
+backup export/import (#72), crash recovery (#75), rest-timer notifications (#77).
+
+- [ ] **Live Activities** — rest timer on Lock Screen / Dynamic Island. No
+      `ActivityKit` usage in the codebase; the only unstarted phase item.
+
+> **SPEC.md §7 and §11 are stale on sync.** They describe bidirectional
+> last-write-wins with `/sync/pull` and `/sync/push`. That design was replaced in
+> #78 by a **one-way snapshot mirror**: the phone is authoritative, pushes complete
+> state, and the server reconciles by deleting anything absent. `syncPull.ts` and
+> `syncPush.ts` still exist but no client calls them (#92 tracks removal). Trust
+> `infra/functions/src/functions/syncSnapshot.ts` and `infra/MCP_WRITE_PATH.md`
+> over the SPEC here.
 
 ## Development Methodology
 

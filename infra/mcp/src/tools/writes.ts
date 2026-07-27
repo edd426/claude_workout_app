@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from "../shared/http.js";
 import {
-  findExerciseByExternalId,
+  resolveExerciseByExternalId,
   searchCatalog,
 } from "./catalog.js";
 
@@ -92,8 +92,8 @@ function optionalStringArray(value: unknown, field: string): void {
   }
 }
 
-function assertKnownExternalId(externalId: string): void {
-  if (findExerciseByExternalId(externalId)) return;
+async function assertKnownExternalId(externalId: string): Promise<void> {
+  if (await resolveExerciseByExternalId(externalId)) return;
 
   const humanized = externalId.replace(/[_:/-]+/g, " ");
   const suggestions = searchCatalog(humanized, 3)
@@ -105,10 +105,10 @@ function assertKnownExternalId(externalId: string): void {
   );
 }
 
-function validateTemplateExercises(
+async function validateTemplateExercises(
   value: unknown,
   field: string
-): TemplateExerciseWrite[] {
+): Promise<TemplateExerciseWrite[]> {
   if (!Array.isArray(value)) {
     throw new Error(`${field} must be an array`);
   }
@@ -159,25 +159,27 @@ function validateTemplateExercises(
     }
     optionalString(exercise["notes"], `${path}.notes`);
 
-    // This must stay local and must run before the caller performs any POST.
-    assertKnownExternalId(externalId);
+    // Resolution must finish before the caller performs the template POST.
+    await assertKnownExternalId(externalId);
   }
 
   return value as TemplateExerciseWrite[];
 }
 
-function validateCreateTemplate(
+async function validateCreateTemplate(
   value: unknown,
   field = "template"
-): CreateTemplatePayload {
+): Promise<CreateTemplatePayload> {
   if (!isObject(value)) throw new Error(`${field} must be an object`);
   nonEmptyString(value["name"], `${field}.name`);
   optionalString(value["notes"], `${field}.notes`);
-  validateTemplateExercises(value["exercises"], `${field}.exercises`);
+  await validateTemplateExercises(value["exercises"], `${field}.exercises`);
   return value as unknown as CreateTemplatePayload;
 }
 
-function validateUpdateTemplate(value: unknown): UpdateTemplatePayload {
+async function validateUpdateTemplate(
+  value: unknown
+): Promise<UpdateTemplatePayload> {
   if (!isObject(value)) throw new Error("updateTemplate payload must be an object");
   nonEmptyString(value["id"], "updateTemplate.id");
   if (value["name"] !== undefined) {
@@ -185,7 +187,7 @@ function validateUpdateTemplate(value: unknown): UpdateTemplatePayload {
   }
   optionalString(value["notes"], "updateTemplate.notes");
   if (value["exercises"] !== undefined) {
-    validateTemplateExercises(
+    await validateTemplateExercises(
       value["exercises"],
       "updateTemplate.exercises"
     );
@@ -238,13 +240,13 @@ async function enqueue(
 export async function createTemplate(
   payload: unknown
 ): Promise<InboxOperation> {
-  return enqueue("createTemplate", validateCreateTemplate(payload));
+  return enqueue("createTemplate", await validateCreateTemplate(payload));
 }
 
 export async function updateTemplate(
   payload: unknown
 ): Promise<InboxOperation> {
-  return enqueue("updateTemplate", validateUpdateTemplate(payload));
+  return enqueue("updateTemplate", await validateUpdateTemplate(payload));
 }
 
 export async function deleteTemplate(
@@ -261,9 +263,15 @@ export async function createProgram(
   }
 
   // Validate every payload—including every externalId—before the first POST.
-  const templates = value["templates"].map((template, index) =>
-    validateCreateTemplate(template, `templates[${index}]`)
-  );
+  const templates: CreateTemplatePayload[] = [];
+  for (let index = 0; index < value["templates"].length; index += 1) {
+    templates.push(
+      await validateCreateTemplate(
+        value["templates"][index],
+        `templates[${index}]`
+      )
+    );
+  }
 
   const operations: InboxOperation[] = [];
   for (const template of templates) {

@@ -78,3 +78,57 @@ final class HomeViewModel {
 enum HomeViewModelError: Error {
     case noWorkoutRepository
 }
+
+@Observable
+@MainActor
+final class InboxApprovalViewModel {
+    private(set) var approvals: [InboxOperationDTO] = []
+    var errorMessage: String?
+    var isLoading = false
+
+    private let manager: any InboxApprovalManaging
+
+    init(manager: any InboxApprovalManaging) {
+        self.manager = manager
+    }
+
+    func load() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            approvals = try await manager.fetchPendingApprovals()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func approve(_ operation: InboxOperationDTO) async {
+        await decide(operation) {
+            try await manager.approve(operation)
+        }
+    }
+
+    func decline(_ operation: InboxOperationDTO) async {
+        await decide(operation) {
+            try await manager.decline(operation)
+        }
+    }
+
+    func replaceApprovals(_ operations: [InboxOperationDTO]) {
+        approvals = operations
+    }
+
+    private func decide(
+        _ operation: InboxOperationDTO,
+        action: () async throws -> Void
+    ) async {
+        errorMessage = nil
+        do {
+            try await action()
+            approvals.removeAll { $0.id == operation.id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}

@@ -10,8 +10,9 @@
  *   Cosmos query pages are consumed to exhaustion.
  *
  * POST /api/inbox/ack
- *   Advances operation statuses. Existing terminal operations are idempotent
- *   no-ops, and unknown ids are counted rather than treated as server errors.
+ *   Advances operation statuses. Retrying the current status is an idempotent
+ *   no-op. Illegal transitions fail nonterminal operations so they cannot loop;
+ *   terminal disagreements remain unchanged. Both are reported per operation.
  */
 
 import {
@@ -24,9 +25,11 @@ import { Container } from "@azure/cosmos";
 import { randomUUID } from "node:crypto";
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
+import { customExerciseExternalId } from "../shared/customExerciseIdentity";
 import { readItemOrNull } from "../shared/readHelpers";
 import {
   InboxAckCounts,
+  InboxAckOperationResult,
   InboxAckRequest,
   InboxAckResponse,
   InboxAckResult,
@@ -410,10 +413,18 @@ function transitionError(
   operation: InboxOperation,
   nextStatus: InboxAckStatus
 ): string | null {
-  if (TERMINAL_STATUSES.has(operation.status)) return null;
+  const expectedApproval = requiresApproval(operation.op);
+  if (operation.requiresApproval !== expectedApproval) {
+    return `${operation.op} approval flag mismatch: stored ` +
+      `${String(operation.requiresApproval)}, expected ${String(expectedApproval)}`;
+  }
+
+  if (TERMINAL_STATUSES.has(operation.status)) {
+    return `${operation.status} ${operation.op} cannot transition to ${nextStatus}`;
+  }
 
   if (operation.status === "pending") {
-    if (operation.requiresApproval) {
+    if (expectedApproval) {
       return nextStatus === "awaitingApproval" || nextStatus === "failed"
         ? null
         : `${operation.status} ${operation.op} cannot transition to ${nextStatus}`;
@@ -475,11 +486,22 @@ app.http("inboxEnqueue", {
     const validation = validateEnqueueBody(body);
     if (!validation.ok) return validation.error;
 
+    const id = randomUUID();
+    const payload =
+      validation.value.op === "createCustomExercise"
+        ? {
+            ...validation.value.payload,
+            externalId: customExerciseExternalId(
+              validation.value.payload.name,
+              id
+            ),
+          }
+        : validation.value.payload;
     const operation: InboxOperation = {
-      id: randomUUID(),
+      id,
       createdAt: new Date().toISOString(),
       op: validation.value.op,
-      payload: validation.value.payload as InboxOperationPayload,
+      payload: payload as InboxOperationPayload,
       requiresApproval: requiresApproval(validation.value.op),
       status: "pending",
     };
@@ -553,16 +575,25 @@ app.http("inboxAck", {
       invalid: 0,
     };
     const failures: string[] = [];
+    const results: (InboxAckOperationResult | undefined)[] =
+      new Array(validation.value.results.length);
     const replacements: {
       operation: InboxOperation;
-      result: InboxAckResult;
-      invalid?: boolean;
+      requestedResult: InboxAckResult;
+      resultToApply: InboxAckResult;
+      index: number;
+      conflict?: string;
     }[] = [];
     const container = getDatabase().container(INBOX_CONTAINER);
 
     // Phase one reads and validates every requested transition. No Cosmos
     // replacement occurs until all structurally valid transitions are known.
-    for (const result of validation.value.results) {
+    for (
+      let index = 0;
+      index < validation.value.results.length;
+      index += 1
+    ) {
+      const result = validation.value.results[index];
       try {
         const operation = await readItemOrNull<InboxOperation>(
           container,
@@ -570,33 +601,55 @@ app.http("inboxAck", {
         );
         if (!operation) {
           counts.notFound += 1;
+          results[index] = {
+            id: result.id,
+            requestedStatus: result.status,
+            outcome: "notFound",
+          };
           continue;
         }
-        if (TERMINAL_STATUSES.has(operation.status)) {
+        if (operation.status === result.status) {
           counts.unchanged += 1;
+          results[index] = {
+            id: result.id,
+            requestedStatus: result.status,
+            resultingStatus: operation.status,
+            outcome: "unchanged",
+          };
           continue;
         }
         const invalidTransition = transitionError(operation, result.status);
         if (invalidTransition) {
-          // An ack batch arrives AFTER the phone applied these operations
-          // locally. Rejecting the whole request over one bad entry would
-          // leave its batch-mates `pending`, and the next sync would re-serve
-          // and re-apply them — duplicate templates, the exact failure class
-          // this issue exists to remove. Nor can the bad entry stay `pending`:
-          // an illegal transition never becomes legal, so it would be
-          // re-served forever. Force it terminal, with the reason recorded.
-          replacements.push({
-            operation,
-            result: {
+          counts.invalid += 1;
+          if (TERMINAL_STATUSES.has(operation.status)) {
+            results[index] = {
               id: result.id,
-              status: "failed",
-              error: `Invalid transition: ${invalidTransition}`,
-            },
-            invalid: true,
-          });
+              requestedStatus: result.status,
+              resultingStatus: operation.status,
+              outcome: "conflict",
+              conflict: invalidTransition,
+            };
+          } else {
+            replacements.push({
+              operation,
+              requestedResult: result,
+              resultToApply: {
+                id: result.id,
+                status: "failed",
+                error: `Invalid transition: ${invalidTransition}`,
+              },
+              index,
+              conflict: invalidTransition,
+            });
+          }
           continue;
         }
-        replacements.push({ operation, result });
+        replacements.push({
+          operation,
+          requestedResult: result,
+          resultToApply: result,
+          index,
+        });
       } catch (error) {
         failures.push(`read ${result.id}: ${errorMessage(error)}`);
       }
@@ -604,12 +657,35 @@ app.http("inboxAck", {
 
     // Phase two applies every valid transition, collecting per-item failures
     // so one transient Cosmos error does not prevent independent acknowledgements.
-    for (const { operation, result, invalid } of replacements) {
-      const updated = applyAckResult(operation, result);
+    for (
+      const {
+        operation,
+        requestedResult,
+        resultToApply,
+        index,
+        conflict,
+      } of replacements
+    ) {
+      const updated = applyAckResult(operation, resultToApply);
       try {
         await container.item(operation.id, operation.id).replace(updated);
-        if (invalid) counts.invalid += 1;
-        else counts.updated += 1;
+        if (conflict) {
+          results[index] = {
+            id: requestedResult.id,
+            requestedStatus: requestedResult.status,
+            resultingStatus: updated.status,
+            outcome: "conflict",
+            conflict,
+          };
+        } else {
+          counts.updated += 1;
+          results[index] = {
+            id: requestedResult.id,
+            requestedStatus: requestedResult.status,
+            resultingStatus: updated.status,
+            outcome: "updated",
+          };
+        }
       } catch (error) {
         failures.push(`replace ${operation.id}: ${errorMessage(error)}`);
       }
@@ -623,11 +699,20 @@ app.http("inboxAck", {
           error: `Inbox ack incomplete: ${failures.length} operation(s) failed`,
           failures,
           counts,
+          results: results.filter(
+            (result): result is InboxAckOperationResult =>
+              result !== undefined
+          ),
         },
       };
     }
 
-    const response: InboxAckResponse = { counts };
+    const response: InboxAckResponse = {
+      counts,
+      results: results.filter(
+        (result): result is InboxAckOperationResult => result !== undefined
+      ),
+    };
     return { jsonBody: response };
   },
 });

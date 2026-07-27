@@ -16,8 +16,8 @@ protocol NetworkServiceProtocol: Sendable {
 
     // Durable MCP write inbox (issue #88)
 
-    /// GET /api/inbox?status=pending — pending operations, oldest first.
-    func fetchInbox() async throws -> InboxListResponse
+    /// GET /api/inbox?status=... — operations in one server-durable state.
+    func fetchInbox(status: InboxOperationStatus) async throws -> InboxListResponse
     /// POST /api/inbox/ack — acknowledge independent operation results.
     func ackInbox(_ request: InboxAckRequest) async throws -> InboxAckResponse
 }

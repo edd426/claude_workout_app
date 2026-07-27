@@ -8,6 +8,10 @@
 
 import { app, HttpRequest, InvocationContext } from "@azure/functions";
 import { authenticate } from "../src/shared/auth";
+import {
+  MAX_CUSTOM_EXERCISE_SLUG_LENGTH,
+  isValidCustomExerciseExternalId,
+} from "../src/shared/customExerciseIdentity";
 import { mockDatabase } from "./__mocks__/cosmos";
 
 // Keep the RED phase runnable before the implementation module exists. Once
@@ -244,13 +248,20 @@ describe("POST /api/inbox — enqueue", () => {
 
     expect(isOk(response.status)).toBe(true);
     const operation = response.jsonBody as Doc;
+    const expectedPayload =
+      op === "createCustomExercise"
+        ? {
+            ...payload,
+            externalId: `custom:cable-katana-extension:${operation["id"]}`,
+          }
+        : payload;
     expect(operation).toEqual({
       id: expect.stringMatching(
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       ),
       createdAt: expect.any(String),
       op,
-      payload,
+      payload: expectedPayload,
       requiresApproval,
       status: "pending",
     });
@@ -258,6 +269,62 @@ describe("POST /api/inbox — enqueue", () => {
     expect(inbox.create).toHaveBeenCalledTimes(1);
     expect(inbox.create).toHaveBeenCalledWith(operation);
   });
+
+  test("custom external ids pin slugging and disambiguate identical slugs", async () => {
+    const first = (await enqueue({
+      op: "createCustomExercise",
+      payload: { name: "Déjà Vu Row" },
+    })).jsonBody as Doc;
+    const second = (await enqueue({
+      op: "createCustomExercise",
+      payload: { name: "Deja--Vu Row" },
+    })).jsonBody as Doc;
+
+    expect((first["payload"] as Doc)["externalId"]).toBe(
+      `custom:deja-vu-row:${first["id"]}`
+    );
+    expect((second["payload"] as Doc)["externalId"]).toBe(
+      `custom:deja-vu-row:${second["id"]}`
+    );
+    expect((first["payload"] as Doc)["externalId"]).not.toBe(
+      (second["payload"] as Doc)["externalId"]
+    );
+  });
+
+  test("custom external ids bound long generated slugs", async () => {
+    const operation = (await enqueue({
+      op: "createCustomExercise",
+      payload: {
+        name: String("Very Long Exercise ").repeat(12),
+      },
+    })).jsonBody as Doc;
+    const externalId = (operation["payload"] as Doc)["externalId"] as string;
+    const slug = externalId.split(":")[1];
+
+    expect(slug).toHaveLength(MAX_CUSTOM_EXERCISE_SLUG_LENGTH);
+    expect(
+      isValidCustomExerciseExternalId(externalId, operation["id"] as string)
+    ).toBe(true);
+  });
+
+  test.each([
+    ["maximum slug", `custom:${"a".repeat(64)}:10000000-0000-4000-8000-000000000001`, true],
+    ["bare prefix", "custom:", false],
+    ["missing UUID", "custom:row", false],
+    ["invalid slug", "custom:Bad_Slug:10000000-0000-4000-8000-000000000001", false],
+    ["overlong slug", `custom:${"a".repeat(65)}:10000000-0000-4000-8000-000000000001`, false],
+    ["wrong operation UUID", "custom:row:00000000-0000-4000-8000-000000000000", false],
+  ])(
+    "validates the shared custom externalId grammar: %s",
+    (_label, externalId, expected) => {
+      expect(
+        isValidCustomExerciseExternalId(
+          externalId as string,
+          "10000000-0000-4000-8000-000000000001"
+        )
+      ).toBe(expected);
+    }
+  );
 
   test("ignores a client-supplied operation id and assigns a server UUID", async () => {
     const response = await enqueue({
@@ -431,6 +498,14 @@ describe("POST /api/inbox/ack", () => {
     expect(isOk(response.status)).toBe(true);
     expect(response.jsonBody).toEqual({
       counts: { updated: 1, unchanged: 0, notFound: 0, invalid: 0 },
+      results: [
+        {
+          id: "operation-1",
+          requestedStatus: "applied",
+          resultingStatus: "applied",
+          outcome: "updated",
+        },
+      ],
     });
     const stored = inbox.docs.get("operation-1");
     expect(stored?.["status"]).toBe("applied");
@@ -466,7 +541,7 @@ describe("POST /api/inbox/ack", () => {
   });
 
   test.each(["applied", "rejected", "failed"])(
-    "acking a terminal %s operation is a no-op success",
+    "retrying terminal status %s is a no-op success",
     async (status) => {
       inbox.seed(
         pendingOperation({
@@ -479,12 +554,20 @@ describe("POST /api/inbox/ack", () => {
 
       const before = { ...inbox.docs.get("operation-1") };
       const response = await ack({
-        results: [{ id: "operation-1", status: "applied" }],
+        results: [{ id: "operation-1", status }],
       });
 
       expect(isOk(response.status)).toBe(true);
       expect(response.jsonBody).toEqual({
         counts: { updated: 0, unchanged: 1, notFound: 0, invalid: 0 },
+        results: [
+          {
+            id: "operation-1",
+            requestedStatus: status,
+            resultingStatus: status,
+            outcome: "unchanged",
+          },
+        ],
       });
       expect(inbox.docs.get("operation-1")).toEqual(before);
       expect(inbox.replace).not.toHaveBeenCalled();
@@ -499,6 +582,13 @@ describe("POST /api/inbox/ack", () => {
     expect(isOk(response.status)).toBe(true);
     expect(response.jsonBody).toEqual({
       counts: { updated: 0, unchanged: 0, notFound: 1, invalid: 0 },
+      results: [
+        {
+          id: "missing-operation",
+          requestedStatus: "applied",
+          outcome: "notFound",
+        },
+      ],
     });
     expect(inbox.replace).not.toHaveBeenCalled();
   });
@@ -533,14 +623,41 @@ describe("POST /api/inbox/ack", () => {
     expect(inbox.replace).not.toHaveBeenCalled();
     expect(inbox.docs.get("operation-1")?.["status"]).toBe("pending");
   });
+
+  test("retrying the status an operation is already in is an idempotent no-op", async () => {
+    inbox.seed(
+      pendingOperation({
+        op: "updateTemplate",
+        requiresApproval: true,
+        status: "awaitingApproval",
+      })
+    );
+
+    const before = { ...inbox.docs.get("operation-1") };
+    const response = await ack({
+      results: [{ id: "operation-1", status: "awaitingApproval" }],
+    });
+
+    expect(response.status ?? 200).toBe(200);
+    expect(response.jsonBody).toEqual({
+      counts: { updated: 0, unchanged: 1, notFound: 0, invalid: 0 },
+      results: [
+        {
+          id: "operation-1",
+          requestedStatus: "awaitingApproval",
+          resultingStatus: "awaitingApproval",
+          outcome: "unchanged",
+        },
+      ],
+    });
+    expect(inbox.docs.get("operation-1")).toEqual(before);
+    expect(inbox.replace).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/inbox/ack — an illegal transition must not poison the batch", () => {
-  // An ack batch is sent AFTER the phone has already applied the operations
-  // locally. If one bad entry 400s the whole request, the good entries stay
-  // `pending`, get re-served on the next sync, and the phone creates duplicate
-  // templates. An illegal transition must therefore be recorded as a terminal
-  // failure, never allowed to discard its batch-mates or to be re-served.
+  // A nonterminal poison pill must become terminal while valid batch-mates
+  // still advance. Terminal disagreements remain untouched.
   test("valid acks in the same batch still apply", async () => {
     inbox.seed(
       pendingOperation({ id: "good", op: "createTemplate", requiresApproval: false }),
@@ -557,21 +674,161 @@ describe("POST /api/inbox/ack — an illegal transition must not poison the batc
 
     expect(response.status ?? 200).toBe(200);
     expect(inbox.docs.get("good")?.["status"]).toBe("applied");
+    expect(response.jsonBody).toEqual({
+      counts: { updated: 1, unchanged: 0, notFound: 0, invalid: 1 },
+      results: [
+        {
+          id: "good",
+          requestedStatus: "applied",
+          resultingStatus: "applied",
+          outcome: "updated",
+        },
+        {
+          id: "bad",
+          requestedStatus: "applied",
+          resultingStatus: "failed",
+          outcome: "conflict",
+          conflict:
+            "pending deleteTemplate cannot transition to applied",
+        },
+      ],
+    });
   });
 
-  test("the illegal entry becomes terminally failed, not re-served", async () => {
+  test("the illegal nonterminal entry fails terminally and is not re-served", async () => {
     inbox.seed(
       pendingOperation({ id: "bad", op: "deleteTemplate", requiresApproval: true })
     );
 
-    await ack({ results: [{ id: "bad", status: "applied" }] });
+    const response = await ack({
+      results: [{ id: "bad", status: "applied" }],
+    });
 
-    const stored = inbox.docs.get("bad");
-    expect(stored?.["status"]).toBe("failed");
-    expect(String(stored?.["error"])).toMatch(/transition/i);
-
-    // Re-served only if still pending — a poison pill would loop forever.
+    expect(inbox.docs.get("bad")).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error:
+          "Invalid transition: pending deleteTemplate cannot transition to applied",
+      })
+    );
+    expect(response.jsonBody).toEqual({
+      counts: { updated: 0, unchanged: 0, notFound: 0, invalid: 1 },
+      results: [
+        {
+          id: "bad",
+          requestedStatus: "applied",
+          resultingStatus: "failed",
+          outcome: "conflict",
+          conflict:
+            "pending deleteTemplate cannot transition to applied",
+        },
+      ],
+    });
     const listed = await list("pending");
     expect((listed.jsonBody as { operations: unknown[] }).operations).toHaveLength(0);
+  });
+
+  test("a terminal operation receiving a different status stays unchanged", async () => {
+    inbox.seed(
+      pendingOperation({
+        id: "terminal",
+        op: "updateTemplate",
+        requiresApproval: true,
+        status: "applied",
+        appliedAt: "2026-07-27T11:00:00.000Z",
+      })
+    );
+
+    const before = { ...inbox.docs.get("terminal") };
+    const response = await ack({
+      results: [{ id: "terminal", status: "failed", error: "stale client" }],
+    });
+
+    expect(inbox.docs.get("terminal")).toEqual(before);
+    expect(inbox.replace).not.toHaveBeenCalled();
+    expect(response.jsonBody).toEqual({
+      counts: { updated: 0, unchanged: 0, notFound: 0, invalid: 1 },
+      results: [
+        {
+          id: "terminal",
+          requestedStatus: "failed",
+          resultingStatus: "applied",
+          outcome: "conflict",
+          conflict: "applied updateTemplate cannot transition to failed",
+        },
+      ],
+    });
+  });
+
+  test.each([
+    ["updateTemplate", false, "applied", true],
+    ["deleteTemplate", false, "applied", true],
+    ["createTemplate", true, "awaitingApproval", false],
+    ["createCustomExercise", true, "awaitingApproval", false],
+  ])(
+    "derives approval for %s and terminally fails stored flag %p",
+    async (op, storedFlag, requestedStatus, expectedFlag) => {
+      inbox.seed(
+        pendingOperation({
+          id: "mismatched-approval",
+          op,
+          requiresApproval: storedFlag,
+        })
+      );
+
+      const response = await ack({
+        results: [
+          { id: "mismatched-approval", status: requestedStatus },
+        ],
+      });
+
+      expect(inbox.docs.get("mismatched-approval")).toEqual(
+        expect.objectContaining({
+          status: "failed",
+          error:
+            `Invalid transition: ${op} approval flag mismatch: ` +
+            `stored ${String(storedFlag)}, expected ${String(expectedFlag)}`,
+        })
+      );
+      expect(response.jsonBody).toEqual({
+        counts: { updated: 0, unchanged: 0, notFound: 0, invalid: 1 },
+        results: [
+          {
+            id: "mismatched-approval",
+            requestedStatus,
+            resultingStatus: "failed",
+            outcome: "conflict",
+            conflict:
+              `${op} approval flag mismatch: stored ${String(storedFlag)}, ` +
+              `expected ${String(expectedFlag)}`,
+          },
+        ],
+      });
+    }
+  );
+
+  test("the correct pending-awaitingApproval-applied sequence never stores failed", async () => {
+    inbox.seed(
+      pendingOperation({
+        id: "correct-sequence",
+        op: "updateTemplate",
+        requiresApproval: true,
+      })
+    );
+
+    const awaiting = await ack({
+      results: [{ id: "correct-sequence", status: "awaitingApproval" }],
+    });
+    const applied = await ack({
+      results: [{ id: "correct-sequence", status: "applied" }],
+    });
+
+    expect(inbox.docs.get("correct-sequence")?.["status"]).toBe("applied");
+    expect(
+      inbox.replace.mock.calls.map(([, document]) => document["status"])
+    ).toEqual(["awaitingApproval", "applied"]);
+    expect(JSON.stringify([awaiting.jsonBody, applied.jsonBody])).not.toContain(
+      '"failed"'
+    );
   });
 });

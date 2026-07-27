@@ -69,6 +69,7 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
     var pushSnapshotCallCount = 0
     var lastSnapshotRequest: SnapshotPushRequest?
     var pushSnapshotResult: SnapshotPushResponse?
+    var pushSnapshotError: Error?
     /// Runs mid-request, after the request is recorded and before the response
     /// is returned — lets tests simulate edits made while the POST is in flight.
     var onPushSnapshot: (@MainActor () -> Void)?
@@ -77,6 +78,7 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
         pushSnapshotCallCount += 1
         lastSnapshotRequest = request
         if let onPushSnapshot { await onPushSnapshot() }
+        if let pushSnapshotError { throw pushSnapshotError }
         if let error = errorToThrow { throw error }
         guard let result = pushSnapshotResult else {
             throw SyncError.serverError(500)
@@ -100,29 +102,47 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
 
     var fetchInboxCallCount = 0
     var fetchInboxResult = InboxListResponse(operations: [])
+    var awaitingApprovalInboxResult = InboxListResponse(operations: [])
+    var fetchedInboxStatuses: [InboxOperationStatus] = []
 
-    func fetchInbox() async throws -> InboxListResponse {
+    func fetchInbox(status: InboxOperationStatus) async throws -> InboxListResponse {
         fetchInboxCallCount += 1
+        fetchedInboxStatuses.append(status)
         if let error = errorToThrow { throw error }
-        return fetchInboxResult
+        switch status {
+        case .awaitingApproval:
+            return awaitingApprovalInboxResult
+        default:
+            return fetchInboxResult
+        }
     }
 
     var ackInboxCallCount = 0
     var lastInboxAckRequest: InboxAckRequest?
-    var ackInboxResult = InboxAckResponse(
-        counts: InboxAckCounts(
-            updated: 0,
-            unchanged: 0,
-            notFound: 0,
-            invalid: 0
-        )
-    )
+    var ackInboxResult: InboxAckResponse?
 
     func ackInbox(_ request: InboxAckRequest) async throws -> InboxAckResponse {
         ackInboxCallCount += 1
         lastInboxAckRequest = request
         if let error = errorToThrow { throw error }
-        return ackInboxResult
+        if let ackInboxResult { return ackInboxResult }
+        return InboxAckResponse(
+            counts: InboxAckCounts(
+                updated: request.results.count,
+                unchanged: 0,
+                notFound: 0,
+                invalid: 0
+            ),
+            results: request.results.map {
+                InboxAckOperationResult(
+                    id: $0.id,
+                    requestedStatus: $0.status,
+                    resultingStatus: $0.status.rawValue,
+                    outcome: .updated,
+                    conflict: nil
+                )
+            }
+        )
     }
 
     func uploadBlob(url: URL, data: Data, contentType: String) async throws {

@@ -74,7 +74,7 @@ interface InboxOperation {
 |---|---|---|
 | `/api/inbox` | POST | Body `{ op, payload }`. Validates, assigns `id`/`createdAt`/`requiresApproval`, sets `status: "pending"`, returns the stored doc. |
 | `/api/inbox` | GET | `?status=` (default `pending`). Returns `{ operations: [...] }` oldest-first. |
-| `/api/inbox/ack` | POST | Body `{ results: [{ id, status, error? }] }`. Terminal-state writes are idempotent no-ops. Returns counts. |
+| `/api/inbox/ack` | POST | Body `{ results: [{ id, status, error? }] }`. Retrying the operation's current status is an idempotent no-op. An invalid transition fails a nonterminal operation so it cannot loop; a terminal disagreement stays unchanged. Both return a per-operation `conflict` outcome. |
 
 ### Status machine
 
@@ -83,9 +83,32 @@ pending ──► applied | failed                      (creates: applied on fet
 pending ──► awaitingApproval ──► applied | rejected | failed   (update/delete)
 ```
 
-The phone acks **every** operation it fetches in the same cycle — creates as
-`applied`/`failed`, approval-required ops as `awaitingApproval` — so nothing is
-served twice. Applied and rejected docs are retained as an audit trail.
+The phone acks **every** pending operation it fetches in the same cycle — creates
+as `applied`/`failed`, approval-required ops as `awaitingApproval` — before it
+mutates any approval-required operation. It separately refetches
+`awaitingApproval` operations for the Home approval UI, including after an app
+restart. Applied and rejected docs are retained as an audit trail.
+
+Ack responses include one result per requested id:
+
+```ts
+{
+  counts: { updated, unchanged, notFound, invalid },
+  results: [{
+    id,
+    requestedStatus,
+    resultingStatus?,
+    outcome: "updated" | "unchanged" | "notFound" | "conflict",
+    conflict?
+  }]
+}
+```
+
+The iOS client treats malformed, missing, extra, `notFound`, or `conflict`
+results as a sync error, but still pushes locally applied batch-mates. A
+nonterminal conflict is durably rewritten to `failed` with the reason so it is
+not served forever. An already-terminal operation receiving a different status
+remains unchanged.
 
 ### Payloads
 
@@ -95,7 +118,8 @@ served twice. Applied and rejected docs are retained as an audit trail.
 // field is absent. The Function preserves omission and never injects — one
 // layer owns the default, and it is the layer whose type demands a value.
 
-// createTemplate — no client-supplied UUID; the phone assigns it.
+// createTemplate — no client-supplied UUID. The phone deterministically uses
+// the inbox operation UUID, so replaying a create after a lost ack is a no-op.
 { name: string, notes?: string,
   exercises: [{ externalId: string, order: number, defaultSets: number,
                 defaultReps: number, defaultWeight?: number,
@@ -108,27 +132,37 @@ served twice. Applied and rejected docs are retained as an audit trail.
 // deleteTemplate — name carried so the approval banner needs no lookup.
 { id: string, name: string }
 
-// createCustomExercise — phone assigns the UUID, sets isCustom = true and
-// externalId = "custom:<slug-of-name>" so later template writes can reference it.
+// createCustomExercise input — no externalId accepted from the producer.
 { name: string, equipment?: string, primaryMuscles?: string[],
   secondaryMuscles?: string[], instructions?: string[], notes?: string }
+
+// Stored createCustomExercise payload — the Function adds this canonical id:
+// "custom:<ascii-name-slug>:<inbox-operation-uuid>"
+// slug grammar: lowercase alphanumeric hyphen-separated segments, 1...64 chars
+// The phone uses the inbox UUID as the Exercise UUID and consumes this
+// server-issued externalId verbatim.
 ```
 
 ## Validation — three layers, deliberately redundant
 
-1. **MCP tool boundary.** Every `externalId` is resolved against a slim catalog
+1. **MCP tool boundary.** Bundled `externalId`s resolve against a slim catalog
    index generated at build time from `ClaudeLifter/Resources/exercises.json`
-   (~1 MB → id/name/muscles/equipment/category only). An unknown id is rejected
-   *before* the HTTP call, with `search_exercises` suggestions in the error. This
-   is the fix for #79 root cause 2 — an invented exercise can no longer be
-   enqueued at all.
+   (~1 MB → id/name/muscles/equipment/category only). `custom:` ids resolve
+   against the cloud snapshot or a durable pending/applied
+   `createCustomExercise` inbox operation, so a custom exercise can be used in a
+   template even before the phone's next snapshot push. An unknown id is rejected
+   *before* the template HTTP POST, with `search_exercises` suggestions in the
+   error.
 2. **Function enqueue.** Structural: `externalId` non-empty strings, positive
-   integer sets/reps, unique `order`. Rejects with 400 before any write.
+   integer sets/reps, unique `order`. Custom exercise ids are minted as
+   `custom:<slug>:<operation-uuid>` with a 64-character slug bound. Rejects with
+   400 before any write.
 3. **Phone apply.** `fetchByExternalId` **strictly** — no fuzzy fallback, no
    placeholder creation. If any exercise in an operation fails to resolve, the
    **entire operation fails** and is acked `failed` with the unresolved ids. A
    partial template is precisely the bug that started this; half-applying is worse
-   than failing loudly.
+   than failing loudly. A custom exercise payload must use the same bounded
+   grammar and its UUID suffix must equal the inbox operation UUID.
 
 ## Sync ordering — the trap
 
@@ -142,24 +176,39 @@ when Claude is writing. Required order:
 3. `hasPendingChanges()` — now true, because applying marked new templates `.pending`
 4. `pushSnapshot()`
 
-## Approval — decided against an in-app queue (2026-07-27)
+When any inbox operation applies locally, `SettingsManager.isSnapshotDirty` is
+set in UserDefaults before the ack. It is cleared only after a snapshot push
+succeeds. This is required for custom exercises, which have no per-record
+`syncStatus`: a failed push followed by an app restart still retries even if the
+inbox is then empty.
 
-An earlier draft queued update/delete in a local `PendingWriteApproval` model behind
-a Home approval banner. **Dropped at Evan's direction:** for a single-user app the
-approval already happens in conversation — he asks for the change, then it is made.
-An in-app banner re-confirms a decision he just made, one screen later.
+## Approval — server-durable, no SwiftData queue
 
-Consequences, both good:
+Update and delete operations never mutate local data while `pending`. The phone
+first acks them `awaitingApproval`, then refetches that durable server state and
+shows one Home approval card per operation. The card follows the app's existing
+confirmation pattern and opens a confirmation dialog with Approve, Decline, and
+Cancel.
 
-- **No new `@Model`, so no SwiftData schema change**, and none of the on-device
-  migration risk that has bitten this app before.
-- All four operations auto-apply on sync. `awaitingApproval` stays in the Function's
-  status machine as an unused-but-valid state rather than being ripped out, so a
-  future UI can adopt it without a wire change.
+- Approve applies locally, acks `applied`, and pushes the dirty snapshot.
+- Decline acks `rejected` and performs no repository mutation.
+- A restart loses no queue state: `awaitingApproval` is refetched from the
+  server and shown again.
 
-The safety net for a destructive mistake is the existing cloud snapshot restore plus
-backup export — not a confirmation tap. A deleted template's absence from the next
-snapshot propagates the delete to the mirror; no tombstones needed.
+There is deliberately **no new SwiftData `@Model`** for approvals, so this change
+does not require an AppSchema version bump or migration.
+
+## Create replay safety
+
+`createTemplate` and `createCustomExercise` derive their local entity UUID from
+the Function-assigned inbox operation UUID. Before inserting, the applier fetches
+that UUID through the repository; if it already exists, replay is a successful
+no-op. A lost ack can therefore re-serve a create without inserting a duplicate.
+
+Custom external ids are minted once by the Function as
+`custom:<slug>:<operation-uuid>`. The reserved prefix keeps them separate from
+bundled ids, and the operation suffix disambiguates names that normalize to the
+same slug. Swift does not duplicate the TypeScript slug algorithm.
 
 ## MCP tool surface
 

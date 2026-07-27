@@ -54,16 +54,18 @@ describe("search_exercises", () => {
         bodyWeightEntries: [],
         customExercises: [
           {
-            id: "custom-uuid",
-            externalId: "custom:bench-pullover",
+            id: "10000000-0000-4000-8000-000000000008",
+            externalId:
+              "custom:bench-pullover:10000000-0000-4000-8000-000000000008",
             name: "Bench Pullover",
             primaryMuscles: ["chest"],
             equipment: "dumbbell",
             isCustom: true,
           },
           {
-            id: "other-uuid",
-            externalId: "custom:standing-calf-bounce",
+            id: "10000000-0000-4000-8000-000000000009",
+            externalId:
+              "custom:standing-calf-bounce:10000000-0000-4000-8000-000000000009",
             name: "Standing Calf Bounce",
             primaryMuscles: ["calves"],
             equipment: null,
@@ -86,7 +88,8 @@ describe("search_exercises", () => {
           equipment: "body only",
         }),
         expect.objectContaining({
-          externalId: "custom:bench-pullover",
+          externalId:
+            "custom:bench-pullover:10000000-0000-4000-8000-000000000008",
           name: "Bench Pullover",
           primaryMuscles: ["chest"],
           equipment: "dumbbell",
@@ -144,6 +147,140 @@ describe("inbox write dispatch", () => {
     );
     expect(mockApiGet).not.toHaveBeenCalled();
     expect(mockApiPost).not.toHaveBeenCalled();
+  });
+
+  it("resolves a synced custom externalId before enqueueing a template", async () => {
+    const externalId =
+      "custom:deja-vu-row:10000000-0000-4000-8000-000000000006";
+    mockApiGet.mockResolvedValue({
+      snapshot: {
+        customExercises: [
+          {
+            id: "10000000-0000-4000-8000-000000000006",
+            externalId,
+            name: "Déjà Vu Row",
+            primaryMuscles: ["back"],
+            equipment: "cable",
+          },
+        ],
+      },
+    });
+    mockApiPost.mockResolvedValue({ id: "template-op", status: "pending" });
+    const payload = {
+      name: "Custom Pull",
+      exercises: [{ ...benchExercise, externalId }],
+    };
+
+    const result = await handleToolCall("create_template", payload);
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiGet).toHaveBeenCalledWith("sync/snapshot");
+    expect(mockApiPost).toHaveBeenCalledWith("inbox", {
+      op: "createTemplate",
+      payload,
+    });
+  });
+
+  it("accepts a custom externalId with a 64-character slug", async () => {
+    const id = "10000000-0000-4000-8000-000000000010";
+    const externalId = `custom:${"a".repeat(64)}:${id}`;
+    mockApiGet.mockResolvedValue({
+      snapshot: {
+        customExercises: [
+          {
+            id,
+            externalId,
+            name: "Maximum Slug",
+            primaryMuscles: [],
+            equipment: null,
+          },
+        ],
+      },
+    });
+    mockApiPost.mockResolvedValue({ id: "template-op", status: "pending" });
+
+    const result = await handleToolCall("create_template", {
+      name: "Maximum Slug Template",
+      exercises: [{ ...benchExercise, externalId }],
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects the shared invalid custom externalId cases before enqueueing", async () => {
+    const operationId = "10000000-0000-4000-8000-000000000001";
+    const invalidExternalIds = [
+      "custom:",
+      "custom:row",
+      `custom:Bad_Slug:${operationId}`,
+      `custom:${"a".repeat(65)}:${operationId}`,
+      "custom:row:00000000-0000-4000-8000-000000000000",
+    ];
+
+    for (const externalId of invalidExternalIds) {
+      mockApiGet.mockReset();
+      mockApiPost.mockReset();
+      mockApiGet.mockResolvedValue({
+        snapshot: {
+          customExercises: [
+            {
+              id: operationId,
+              externalId,
+              name: "Invalid Custom Exercise",
+              primaryMuscles: [],
+              equipment: null,
+            },
+          ],
+        },
+      });
+
+      const result = await handleToolCall("create_template", {
+        name: "Invalid Custom Identity",
+        exercises: [{ ...benchExercise, externalId }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("externalId");
+      expect(mockApiPost).not.toHaveBeenCalled();
+    }
+  });
+
+  it("resolves a custom externalId from its pending durable inbox operation", async () => {
+    const externalId =
+      "custom:pending-row:10000000-0000-4000-8000-000000000007";
+    mockApiGet.mockImplementation(
+      async (endpoint: string, options?: { status?: string }) => {
+        if (endpoint === "sync/snapshot") {
+          return { snapshot: { customExercises: [] } };
+        }
+        if (endpoint === "inbox" && options?.status === "pending") {
+          return {
+            operations: [
+              {
+                id: "10000000-0000-4000-8000-000000000007",
+                op: "createCustomExercise",
+                status: "pending",
+                payload: { name: "Pending Row", externalId },
+              },
+            ],
+          };
+        }
+        return { operations: [] };
+      }
+    );
+    mockApiPost.mockResolvedValue({ id: "template-op", status: "pending" });
+
+    const result = await handleToolCall("create_template", {
+      name: "Immediate Custom Pull",
+      exercises: [{ ...benchExercise, externalId }],
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiGet).toHaveBeenCalledWith("inbox", {
+      status: "pending",
+    });
+    expect(mockApiPost).toHaveBeenCalledTimes(1);
   });
 
   it("create_program validates every template before enqueueing any", async () => {

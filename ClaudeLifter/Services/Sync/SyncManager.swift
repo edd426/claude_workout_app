@@ -26,6 +26,13 @@ enum SyncState: Equatable {
     case pending
 }
 
+@MainActor
+protocol InboxApprovalManaging: AnyObject {
+    func fetchPendingApprovals() async throws -> [InboxOperationDTO]
+    func approve(_ operation: InboxOperationDTO) async throws
+    func decline(_ operation: InboxOperationDTO) async throws
+}
+
 /// Per-collection outcome of a cloud restore, surfaced in the Settings alert.
 struct RestoreSummary: Sendable, Equatable {
     var workouts = 0
@@ -48,13 +55,14 @@ struct RestoreSummary: Sendable, Equatable {
 /// Per-record `syncStatus` survives purely as the local "is a push due" bit.
 @Observable
 @MainActor
-final class SyncManager {
+final class SyncManager: InboxApprovalManaging {
     var isSyncing = false
     var lastSyncDate: Date?
     /// Server-assigned revision of the last successful push or restore.
     var lastRevision: Int?
     var syncError: String?
     var isConnected = true
+    private(set) var pendingApprovals: [InboxOperationDTO] = []
 
     /// Derived UI state. See `SyncState` for priority rules.
     var state: SyncState {
@@ -130,25 +138,38 @@ final class SyncManager {
         defer { isSyncing = false }
 
         do {
+            var deferredInboxAckError: Error?
             // Inbox work must run before the pending guard. An idle phone has
             // no pending local records until this step creates one.
-            var inboxAppliedChange = false
-            let inbox = try await networkService.fetchInbox()
+            let inbox = try await networkService.fetchInbox(status: .pending)
             if !inbox.operations.isEmpty {
                 let results = await inboxApplier.process(inbox.operations)
-                inboxAppliedChange = results.contains { $0.status == .applied }
-                _ = try await networkService.ackInbox(
-                    InboxAckRequest(results: results)
+                if results.contains(where: { $0.status == .applied }) {
+                    settings.isSnapshotDirty = true
+                }
+                let request = InboxAckRequest(results: results)
+                let response = try await networkService.ackInbox(
+                    request
                 )
+                do {
+                    try validateInboxAck(request: request, response: response)
+                } catch {
+                    deferredInboxAckError = error
+                }
             }
+            _ = try await fetchPendingApprovals()
 
             // Any record turning .pending means a snapshot push is due. The
             // snapshot itself is always FULL state — pending is only the trigger.
             let hasPending = try await hasPendingChanges()
-            // Exercise has no per-record syncStatus, so an inbox-created custom
-            // exercise also uses the applied result as its same-cycle trigger.
-            guard inboxAppliedChange || hasPending else { return }
-            try await pushSnapshot()
+            // Exercise has no per-record syncStatus, so inbox-applied changes
+            // also set a durable trigger that survives a failed push/restart.
+            if settings.isSnapshotDirty || hasPending {
+                try await pushSnapshot()
+            }
+            if let deferredInboxAckError {
+                throw deferredInboxAckError
+            }
         } catch {
             syncError = error.localizedDescription
         }
@@ -159,6 +180,135 @@ final class SyncManager {
         if try await !templateRepository.fetchPending().isEmpty { return true }
         if try await !bodyWeightRepository.fetchPending().isEmpty { return true }
         return false
+    }
+
+    private func validateInboxAck(
+        request: InboxAckRequest,
+        response: InboxAckResponse
+    ) throws {
+        var issues: [String] = []
+        var requested: [String: InboxAckStatus] = [:]
+        for result in request.results {
+            if requested.updateValue(result.status, forKey: result.id) != nil {
+                issues.append("\(result.id): duplicate requested id")
+            }
+        }
+        let received = Dictionary(grouping: response.results, by: \.id)
+
+        for (id, requestedStatus) in requested {
+            guard let matches = received[id] else {
+                issues.append("\(id): missing result")
+                continue
+            }
+            guard matches.count == 1, let result = matches.first else {
+                issues.append("\(id): expected exactly one result")
+                continue
+            }
+            if result.requestedStatus != requestedStatus {
+                issues.append(
+                    "\(id): requested status \(result.requestedStatus.rawValue) "
+                        + "does not match \(requestedStatus.rawValue)"
+                )
+            }
+            switch result.outcome {
+            case .notFound:
+                issues.append("\(id): operation not found")
+            case .conflict:
+                issues.append(
+                    "\(id): "
+                        + (result.conflict
+                            ?? "status remained \(result.resultingStatus ?? "unknown")")
+                )
+            case .updated, .unchanged:
+                break
+            }
+        }
+        for id in received.keys where requested[id] == nil {
+            issues.append("\(id): extra result")
+        }
+        if response.counts.notFound > 0,
+           !issues.contains(where: {
+               $0.localizedCaseInsensitiveContains("not found")
+           }) {
+            issues.append(
+                "Server reported \(response.counts.notFound) not found result(s)"
+            )
+        }
+        if response.counts.invalid > 0,
+           !response.results.contains(where: { $0.outcome == .conflict }) {
+            issues.append(
+                "Server reported \(response.counts.invalid) conflict(s)"
+            )
+        }
+        guard issues.isEmpty else {
+            throw SyncError.inboxAckConflict(issues)
+        }
+    }
+
+    // MARK: - Inbox approvals
+
+    @discardableResult
+    func fetchPendingApprovals() async throws -> [InboxOperationDTO] {
+        let response = try await networkService.fetchInbox(
+            status: .awaitingApproval
+        )
+        pendingApprovals = response.operations
+        return pendingApprovals
+    }
+
+    func approve(_ operation: InboxOperationDTO) async throws {
+        try await performApprovalDecision(operation, approving: true)
+    }
+
+    func decline(_ operation: InboxOperationDTO) async throws {
+        try await performApprovalDecision(operation, approving: false)
+    }
+
+    private func performApprovalDecision(
+        _ operation: InboxOperationDTO,
+        approving: Bool
+    ) async throws {
+        guard !isSyncing else { throw SyncError.syncInProgress }
+        isSyncing = true
+        syncError = nil
+        defer { isSyncing = false }
+
+        do {
+            let result = approving
+                ? await inboxApplier.approve(operation)
+                : inboxApplier.decline(operation)
+            if result.status == .applied {
+                settings.isSnapshotDirty = true
+            }
+            let request = InboxAckRequest(results: [result])
+            let response = try await networkService.ackInbox(
+                request
+            )
+            var ackValidationError: Error?
+            do {
+                try validateInboxAck(request: request, response: response)
+            } catch {
+                ackValidationError = error
+            }
+            if ackValidationError == nil {
+                pendingApprovals.removeAll { $0.id == operation.id }
+            }
+
+            if result.status == .failed {
+                throw SyncError.inboxApplyFailed(
+                    result.error ?? "Unknown local apply error"
+                )
+            }
+            if result.status == .applied {
+                try await pushSnapshot()
+            }
+            if let ackValidationError {
+                throw ackValidationError
+            }
+        } catch {
+            syncError = error.localizedDescription
+            throw error
+        }
     }
 
     // MARK: - Push
@@ -204,6 +354,7 @@ final class SyncManager {
         }
 
         recordSuccess(revision: response.revision, serverTime: response.serverTime)
+        settings.isSnapshotDirty = false
     }
 
     // MARK: - Restore

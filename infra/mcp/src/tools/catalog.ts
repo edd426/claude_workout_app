@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { isValidCustomExerciseExternalId } from "../shared/customExerciseIdentity.js";
 import { apiGet } from "../shared/http.js";
 
 export interface CatalogExercise {
@@ -21,6 +22,14 @@ interface SnapshotReadResponse {
   snapshot?: {
     customExercises?: unknown[];
   };
+}
+
+interface InboxListResponse {
+  operations?: {
+    id?: unknown;
+    op?: unknown;
+    payload?: unknown;
+  }[];
 }
 
 let cachedCatalog: CatalogExercise[] | undefined;
@@ -81,6 +90,36 @@ export function findExerciseByExternalId(
 ): CatalogExercise | undefined {
   loadCatalog();
   return cachedByExternalId?.get(externalId);
+}
+
+export async function resolveExerciseByExternalId(
+  externalId: string
+): Promise<CatalogExercise | undefined> {
+  const bundled = findExerciseByExternalId(externalId);
+  if (bundled) return bundled;
+  if (!externalId.startsWith("custom:")) return undefined;
+  if (!isValidCustomExerciseExternalId(externalId)) return undefined;
+
+  const snapshot = await apiGet<SnapshotReadResponse>("sync/snapshot");
+  const synced = (snapshot.snapshot?.customExercises ?? [])
+    .map((exercise) => customExercise(exercise))
+    .find((exercise) => exercise?.externalId === externalId);
+  if (synced) return synced;
+
+  for (const status of ["pending", "applied"] as const) {
+    const inbox = await apiGet<InboxListResponse>("inbox", { status });
+    const queued = (inbox.operations ?? [])
+      .filter((operation) => operation.op === "createCustomExercise")
+      .map((operation) =>
+        customExercise(
+          operation.payload,
+          typeof operation.id === "string" ? operation.id : undefined
+        )
+      )
+      .find((exercise) => exercise?.externalId === externalId);
+    if (queued) return queued;
+  }
+  return undefined;
 }
 
 function normalize(value: string): string {
@@ -178,16 +217,21 @@ export function searchCatalog(query: string, limit = 10): CatalogExercise[] {
   return rankExercises(loadCatalog(), query, limit);
 }
 
-function customExercise(value: unknown): CatalogExercise | undefined {
+function customExercise(
+  value: unknown,
+  operationId?: string
+): CatalogExercise | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
   const exercise = value as Record<string, unknown>;
+  const storedId = operationId ?? exercise["id"];
   const externalId = exercise["externalId"];
   const name = exercise["name"];
   if (
     typeof externalId !== "string" ||
-    externalId.length === 0 ||
+    typeof storedId !== "string" ||
+    !isValidCustomExerciseExternalId(externalId, storedId) ||
     typeof name !== "string" ||
     name.length === 0
   ) {
@@ -214,7 +258,7 @@ export async function searchExercises(
 ): Promise<ExerciseSearchResult[]> {
   const response = await apiGet<SnapshotReadResponse>("sync/snapshot");
   const custom = (response.snapshot?.customExercises ?? [])
-    .map(customExercise)
+    .map((exercise) => customExercise(exercise))
     .filter((exercise): exercise is CatalogExercise => exercise !== undefined);
 
   const byExternalId = new Map(

@@ -138,6 +138,8 @@ export interface DeleteTemplatePayload {
 
 export interface CreateCustomExercisePayload {
   name: string;
+  /** Server-generated from name + operation id; ignored on enqueue input. */
+  externalId?: string;
   equipment?: string;
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
@@ -190,12 +192,27 @@ export interface InboxAckCounts {
   updated: number;
   unchanged: number;
   notFound: number;
-  /** Illegal transitions, forced to `failed` so they are never re-served. */
+  /** Invalid/conflicting transitions; nonterminal operations are failed. */
   invalid: number;
+}
+
+export type InboxAckOutcome =
+  | "updated"
+  | "unchanged"
+  | "notFound"
+  | "conflict";
+
+export interface InboxAckOperationResult {
+  id: string;
+  requestedStatus: InboxAckStatus;
+  resultingStatus?: InboxOperationStatus;
+  outcome: InboxAckOutcome;
+  conflict?: string;
 }
 
 export interface InboxAckResponse {
   counts: InboxAckCounts;
+  results: InboxAckOperationResult[];
 }
 
 export interface SasRequest {

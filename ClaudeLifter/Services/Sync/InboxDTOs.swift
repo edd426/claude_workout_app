@@ -86,6 +86,7 @@ struct DeleteTemplatePayload: Codable, Sendable, Equatable {
 
 struct CreateCustomExercisePayload: Codable, Sendable, Equatable {
     let name: String
+    let externalId: String?
     let equipment: String?
     let primaryMuscles: [String]?
     let secondaryMuscles: [String]?
@@ -110,8 +111,18 @@ struct InboxListResponse: Codable, Sendable, Equatable {
     let operations: [InboxOperationDTO]
 }
 
-enum InboxAckStatus: String, Codable, Sendable, Equatable {
+enum InboxOperationStatus: String, Codable, Sendable, Equatable {
+    case pending
+    case awaitingApproval
     case applied
+    case rejected
+    case failed
+}
+
+enum InboxAckStatus: String, Codable, Sendable, Equatable {
+    case awaitingApproval
+    case applied
+    case rejected
     case failed
 }
 
@@ -138,6 +149,30 @@ struct InboxAckCounts: Codable, Sendable, Equatable {
     let invalid: Int
 }
 
+enum InboxAckOutcome: String, Codable, Sendable, Equatable {
+    case updated
+    case unchanged
+    case notFound
+    case conflict
+}
+
+struct InboxAckOperationResult: Codable, Sendable, Equatable {
+    let id: String
+    let requestedStatus: InboxAckStatus
+    let resultingStatus: String?
+    let outcome: InboxAckOutcome
+    let conflict: String?
+}
+
 struct InboxAckResponse: Codable, Sendable, Equatable {
     let counts: InboxAckCounts
+    let results: [InboxAckOperationResult]
+
+    init(
+        counts: InboxAckCounts,
+        results: [InboxAckOperationResult] = []
+    ) {
+        self.counts = counts
+        self.results = results
+    }
 }

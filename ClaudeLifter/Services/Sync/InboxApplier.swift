@@ -3,9 +3,11 @@ import Foundation
 enum InboxApplyError: Error, LocalizedError {
     case malformedPayload(String)
     case unknownOperation(String)
+    case invalidOperationId(String)
     case invalidTemplateId(String)
     case templateNotFound(String)
     case unresolvedExerciseIds([String])
+    case invalidCustomExternalId(String)
 
     var errorDescription: String? {
         switch self {
@@ -13,12 +15,16 @@ enum InboxApplyError: Error, LocalizedError {
             return "Malformed inbox payload: \(reason)"
         case .unknownOperation(let operation):
             return "Unknown inbox operation: \(operation)"
+        case .invalidOperationId(let id):
+            return "Invalid inbox operation id: \(id)"
         case .invalidTemplateId(let id):
             return "Invalid template id: \(id)"
         case .templateNotFound(let id):
             return "Template not found: \(id)"
         case .unresolvedExerciseIds(let ids):
             return "Unresolved exercise externalIds: \(ids.joined(separator: ", "))"
+        case .invalidCustomExternalId(let id):
+            return "Invalid custom exercise externalId: \(id)"
         }
     }
 }
@@ -62,51 +68,130 @@ final class InboxApplier {
         return results
     }
 
+    /// Applies one server-durable approval after an explicit user decision.
+    func approve(_ operation: InboxOperationDTO) async -> InboxAckResult {
+        do {
+            let approvalRequired = try approvalRequirement(for: operation.op)
+            try validateApprovalFlag(
+                operation,
+                expected: approvalRequired
+            )
+            guard approvalRequired else {
+                throw InboxApplyError.malformedPayload(
+                    "Operation does not require approval"
+                )
+            }
+            guard operation.status == "awaitingApproval" else {
+                throw InboxApplyError.malformedPayload(
+                    "Expected awaitingApproval status, got \(operation.status)"
+                )
+            }
+            try await apply(operation)
+            return InboxAckResult(id: operation.id, status: .applied)
+        } catch {
+            return InboxAckResult(
+                id: operation.id,
+                status: .failed,
+                error: error.localizedDescription
+            )
+        }
+    }
+
+    /// Declining an approval is intentionally repository-free.
+    func decline(_ operation: InboxOperationDTO) -> InboxAckResult {
+        do {
+            let approvalRequired = try approvalRequirement(for: operation.op)
+            try validateApprovalFlag(
+                operation,
+                expected: approvalRequired
+            )
+            guard approvalRequired,
+                  operation.status == "awaitingApproval" else {
+                throw InboxApplyError.malformedPayload(
+                    "Expected an approval-required awaitingApproval operation"
+                )
+            }
+            return InboxAckResult(id: operation.id, status: .rejected)
+        } catch {
+            return InboxAckResult(
+                id: operation.id,
+                status: .failed,
+                error: error.localizedDescription
+            )
+        }
+    }
+
     private func process(_ operation: InboxOperationDTO) async throws -> InboxAckResult {
         guard operation.status == "pending" else {
             throw InboxApplyError.malformedPayload(
                 "Expected pending status, got \(operation.status)"
             )
         }
+        let approvalRequired = try approvalRequirement(for: operation.op)
+        try validateApprovalFlag(operation, expected: approvalRequired)
+        guard !approvalRequired else {
+            return InboxAckResult(
+                id: operation.id,
+                status: .awaitingApproval
+            )
+        }
 
+        try await apply(operation)
+        return InboxAckResult(id: operation.id, status: .applied)
+    }
+
+    private func apply(_ operation: InboxOperationDTO) async throws {
         switch operation.op {
         case "createTemplate":
             let payload = try decode(CreateTemplatePayload.self, from: operation.payload)
-            try await createTemplate(payload)
-            return InboxAckResult(id: operation.id, status: .applied)
+            try await createTemplate(
+                payload,
+                id: try entityID(for: operation)
+            )
 
         case "createCustomExercise":
             let payload = try decode(CreateCustomExercisePayload.self, from: operation.payload)
-            try await createCustomExercise(payload)
-            return InboxAckResult(id: operation.id, status: .applied)
+            try await createCustomExercise(
+                payload,
+                id: try entityID(for: operation)
+            )
 
         case "updateTemplate":
             let payload = try decode(UpdateTemplatePayload.self, from: operation.payload)
             try validateUpdatePayload(payload)
             try await updateTemplate(payload)
-            return InboxAckResult(id: operation.id, status: .applied)
 
         case "deleteTemplate":
             let payload = try decode(DeleteTemplatePayload.self, from: operation.payload)
             try validateDeletePayload(payload)
             try await deleteTemplate(payload)
-            return InboxAckResult(id: operation.id, status: .applied)
 
         default:
             throw InboxApplyError.unknownOperation(operation.op)
         }
     }
 
-    private func createTemplate(_ payload: CreateTemplatePayload) async throws {
+    private func createTemplate(
+        _ payload: CreateTemplatePayload,
+        id: UUID
+    ) async throws {
         try validateTemplatePayload(name: payload.name, exercises: payload.exercises)
+        guard try await templateRepository.fetch(id: id) == nil else {
+            return
+        }
         let resolved = try await resolve(payload.exercises)
-        let template = WorkoutTemplate(name: payload.name, notes: payload.notes)
+        let template = WorkoutTemplate(
+            id: id,
+            name: payload.name,
+            notes: payload.notes
+        )
         template.exercises = makeTemplateExercises(from: resolved)
         try await templateRepository.save(template)
     }
 
     private func createCustomExercise(
-        _ payload: CreateCustomExercisePayload
+        _ payload: CreateCustomExercisePayload,
+        id: UUID
     ) async throws {
         let name = payload.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
@@ -114,17 +199,71 @@ final class InboxApplier {
                 "Custom exercise name must not be empty"
             )
         }
+        guard let externalId = payload.externalId,
+              isValidCustomExternalId(externalId, operationId: id) else {
+            throw InboxApplyError.invalidCustomExternalId(
+                payload.externalId ?? "<missing>"
+            )
+        }
+        guard try await exerciseRepository.fetch(id: id) == nil else {
+            return
+        }
         let exercise = Exercise(
+            id: id,
             name: name,
             equipment: payload.equipment,
             instructions: payload.instructions ?? [],
             primaryMuscles: payload.primaryMuscles ?? [],
             secondaryMuscles: payload.secondaryMuscles ?? [],
             isCustom: true,
-            externalId: "custom:\(slug(name))",
+            externalId: externalId,
             notes: payload.notes
         )
         try await exerciseRepository.save(exercise)
+    }
+
+    private func approvalRequirement(for operation: String) throws -> Bool {
+        switch operation {
+        case "updateTemplate", "deleteTemplate":
+            return true
+        case "createTemplate", "createCustomExercise":
+            return false
+        default:
+            throw InboxApplyError.unknownOperation(operation)
+        }
+    }
+
+    private func validateApprovalFlag(
+        _ operation: InboxOperationDTO,
+        expected: Bool
+    ) throws {
+        guard operation.requiresApproval == expected else {
+            throw InboxApplyError.malformedPayload(
+                "\(operation.op) approval flag mismatch: "
+                    + "stored \(operation.requiresApproval), expected \(expected)"
+            )
+        }
+    }
+
+    private func isValidCustomExternalId(
+        _ externalId: String,
+        operationId: UUID
+    ) -> Bool {
+        let parts = externalId.split(
+            separator: ":",
+            omittingEmptySubsequences: false
+        )
+        guard parts.count == 3,
+              parts[0] == "custom",
+              (1...64).contains(parts[1].count),
+              parts[1].range(
+                of: #"^[a-z0-9]+(?:-[a-z0-9]+)*$"#,
+                options: .regularExpression
+              ) != nil,
+              let suffix = UUID(uuidString: String(parts[2])) else {
+            return false
+        }
+        return suffix == operationId
     }
 
     private func updateTemplate(_ payload: UpdateTemplatePayload) async throws {
@@ -296,19 +435,11 @@ final class InboxApplier {
         }
     }
 
-    private func slug(_ name: String) -> String {
-        let folded = name.folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: Locale(identifier: "en_US_POSIX")
-        )
-        let pieces = folded.unicodeScalars.split {
-            !CharacterSet.alphanumerics.contains($0)
+    private func entityID(for operation: InboxOperationDTO) throws -> UUID {
+        guard let id = UUID(uuidString: operation.id) else {
+            throw InboxApplyError.invalidOperationId(operation.id)
         }
-        let slug = pieces
-            .map { String(String.UnicodeScalarView($0)) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "-")
-            .lowercased()
-        return slug.isEmpty ? "exercise" : slug
+        return id
     }
+
 }

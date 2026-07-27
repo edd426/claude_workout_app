@@ -12,6 +12,10 @@ enum SyncError: Error, LocalizedError {
     /// GET /api/sync/snapshot returned revision 0 — the mirror has never
     /// received a push. Restoring would wipe local data with nothing.
     case emptyMirror
+    /// The server rejected one or more inbox status transitions and preserved
+    /// their existing state.
+    case inboxAckConflict([String])
+    case inboxApplyFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +33,10 @@ enum SyncError: Error, LocalizedError {
             return "A sync is already running. Try again in a moment."
         case .emptyMirror:
             return "The cloud has no snapshot yet — nothing to restore. Sync from this phone first."
+        case .inboxAckConflict(let details):
+            return "Inbox acknowledgement conflict: \(details.joined(separator: "; "))"
+        case .inboxApplyFailed(let reason):
+            return "Inbox operation failed: \(reason)"
         }
     }
 }

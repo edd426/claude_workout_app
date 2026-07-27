@@ -5,6 +5,7 @@ struct HomeView: View {
     @Environment(AppState.self) private var appState
     @State private var vm: HomeViewModel?
     @State private var bodyWeightVM: BodyWeightViewModel?
+    @State private var approvalVM: InboxApprovalViewModel?
     @State private var showTemplateEditor = false
     @State private var unreadInsights: [ProactiveInsight] = []
     @State private var path = NavigationPath()
@@ -45,6 +46,12 @@ struct HomeView: View {
                     settings: deps.settings
                 )
             }
+            if approvalVM == nil {
+                approvalVM = InboxApprovalViewModel(
+                    manager: deps.syncManager
+                )
+            }
+            await approvalVM?.load()
             // Honour the user's Settings toggle — don't even fetch insight
             // cards if they're disabled. Prevents a "pile up after weeks
             // away" cluttered Home screen.
@@ -66,6 +73,22 @@ struct HomeView: View {
                     await vm?.checkForResumableWorkout()
                 }
             }
+        }
+        .onChange(of: deps?.syncManager.pendingApprovals ?? []) { _, approvals in
+            approvalVM?.replaceApprovals(approvals)
+        }
+        .alert(
+            "Approval Error",
+            isPresented: Binding(
+                get: { approvalVM?.errorMessage != nil },
+                set: { if !$0 { approvalVM?.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                approvalVM?.errorMessage = nil
+            }
+        } message: {
+            Text(approvalVM?.errorMessage ?? "")
         }
         .sheet(isPresented: $showTemplateEditor) {
             if let deps {
@@ -94,6 +117,19 @@ struct HomeView: View {
                     onResume: { resumeWorkout(resumable) },
                     onDiscard: { Task { await vm.discardResumableWorkout() } }
                 )
+            }
+            if let approvalVM {
+                ForEach(approvalVM.approvals, id: \.id) { operation in
+                    InboxApprovalCard(
+                        operation: operation,
+                        onApprove: {
+                            Task { await approvalVM.approve(operation) }
+                        },
+                        onDecline: {
+                            Task { await approvalVM.decline(operation) }
+                        }
+                    )
+                }
             }
             if let bodyWeightVM {
                 BodyWeightCard(vm: bodyWeightVM)
@@ -236,5 +272,103 @@ struct HomeView: View {
             .buttonStyle(.bordered)
         }
         .padding(.horizontal)
+    }
+}
+
+private struct InboxApprovalCard: View {
+    let operation: InboxOperationDTO
+    let onApprove: () -> Void
+    let onDecline: () -> Void
+
+    @State private var isReviewing = false
+
+    var body: some View {
+        cardContent
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(
+                .quaternary.opacity(0.5),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .confirmationDialog(
+                operation.approvalTitle,
+                isPresented: $isReviewing,
+                titleVisibility: .visible
+            ) {
+                approvalActions
+            } message: {
+                Text(operation.approvalDetail)
+            }
+    }
+
+    private var cardContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Approval required", systemImage: "checkmark.shield")
+                .font(.caption)
+                .foregroundStyle(BrandTheme.terracotta)
+            Text(operation.approvalTitle)
+                .font(.headline)
+            Text(operation.approvalDetail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Review Change") {
+                isReviewing = true
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(BrandTheme.terracotta)
+            .accessibilityIdentifier("reviewInboxApproval")
+        }
+    }
+
+    @ViewBuilder
+    private var approvalActions: some View {
+        Button(
+            operation.op == "deleteTemplate"
+                ? "Delete Template"
+                : "Approve Change",
+            role: operation.op == "deleteTemplate" ? .destructive : nil
+        ) {
+            onApprove()
+        }
+        Button("Decline") {
+            onDecline()
+        }
+        Button("Cancel", role: .cancel) {}
+    }
+}
+
+private extension InboxOperationDTO {
+    var approvalTitle: String {
+        switch op {
+        case "deleteTemplate":
+            let payload = try? payload.decode(DeleteTemplatePayload.self)
+            return "Delete “\(payload?.name ?? "template")”?"
+        case "updateTemplate":
+            let payload = try? payload.decode(UpdateTemplatePayload.self)
+            if let name = payload?.name {
+                return "Update “\(name)”?"
+            }
+            return "Update template?"
+        default:
+            return "Apply proposed change?"
+        }
+    }
+
+    var approvalDetail: String {
+        switch op {
+        case "deleteTemplate":
+            return "This removes the template from this phone and the next cloud snapshot."
+        case "updateTemplate":
+            let payload = try? payload.decode(UpdateTemplatePayload.self)
+            let count = payload?.exercises?.count
+            if let count {
+                return "This replaces the template details and its exercise list (\(count) exercise\(count == 1 ? "" : "s"))."
+            }
+            return "This changes the template details."
+        default:
+            return "Review this inbox operation before it changes local data."
+        }
     }
 }

@@ -70,6 +70,8 @@ See `.claude/rules/tdd.md` for the full workflow.
 
 ## Key Conventions
 
+- **Simulator**: match the real device — Evan carries an **iPhone 13 Pro Max on iOS 26.5.x**. Do not substitute whatever simulator ships newest; on 2026-07-27 an iPhone 17 run produced a false `ChatCoachTests` failure that did not reproduce on the real hardware. The previously documented `iPhone 16e` no longer exists in Xcode.
+
 - **Architecture**: MVVM with `@Observable` ViewModels
 - **DI**: Protocol-based. Every service/repository has a protocol. Tests inject mocks.
 - **Testing**: Swift Testing (`@Test`, `#expect`) — NOT XCTest (`XCTAssert*`)
@@ -84,11 +86,15 @@ See `.claude/rules/` for detailed guidance on each area.
 ```bash
 # Build
 xcodebuild -scheme ClaudeLifter \
-  -destination 'platform=iOS Simulator,name=iPhone 16e' build
+  -destination 'platform=iOS Simulator,name=iPhone 13 Pro Max' build
 
 # Test
 xcodebuild -scheme ClaudeLifter \
-  -destination 'platform=iOS Simulator,name=iPhone 16e' test
+  -destination 'platform=iOS Simulator,name=iPhone 13 Pro Max' test
+
+# Test on the real device (highest fidelity; UI tests run in-memory, real data untouched)
+xcodebuild -scheme ClaudeLifter \
+  -destination 'platform=iOS,name=Evan DeLord'\''s iPhone' test
 
 # Skills (when available)
 /build    # Build the project
@@ -138,6 +144,8 @@ ClaudeLifterTests/
 
 ## Key Files
 
+- `HANDOFF.md` — **Read this first if it exists.** Pickup state for work in flight: what is verified vs assumed, what remains, and how to check it.
+- `infra/MCP_WRITE_PATH.md` — MCP inbox write-path design (#88): why direct Cosmos writes cannot work, and why exercises are referenced by `externalId` not UUID
 - `SPEC.md` — Full product specification (features, data model, architecture, phasing)
 - `.claude/rules/` — Code style, TDD, SwiftData, AI service patterns
 - `.claude/agents/` — Agent definitions with file ownership

@@ -71,6 +71,18 @@ struct SettingsManagerTests {
         #expect(reloaded.lastSyncRevision == 42)
     }
 
+    @Test("snapshot dirty state persists across SettingsManager instances")
+    func snapshotDirtyPersists() {
+        let suite = "settings-snapshot-dirty-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        let settings = SettingsManager(defaults: defaults)
+
+        settings.isSnapshotDirty = true
+        let reloaded = SettingsManager(defaults: UserDefaults(suiteName: suite)!)
+
+        #expect(reloaded.isSnapshotDirty == true)
+    }
+
     @Test("clearing lastSyncRevision removes the stored value")
     func lastSyncRevisionClears() {
         // Arrange

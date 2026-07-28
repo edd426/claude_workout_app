@@ -91,6 +91,130 @@ export interface SyncMetaDoc {
   serverTime: string;
 }
 
+// ─── MCP write inbox (issue #88) ────────────────────────────────────────────
+// Durable operations fetched and applied by the phone. This collection is
+// deliberately separate from snapshot reconciliation.
+
+export type InboxOperationType =
+  | "createTemplate"
+  | "updateTemplate"
+  | "deleteTemplate"
+  | "createCustomExercise";
+
+export type InboxOperationStatus =
+  | "pending"
+  | "awaitingApproval"
+  | "applied"
+  | "rejected"
+  | "failed";
+
+export interface InboxTemplateExercisePayload {
+  externalId: string;
+  order: number;
+  defaultSets: number;
+  defaultReps: number;
+  defaultWeight?: number;
+  defaultRestSeconds?: number;
+  notes?: string;
+}
+
+export interface CreateTemplatePayload {
+  name: string;
+  notes?: string;
+  exercises: InboxTemplateExercisePayload[];
+}
+
+export interface UpdateTemplatePayload {
+  id: string;
+  name?: string;
+  notes?: string;
+  exercises?: InboxTemplateExercisePayload[];
+}
+
+export interface DeleteTemplatePayload {
+  id: string;
+  name: string;
+}
+
+export interface CreateCustomExercisePayload {
+  name: string;
+  /** Server-generated from name + operation id; ignored on enqueue input. */
+  externalId?: string;
+  equipment?: string;
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  instructions?: string[];
+  notes?: string;
+}
+
+export type InboxOperationPayload =
+  | CreateTemplatePayload
+  | UpdateTemplatePayload
+  | DeleteTemplatePayload
+  | CreateCustomExercisePayload;
+
+export interface InboxOperation {
+  id: string;
+  createdAt: string;
+  op: InboxOperationType;
+  payload: InboxOperationPayload;
+  requiresApproval: boolean;
+  status: InboxOperationStatus;
+  appliedAt?: string;
+  error?: string;
+}
+
+export type InboxEnqueueRequest =
+  | { op: "createTemplate"; payload: CreateTemplatePayload }
+  | { op: "updateTemplate"; payload: UpdateTemplatePayload }
+  | { op: "deleteTemplate"; payload: DeleteTemplatePayload }
+  | { op: "createCustomExercise"; payload: CreateCustomExercisePayload };
+
+export type InboxEnqueueResponse = InboxOperation;
+
+export interface InboxListResponse {
+  operations: InboxOperation[];
+}
+
+export type InboxAckStatus = Exclude<InboxOperationStatus, "pending">;
+
+export interface InboxAckResult {
+  id: string;
+  status: InboxAckStatus;
+  error?: string;
+}
+
+export interface InboxAckRequest {
+  results: InboxAckResult[];
+}
+
+export interface InboxAckCounts {
+  updated: number;
+  unchanged: number;
+  notFound: number;
+  /** Invalid/conflicting transitions; nonterminal operations are failed. */
+  invalid: number;
+}
+
+export type InboxAckOutcome =
+  | "updated"
+  | "unchanged"
+  | "notFound"
+  | "conflict";
+
+export interface InboxAckOperationResult {
+  id: string;
+  requestedStatus: InboxAckStatus;
+  resultingStatus?: InboxOperationStatus;
+  outcome: InboxAckOutcome;
+  conflict?: string;
+}
+
+export interface InboxAckResponse {
+  counts: InboxAckCounts;
+  results: InboxAckOperationResult[];
+}
+
 export interface SasRequest {
   path: string;
   mode: "upload" | "download";

@@ -147,6 +147,17 @@ final class NetworkService: NetworkServiceProtocol, @unchecked Sendable {
         try await get(endpoint: "/api/sync/snapshot", queryItems: [])
     }
 
+    func fetchInbox(status: InboxOperationStatus) async throws -> InboxListResponse {
+        try await get(
+            endpoint: "/api/inbox",
+            queryItems: [URLQueryItem(name: "status", value: status.rawValue)]
+        )
+    }
+
+    func ackInbox(_ request: InboxAckRequest) async throws -> InboxAckResponse {
+        try await post(endpoint: "/api/inbox/ack", body: request)
+    }
+
     func uploadBlob(url: URL, data: Data, contentType: String) async throws {
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"

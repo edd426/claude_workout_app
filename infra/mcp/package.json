@@ -1,13 +1,14 @@
 {
   "name": "claudelifter-mcp",
   "version": "2.0.0",
-  "description": "Read-only MCP server for ClaudeLifter workout data, routed through the Azure Functions API",
+  "description": "MCP server for ClaudeLifter reads and durable inbox writes through the Azure Functions API",
   "type": "module",
   "main": "dist/src/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/build-catalog.mjs && tsc",
     "watch": "tsc -w",
     "clean": "rm -rf dist",
+    "pretest": "node scripts/build-catalog.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

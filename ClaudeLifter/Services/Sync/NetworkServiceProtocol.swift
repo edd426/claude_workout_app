@@ -13,4 +13,11 @@ protocol NetworkServiceProtocol: Sendable {
     func pushSnapshot(_ request: SnapshotPushRequest) async throws -> SnapshotPushResponse
     /// GET /api/sync/snapshot — disaster-restore read of the mirror.
     func fetchSnapshot() async throws -> SnapshotFetchResponse
+
+    // Durable MCP write inbox (issue #88)
+
+    /// GET /api/inbox?status=... — operations in one server-durable state.
+    func fetchInbox(status: InboxOperationStatus) async throws -> InboxListResponse
+    /// POST /api/inbox/ack — acknowledge independent operation results.
+    func ackInbox(_ request: InboxAckRequest) async throws -> InboxAckResponse
 }

@@ -14,19 +14,30 @@ private struct SyncTestEnv {
     let templateRepo: SwiftDataTemplateRepository
     let exerciseRepo: SwiftDataExerciseRepository
     let bodyWeightRepo: SwiftDataBodyWeightRepository
+    let inboxApplier: InboxApplier
     let network: MockNetworkService
     let settings: SettingsManager
     let manager: SyncManager
 
-    init(serverURL: String = "https://example.com") throws {
+    init(
+        serverURL: String = "https://example.com",
+        defaults: UserDefaults? = nil
+    ) throws {
         container = try makeTestContainer()
         context = container.mainContext
         workoutRepo = SwiftDataWorkoutRepository(context: context)
         templateRepo = SwiftDataTemplateRepository(context: context)
         exerciseRepo = SwiftDataExerciseRepository(context: context)
         bodyWeightRepo = SwiftDataBodyWeightRepository(context: context)
+        inboxApplier = InboxApplier(
+            templateRepository: templateRepo,
+            exerciseRepository: exerciseRepo
+        )
         network = MockNetworkService()
-        settings = SettingsManager(defaults: UserDefaults(suiteName: "sync-test-\(UUID())")!)
+        settings = SettingsManager(
+            defaults: defaults
+                ?? UserDefaults(suiteName: "sync-test-\(UUID())")!
+        )
         settings.serverURL = serverURL
         manager = SyncManager(
             workoutRepository: workoutRepo,
@@ -34,7 +45,8 @@ private struct SyncTestEnv {
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
             networkService: network,
-            settings: settings
+            settings: settings,
+            inboxApplier: inboxApplier
         )
     }
 }
@@ -50,6 +62,46 @@ private func makePushResponse(revision: Int = 1, serverTime: Date = Date(timeInt
             "bodyWeightEntries": SnapshotCollectionCounts(upserted: 0, deleted: 0),
         ]
     )
+}
+
+// Inbox operation ids must parse as UUIDs — the applier derives the created
+// entity's identity from them so a replayed operation is a no-op. The server
+// mints them with randomUUID(), so fixtures must be real UUIDs too.
+private let requestedOperationID = "11111111-1111-4111-8111-111111111111"
+private let validOperationID = "22222222-2222-4222-8222-222222222222"
+private let extraOperationID = "33333333-3333-4333-8333-333333333333"
+private let conflictingOperationID = "44444444-4444-4444-8444-444444444444"
+
+private func makePendingInboxCreate(id: String) -> InboxOperationDTO {
+    InboxOperationDTO(
+        id: id,
+        createdAt: "2026-07-27T12:00:00.000Z",
+        op: "createTemplate",
+        payload: .object([
+            "name": .string("Ack Validation \(id)"),
+            "exercises": .array([]),
+        ]),
+        requiresApproval: false,
+        status: "pending",
+        appliedAt: nil,
+        error: nil
+    )
+}
+
+@MainActor
+private func runAckValidationScenario(
+    _ response: InboxAckResponse
+) async throws -> (syncError: String?, pushCount: Int) {
+    let env = try SyncTestEnv()
+    env.network.fetchInboxResult = InboxListResponse(
+        operations: [makePendingInboxCreate(id: requestedOperationID)]
+    )
+    env.network.ackInboxResult = response
+    env.network.pushSnapshotResult = makePushResponse()
+
+    await env.manager.syncIfNeeded()
+
+    return (env.manager.syncError, env.network.pushSnapshotCallCount)
 }
 
 @Suite("SyncManager Snapshot Push")
@@ -210,10 +262,11 @@ struct SyncIfNeededTests {
 
         await env.manager.syncIfNeeded()
 
+        #expect(env.network.fetchInboxCallCount == 0)
         #expect(env.network.pushSnapshotCallCount == 0)
     }
 
-    @Test("skips the network when nothing is pending")
+    @Test("skips snapshot push when inbox is empty and nothing is pending")
     func skipsWhenNothingPending() async throws {
         let env = try SyncTestEnv()
         env.context.insert(Workout(name: "Synced", startedAt: .now, syncStatus: .synced))
@@ -221,6 +274,7 @@ struct SyncIfNeededTests {
 
         await env.manager.syncIfNeeded()
 
+        #expect(env.network.fetchInboxCallCount == 2)
         #expect(env.network.pushSnapshotCallCount == 0)
     }
 
@@ -247,6 +301,239 @@ struct SyncIfNeededTests {
         await env.manager.syncIfNeeded()
 
         #expect(env.manager.syncError != nil)
+    }
+
+    @Test("an ack conflict surfaces an error after valid batch-mates are pushed")
+    func recordsInboxAckConflict() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        env.network.fetchInboxResult = InboxListResponse(
+            operations: [
+                makePendingInboxCreate(id: validOperationID),
+                InboxOperationDTO(
+                    id: conflictingOperationID,
+                    createdAt: "2026-07-27T12:00:00.000Z",
+                    op: "deleteTemplate",
+                    payload: .object([
+                        "id": .string(UUID().uuidString),
+                        "name": .string("Already handled"),
+                    ]),
+                    requiresApproval: true,
+                    status: "pending",
+                    appliedAt: nil,
+                    error: nil
+                )
+            ]
+        )
+        let responseJSON = Data(
+            """
+            {
+              "counts": {
+                "updated": 1,
+                "unchanged": 0,
+                "notFound": 0,
+                "invalid": 1
+              },
+              "results": [
+                {
+                  "id": "\(validOperationID)",
+                  "requestedStatus": "applied",
+                  "resultingStatus": "applied",
+                  "outcome": "updated"
+                },
+                {
+                  "id": "\(conflictingOperationID)",
+                  "requestedStatus": "awaitingApproval",
+                  "resultingStatus": "applied",
+                  "outcome": "conflict",
+                  "conflict": "applied deleteTemplate cannot transition to awaitingApproval"
+                }
+              ]
+            }
+            """.utf8
+        )
+        env.network.ackInboxResult = try JSONDecoder().decode(
+            InboxAckResponse.self,
+            from: responseJSON
+        )
+        env.network.pushSnapshotResult = makePushResponse()
+
+        // Act
+        await env.manager.syncIfNeeded()
+
+        // Assert
+        #expect(env.manager.syncError?.localizedCaseInsensitiveContains("conflict") == true)
+        #expect(env.network.pushSnapshotCallCount == 1)
+        #expect(
+            env.network.lastSnapshotRequest?.snapshot.templates.contains {
+                $0.name == "Ack Validation \(validOperationID)"
+            } == true
+        )
+    }
+
+    @Test("ack responses are validated against the exact request without blocking push")
+    func rejectsIncompleteMismatchedAndExtraAckResults() async throws {
+        let correct = InboxAckOperationResult(
+            id: requestedOperationID,
+            requestedStatus: .applied,
+            resultingStatus: "applied",
+            outcome: .updated,
+            conflict: nil
+        )
+        let scenarios: [(String, InboxAckResponse)] = [
+            (
+                "missing",
+                InboxAckResponse(
+                    counts: InboxAckCounts(
+                        updated: 1,
+                        unchanged: 0,
+                        notFound: 0,
+                        invalid: 0
+                    ),
+                    results: []
+                )
+            ),
+            (
+                "not found",
+                InboxAckResponse(
+                    counts: InboxAckCounts(
+                        updated: 0,
+                        unchanged: 0,
+                        notFound: 1,
+                        invalid: 0
+                    ),
+                    results: [
+                        InboxAckOperationResult(
+                            id: requestedOperationID,
+                            requestedStatus: .applied,
+                            resultingStatus: nil,
+                            outcome: .notFound,
+                            conflict: nil
+                        ),
+                    ]
+                )
+            ),
+            (
+                "requested status",
+                InboxAckResponse(
+                    counts: InboxAckCounts(
+                        updated: 1,
+                        unchanged: 0,
+                        notFound: 0,
+                        invalid: 0
+                    ),
+                    results: [
+                        InboxAckOperationResult(
+                            id: requestedOperationID,
+                            requestedStatus: .failed,
+                            resultingStatus: "failed",
+                            outcome: .updated,
+                            conflict: nil
+                        ),
+                    ]
+                )
+            ),
+            (
+                "extra",
+                InboxAckResponse(
+                    counts: InboxAckCounts(
+                        updated: 2,
+                        unchanged: 0,
+                        notFound: 0,
+                        invalid: 0
+                    ),
+                    results: [
+                        correct,
+                        InboxAckOperationResult(
+                            id: extraOperationID,
+                            requestedStatus: .applied,
+                            resultingStatus: "applied",
+                            outcome: .updated,
+                            conflict: nil
+                        ),
+                    ]
+                )
+            ),
+            (
+                "exactly one",
+                InboxAckResponse(
+                    counts: InboxAckCounts(
+                        updated: 2,
+                        unchanged: 0,
+                        notFound: 0,
+                        invalid: 0
+                    ),
+                    results: [correct, correct]
+                )
+            ),
+        ]
+
+        for (expectedDiagnostic, response) in scenarios {
+            let result = try await runAckValidationScenario(response)
+            #expect(
+                result.syncError?
+                    .localizedCaseInsensitiveContains(expectedDiagnostic) == true
+            )
+            #expect(result.pushCount == 1)
+        }
+    }
+
+    @Test("an inbox-applied custom exercise retries snapshot push after restart")
+    func customExercisePushRetriesAfterRestart() async throws {
+        // Arrange
+        let defaults = UserDefaults(
+            suiteName: "sync-dirty-restart-\(UUID())"
+        )!
+        let env = try SyncTestEnv(defaults: defaults)
+        env.network.fetchInboxResult = InboxListResponse(
+            operations: [
+                InboxOperationDTO(
+                    id: "10000000-0000-4000-8000-000000000005",
+                    createdAt: "2026-07-27T12:00:00.000Z",
+                    op: "createCustomExercise",
+                    payload: .object([
+                        "name": .string("Restart Sled Drag"),
+                        "externalId": .string(
+                            "custom:restart-sled-drag:10000000-0000-4000-8000-000000000005"
+                        ),
+                    ]),
+                    requiresApproval: false,
+                    status: "pending",
+                    appliedAt: nil,
+                    error: nil
+                )
+            ]
+        )
+        env.network.pushSnapshotError = SyncError.serverError(500)
+
+        // Act — local apply succeeds, but the first snapshot push fails.
+        await env.manager.syncIfNeeded()
+
+        // Assert — the durable trigger survives a new SettingsManager and
+        // causes a push even though the restarted app sees an empty inbox.
+        #expect(env.settings.isSnapshotDirty == true)
+        env.network.fetchInboxResult = InboxListResponse(operations: [])
+        env.network.pushSnapshotError = nil
+        env.network.pushSnapshotResult = makePushResponse(revision: 2)
+        let reloadedSettings = SettingsManager(defaults: defaults)
+        let restarted = SyncManager(
+            workoutRepository: env.workoutRepo,
+            templateRepository: env.templateRepo,
+            exerciseRepository: env.exerciseRepo,
+            bodyWeightRepository: env.bodyWeightRepo,
+            networkService: env.network,
+            settings: reloadedSettings,
+            inboxApplier: env.inboxApplier
+        )
+        await restarted.syncIfNeeded()
+
+        #expect(env.network.pushSnapshotCallCount == 2)
+        #expect(
+            env.network.lastSnapshotRequest?.snapshot.customExercises
+                .contains { $0.name == "Restart Sled Drag" } == true
+        )
+        #expect(reloadedSettings.isSnapshotDirty == false)
+        #expect(restarted.syncError == nil)
     }
 }
 
@@ -577,7 +864,11 @@ struct SyncStateTests {
             exerciseRepository: SwiftDataExerciseRepository(context: context),
             bodyWeightRepository: SwiftDataBodyWeightRepository(context: context),
             networkService: MockNetworkService(),
-            settings: settings
+            settings: settings,
+            inboxApplier: InboxApplier(
+                templateRepository: SwiftDataTemplateRepository(context: context),
+                exerciseRepository: SwiftDataExerciseRepository(context: context)
+            )
         )
         #expect(manager.lastRevision == 17)
         _ = container

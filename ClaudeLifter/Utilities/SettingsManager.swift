@@ -44,6 +44,7 @@ final class SettingsManager {
         static let serverURL = "serverURL"
         static let lastSyncTimestamp = "lastSyncTimestamp"
         static let lastSyncRevision = "lastSyncRevision"
+        static let isSnapshotDirty = "isSnapshotDirty"
         static let proactiveInsightsEnabled = "proactiveInsightsEnabled"
     }
 
@@ -81,6 +82,12 @@ final class SettingsManager {
         }
     }
 
+    /// Durable trigger for inbox-applied changes that have no per-record
+    /// `syncStatus` (notably custom exercises).
+    var isSnapshotDirty: Bool {
+        didSet { defaults.set(isSnapshotDirty, forKey: Key.isSnapshotDirty) }
+    }
+
     // MARK: - Init (loads from UserDefaults)
 
     init(defaults: UserDefaults = .standard, keychainKey: String? = nil) {
@@ -100,6 +107,7 @@ final class SettingsManager {
         self.serverURL = defaults.string(forKey: Key.serverURL) ?? ""
         self.lastSyncTimestamp = defaults.object(forKey: Key.lastSyncTimestamp) as? Date
         self.lastSyncRevision = defaults.object(forKey: Key.lastSyncRevision) as? Int
+        self.isSnapshotDirty = defaults.bool(forKey: Key.isSnapshotDirty)
         // Missing key → treat as enabled (legacy install default).
         if defaults.object(forKey: Key.proactiveInsightsEnabled) == nil {
             self.proactiveInsightsEnabled = true

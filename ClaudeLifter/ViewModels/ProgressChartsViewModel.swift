@@ -50,7 +50,7 @@ final class ProgressChartsViewModel {
                 .flatMap(\.sets)
                 .filter(\.isCompleted)
                 .compactMap { set -> Double? in
-                    guard let w = set.weight, let r = set.reps else { return nil }
+                    guard let w = set.weightInKilograms, let r = set.reps else { return nil }
                     return w * Double(r)
                 }
                 .reduce(0, +)
@@ -72,10 +72,7 @@ final class ProgressChartsViewModel {
                 guard we.exercise?.id == exerciseId else { continue }
                 let best1RM = we.sets
                     .filter(\.isCompleted)
-                    .compactMap { set -> Double? in
-                        guard let w = set.weight, let r = set.reps else { return nil }
-                        return PersonalRecord.estimated1RM(weight: w, reps: r)
-                    }
+                    .compactMap { PersonalRecord.estimated1RM(for: $0) }
                     .max()
                 if let best1RM {
                     points.append(OneRMDataPoint(date: completedAt, estimated1RM: best1RM))

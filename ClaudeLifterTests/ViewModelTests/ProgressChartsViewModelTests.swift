@@ -41,6 +41,43 @@ struct ProgressChartsViewModelTests {
         #expect(abs(totalVolume - 900) < 0.01)
     }
 
+    @Test("Volume over time normalizes equivalent weights to kg", arguments: [
+        (45.3592, WeightUnit.kg),
+        (100.0, WeightUnit.lbs),
+    ])
+    func volumeOverTimeNormalizesToKg(weight: Double, unit: WeightUnit) async throws {
+        let workoutRepo = MockWorkoutRepository()
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        let workout = TestFixtures.makeWorkout(completedAt: .now)
+        let workoutExercise = WorkoutExercise(order: 0, exercise: exercise)
+        workoutExercise.sets.append(
+            WorkoutSet(
+                order: 0,
+                weight: weight,
+                weightUnit: unit,
+                reps: 5,
+                isCompleted: true,
+                completedAt: .now
+            )
+        )
+        workout.exercises.append(workoutExercise)
+        context.insert(exercise)
+        context.insert(workout)
+        try context.save()
+        workoutRepo.workouts = [workout]
+        let viewModel = ProgressChartsViewModel(
+            workoutRepository: workoutRepo,
+            exerciseRepository: MockExerciseRepository()
+        )
+
+        await viewModel.loadVolumeOverTime(days: 30)
+
+        let volume = try #require(viewModel.volumeData.first?.volume)
+        #expect(abs(volume - 226.796) < 0.001)
+    }
+
     @Test("Volume returns empty for no workouts")
     func volumeEmptyForNoWorkouts() async {
         let vm = makeVM()
@@ -130,8 +167,46 @@ struct ProgressChartsViewModelTests {
 
         #expect(!vm.oneRMData.isEmpty)
         // Brzycki: 100 * (36 / (37 - 5)) = 100 * (36/32) = 112.5
-        let expected1RM = PersonalRecord.estimated1RM(weight: 100, reps: 5) ?? 0
+        let expectedSet = WorkoutSet(order: 0, weight: 100, weightUnit: .kg, reps: 5)
+        let expected1RM = PersonalRecord.estimated1RM(for: expectedSet) ?? 0
         #expect(abs(vm.oneRMData[0].estimated1RM - expected1RM) < 0.01)
+    }
+
+    @Test("1RM progression normalizes equivalent weights to kg", arguments: [
+        (45.3592, WeightUnit.kg),
+        (100.0, WeightUnit.lbs),
+    ])
+    func oneRMProgressionNormalizesToKg(weight: Double, unit: WeightUnit) async throws {
+        let workoutRepo = MockWorkoutRepository()
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        let workout = TestFixtures.makeWorkout(completedAt: .now)
+        let workoutExercise = WorkoutExercise(order: 0, exercise: exercise)
+        workoutExercise.sets.append(
+            WorkoutSet(
+                order: 0,
+                weight: weight,
+                weightUnit: unit,
+                reps: 5,
+                isCompleted: true,
+                completedAt: .now
+            )
+        )
+        workout.exercises.append(workoutExercise)
+        context.insert(exercise)
+        context.insert(workout)
+        try context.save()
+        workoutRepo.workouts = [workout]
+        let viewModel = ProgressChartsViewModel(
+            workoutRepository: workoutRepo,
+            exerciseRepository: MockExerciseRepository()
+        )
+
+        await viewModel.load1RMProgression(exerciseId: exercise.id)
+
+        let estimated1RM = try #require(viewModel.oneRMData.first?.estimated1RM)
+        #expect(abs(estimated1RM - 51.0291) < 0.001)
     }
 
     @Test("1RM progression filtered by exerciseId")
@@ -158,8 +233,10 @@ struct ProgressChartsViewModelTests {
         await vm.load1RMProgression(exerciseId: bench.id)
 
         // Should only contain data for bench, not squat
-        let expected1RM = PersonalRecord.estimated1RM(weight: 100, reps: 5) ?? 0
-        let squat1RM = PersonalRecord.estimated1RM(weight: 140, reps: 5) ?? 0
+        let expectedSet = WorkoutSet(order: 0, weight: 100, weightUnit: .kg, reps: 5)
+        let squatSet = WorkoutSet(order: 0, weight: 140, weightUnit: .kg, reps: 5)
+        let expected1RM = PersonalRecord.estimated1RM(for: expectedSet) ?? 0
+        let squat1RM = PersonalRecord.estimated1RM(for: squatSet) ?? 0
         #expect(vm.oneRMData.allSatisfy { abs($0.estimated1RM - expected1RM) < 0.01 })
         #expect(!vm.oneRMData.contains { abs($0.estimated1RM - squat1RM) < 0.01 })
     }
@@ -285,5 +362,38 @@ struct ProgressChartsViewModelTests {
 
         let total = vm.muscleDistribution.reduce(0) { $0 + $1.percentage }
         #expect(abs(total - 100) < 0.1)
+    }
+}
+
+@Suite("WorkoutSummaryView Tests")
+@MainActor
+struct WorkoutSummaryViewTests {
+
+    @Test("Summary volume normalizes equivalent weights to kg", arguments: [
+        (45.3592, WeightUnit.kg),
+        (100.0, WeightUnit.lbs),
+    ])
+    func totalVolumeNormalizesToKg(weight: Double, unit: WeightUnit) {
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        let workout = TestFixtures.makeWorkout()
+        let workoutExercise = WorkoutExercise(order: 0, exercise: exercise)
+        workoutExercise.sets.append(
+            WorkoutSet(
+                order: 0,
+                weight: weight,
+                weightUnit: unit,
+                reps: 5,
+                isCompleted: true,
+                completedAt: .now
+            )
+        )
+        workout.exercises.append(workoutExercise)
+        let summary = WorkoutSummaryView(
+            workout: workout,
+            personalRecords: [],
+            onDismiss: {}
+        )
+
+        #expect(abs(summary.totalVolume - 226.796) < 0.001)
     }
 }

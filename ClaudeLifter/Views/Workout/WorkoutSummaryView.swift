@@ -13,7 +13,7 @@ struct WorkoutSummaryView: View {
         workout.exercises.flatMap(\.sets)
             .filter(\.isCompleted)
             .compactMap { set -> Double? in
-                guard let w = set.weight, let r = set.reps else { return nil }
+                guard let w = set.weightInKilograms, let r = set.reps else { return nil }
                 return w * Double(r)
             }
             .reduce(0, +)

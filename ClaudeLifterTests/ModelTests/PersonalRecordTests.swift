@@ -37,17 +37,22 @@ struct PersonalRecordTests {
         #expect(PRType(rawValue: "invalid") == nil)
     }
 
-    @Test("Brzycki formula computes correct 1RM")
-    func brzykiFormula() throws {
+    @Test("Brzycki formula normalizes equivalent weights to kg", arguments: [
+        (100.0, WeightUnit.kg),
+        (220.462, WeightUnit.lbs),
+    ])
+    func brzykiFormula(weight: Double, unit: WeightUnit) throws {
         // 100kg x 5 reps = 100 * (36 / (37-5)) = 100 * (36/32) = 112.5
-        let result = PersonalRecord.estimated1RM(weight: 100.0, reps: 5)
+        let set = WorkoutSet(order: 0, weight: weight, weightUnit: unit, reps: 5)
+        let result = PersonalRecord.estimated1RM(for: set)
         let unwrapped = try #require(result)
         #expect(abs(unwrapped - 112.5) < 0.01)
     }
 
     @Test("Brzycki formula returns nil for reps greater than 36")
     func brzykiFormulaEdgeCase() {
-        let result = PersonalRecord.estimated1RM(weight: 100.0, reps: 37)
+        let set = WorkoutSet(order: 0, weight: 100, weightUnit: .kg, reps: 37)
+        let result = PersonalRecord.estimated1RM(for: set)
         #expect(result == nil)
     }
 

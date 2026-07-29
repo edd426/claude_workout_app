@@ -53,10 +53,14 @@ final class PersonalRecord: SyncableModel {
         PRType(rawValue: type) ?? .heaviestWeight
     }
 
-    /// Brzycki formula: estimated 1RM from weight and reps.
+    /// Brzycki formula: estimated 1RM in kg from a set in either weight unit.
     /// Returns nil if reps > 36 (formula becomes invalid/negative).
-    static func estimated1RM(weight: Double, reps: Int) -> Double? {
+    static func estimated1RM(for set: WorkoutSet) -> Double? {
+        guard let weightInKilograms = set.weightInKilograms,
+              let reps = set.reps else {
+            return nil
+        }
         guard reps <= 36 else { return nil }
-        return weight * (36.0 / (37.0 - Double(reps)))
+        return weightInKilograms * (36.0 / (37.0 - Double(reps)))
     }
 }

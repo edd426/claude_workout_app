@@ -112,17 +112,57 @@ struct PRDetectionServiceTests {
         #expect(weightPR == nil)
     }
 
+    @Test("A 100 lb set does not beat a 60 kg PR")
+    func poundsDoNotPoisonKilogramPRComparisons() async throws {
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+
+        let historicalWorkout = insertWorkout(
+            context: context,
+            exercise: exercise,
+            sets: [(60.0, 5)]
+        )
+        _ = try await service.detectPRs(for: historicalWorkout)
+
+        let currentWorkout = TestFixtures.makeWorkout()
+        let workoutExercise = WorkoutExercise(order: 0, exercise: exercise)
+        workoutExercise.sets.append(
+            WorkoutSet(
+                order: 0,
+                weight: 100,
+                weightUnit: .lbs,
+                reps: 5,
+                isCompleted: true,
+                completedAt: .now
+            )
+        )
+        currentWorkout.exercises.append(workoutExercise)
+
+        let newPRs = try await service.detectPRs(for: currentWorkout)
+
+        #expect(!newPRs.contains { $0.prType == .heaviestWeight })
+        #expect(!newPRs.contains { $0.prType == .highest1RM })
+        let repsAtWeight = try #require(
+            newPRs.first { $0.prType == .mostRepsAtWeight }
+        )
+        #expect(abs((repsAtWeight.weight ?? 0) - 45.3592) < 0.001)
+    }
+
     @Test("Brzycki formula calculates correctly for 5 reps")
     func brzykiFormulaFiveReps() {
         // 100kg x 5 reps = 100 * (36 / 32) = 112.5
-        let result = PersonalRecord.estimated1RM(weight: 100.0, reps: 5)
+        let set = WorkoutSet(order: 0, weight: 100, weightUnit: .kg, reps: 5)
+        let result = PersonalRecord.estimated1RM(for: set)
         #expect(result != nil)
         #expect(abs(result! - 112.5) < 0.01)
     }
 
     @Test("Brzycki formula returns nil for reps greater than 36")
     func brzykiFormulaEdgeCase() {
-        let result = PersonalRecord.estimated1RM(weight: 100.0, reps: 37)
+        let set = WorkoutSet(order: 0, weight: 100, weightUnit: .kg, reps: 37)
+        let result = PersonalRecord.estimated1RM(for: set)
         #expect(result == nil)
     }
 

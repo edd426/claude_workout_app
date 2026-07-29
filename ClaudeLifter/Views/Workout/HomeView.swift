@@ -206,6 +206,7 @@ struct HomeView: View {
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
             templateRepository: deps.templateRepository,
+            prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )
         // Clear any pushed navigation (e.g. TemplatePreviewView) so the root
@@ -225,6 +226,7 @@ struct HomeView: View {
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
             templateRepository: deps.templateRepository,
+            prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )
         path = NavigationPath()
@@ -238,6 +240,7 @@ struct HomeView: View {
             adHocName: "Quick Workout",
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
+            prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )
         path = NavigationPath()

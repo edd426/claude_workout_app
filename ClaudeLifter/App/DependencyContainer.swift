@@ -11,6 +11,7 @@ final class DependencyContainer {
     let preferenceRepository: any TrainingPreferenceRepository
     let insightRepository: any InsightRepository
     let autoFillService: any AutoFillServiceProtocol
+    let prDetectionService: any PRDetectionServiceProtocol
     let exerciseImportService: any ExerciseImportServiceProtocol
     let networkService: any NetworkServiceProtocol
     let imageUploadService: any ImageUploadServiceProtocol
@@ -53,6 +54,8 @@ final class DependencyContainer {
         self.preferenceRepository = prefRepo
         self.insightRepository = insightRepo
         self.autoFillService = AutoFillService(workoutRepository: workoutRepo)
+        let personalRecordRepo = SwiftDataPersonalRecordRepository(context: modelContext)
+        self.prDetectionService = PRDetectionService(prRepository: personalRecordRepo)
         self.exerciseImportService = ExerciseImportService()
         self.backupService = BackupService(
             modelContext: modelContext,

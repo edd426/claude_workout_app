@@ -408,6 +408,62 @@ extension ActiveWorkoutViewModelTests {
 
     // MARK: - PR Detection Tests
 
+    @Test("dependency-wired PR detection surfaces a record only when history is beaten")
+    func dependencyWiredPRDetectionSurfacesOnlyNewRecords() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let dependencies = DependencyContainer(modelContext: context)
+        let prService = dependencies.prDetectionService
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+
+        func makeWorkout(weight: Double) -> Workout {
+            let workout = Workout(name: "Push Day", startedAt: .now)
+            let workoutExercise = WorkoutExercise(order: 0, exercise: exercise)
+            workoutExercise.sets.append(
+                WorkoutSet(
+                    order: 0,
+                    weight: weight,
+                    weightUnit: .kg,
+                    reps: 5,
+                    isCompleted: true,
+                    completedAt: .now
+                )
+            )
+            workout.exercises.append(workoutExercise)
+            return workout
+        }
+
+        let historicalWorkout = makeWorkout(weight: 60)
+        _ = try await prService.detectPRs(for: historicalWorkout)
+
+        let recordWorkout = makeWorkout(weight: 65)
+        let recordViewModel = ActiveWorkoutViewModel(
+            resuming: recordWorkout,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            prDetectionService: prService
+        )
+        await recordViewModel.finishWorkout()
+
+        #expect(
+            recordViewModel.detectedPRs.contains {
+                $0.prType == .heaviestWeight && $0.value == 65
+            }
+        )
+
+        let matchingWorkout = makeWorkout(weight: 65)
+        let matchingViewModel = ActiveWorkoutViewModel(
+            resuming: matchingWorkout,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            prDetectionService: prService
+        )
+        await matchingViewModel.finishWorkout()
+
+        #expect(matchingViewModel.detectedPRs.isEmpty)
+    }
+
     @Test("finishWorkout detects PRs and stores them")
     func finishWorkoutDetectsPRs() async throws {
         let (container, exercise, template) = try makeSetup()

@@ -47,7 +47,8 @@ struct ContentView: View {
                     // but Coach shows Haiku" bug.
                     settings: dependencies.settings,
                     appState: appState,
-                    autoFillService: dependencies.autoFillService
+                    autoFillService: dependencies.autoFillService,
+                    prDetectionService: dependencies.prDetectionService
                 )
             }
         }

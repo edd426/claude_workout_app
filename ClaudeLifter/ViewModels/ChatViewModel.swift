@@ -43,6 +43,7 @@ final class ChatViewModel {
     private let settings: SettingsManager?
     private let appState: AppState?
     private let autoFillService: (any AutoFillServiceProtocol)?
+    private let prDetectionService: (any PRDetectionServiceProtocol)?
 
     /// The active workout session used by tools. Set externally when a workout is in progress.
     var activeWorkout: Workout? {
@@ -72,7 +73,8 @@ final class ChatViewModel {
         tools: [any ClaudeTool]? = nil,
         settings: SettingsManager? = nil,
         appState: AppState? = nil,
-        autoFillService: (any AutoFillServiceProtocol)? = nil
+        autoFillService: (any AutoFillServiceProtocol)? = nil,
+        prDetectionService: (any PRDetectionServiceProtocol)? = nil
     ) {
         self.anthropicService = anthropicService
         self.exerciseRepository = exerciseRepository
@@ -83,6 +85,7 @@ final class ChatViewModel {
         self.settings = settings
         self.appState = appState
         self.autoFillService = autoFillService
+        self.prDetectionService = prDetectionService
         self.tools = tools ?? [
             SearchExercisesTool(),
             GetExerciseHistoryTool(),
@@ -324,6 +327,7 @@ final class ChatViewModel {
                     workoutRepository: self.workoutRepository,
                     autoFillService: autoFillService,
                     templateRepository: self.templateRepository,
+                    prDetectionService: self.prDetectionService,
                     settings: self.settings
                 )
                 await vm.startWorkout()

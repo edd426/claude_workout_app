@@ -31,4 +31,9 @@ final class WorkoutSet {
         self.completedAt = completedAt
         self.notes = notes
     }
+
+    /// Canonical weight used by statistics and personal-record comparisons.
+    var weightInKilograms: Double? {
+        weight.map { weightUnit.convert($0, to: .kg) }
+    }
 }

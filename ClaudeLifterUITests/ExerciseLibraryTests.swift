@@ -57,15 +57,31 @@ final class ExerciseLibraryTests: XCTestCase {
         }
     }
 
-    private func cancelSearch(file: StaticString = #file, line: UInt = #line) {
-        let cancelButton = app.buttons["Cancel"].firstMatch
-        XCTAssertTrue(
-            cancelButton.waitForExistence(timeout: 3),
-            "Expected the search Cancel button to appear",
+    /// Clears the query by deleting it rather than tapping Cancel.
+    ///
+    /// `.searchable`'s Cancel button is not exposed as `app.buttons["Cancel"]`
+    /// on the iOS 26.5 simulator — querying for it timed out. Deleting the
+    /// text exercises the behaviour that actually matters here (an emptied
+    /// query restores the full list) without depending on chrome whose
+    /// exposure varies by OS version.
+    private func clearSearch(file: StaticString = #file, line: UInt = #line) {
+        let searchBar = revealSearchBar()
+        let query = (searchBar.value as? String) ?? ""
+        guard !query.isEmpty else { return }
+        searchBar.tap()
+        searchBar.typeText(
+            String(
+                repeating: XCUIKeyboardKey.delete.rawValue,
+                count: query.count
+            )
+        )
+        XCTAssertEqual(
+            searchBar.value as? String ?? "",
+            "",
+            "Expected the search query to be cleared",
             file: file,
             line: line
         )
-        cancelButton.tap()
     }
 
     private func assertFullSeededListIsVisible(
@@ -75,7 +91,7 @@ final class ExerciseLibraryTests: XCTestCase {
         for name in ["Barbell Squat", "Bench Press", "Overhead Press"] {
             XCTAssertTrue(
                 app.staticTexts[name].waitForExistence(timeout: 5),
-                "Expected '\(name)' to be restored after cancelling search",
+                "Expected '\(name)' to be restored after clearing the search",
                 file: file,
                 line: line
             )
@@ -101,7 +117,7 @@ final class ExerciseLibraryTests: XCTestCase {
             visible: ["Barbell Squat"],
             hidden: ["Bench Press", "Overhead Press"]
         )
-        cancelSearch()
+        clearSearch()
         assertFullSeededListIsVisible()
     }
 
@@ -123,14 +139,14 @@ final class ExerciseLibraryTests: XCTestCase {
         )
     }
 
-    func testSearchCancelRestoresFullList() throws {
+    func testClearingSearchRestoresFullList() throws {
         navigateToExercises()
         search(for: "XYZ_NOMATCH")
         assertSearchResults(
             visible: [],
             hidden: ["Barbell Squat", "Bench Press", "Overhead Press"]
         )
-        cancelSearch()
+        clearSearch()
         assertFullSeededListIsVisible()
     }
 

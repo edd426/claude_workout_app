@@ -1,84 +1,100 @@
-# HANDOFF — MCP write path
+# HANDOFF — workout logging usability sprint
 
-Updated 2026-07-28. **PR #108 is merged** (`362fd3b`) and the branch is deleted.
-Nothing is in flight. This file is now a state-of-the-write-path summary; read it
-before touching sync, the inbox, or the MCP write tools.
+Updated 2026-07-29. Nothing is in flight. **5 commits are local and unpushed.**
 
-## Where the write path stands
+## Push this first
 
-#88 is complete. Claude Code and claude.ai can create templates through MCP:
-writes land in a durable Cosmos `inbox` that the phone drains on sync. Writes
-cannot go straight to Cosmos — the phone is authoritative and its next snapshot
-would erase them. Design: `infra/MCP_WRITE_PATH.md`; trust it and
-`syncSnapshot.ts` over SPEC §7/§11, which are stale on sync.
+```
+9e2213c Rebuild set entry: one Done button, empty fields, labelled columns
+c5b98e4 Clear the search query instead of tapping Cancel (#96)
+e73c8fe Stop three failures from reporting success (#86)
+03fdd10 Wire up PR detection, and normalise stats to kilograms
+07aa630 Fix #96: query searchFields, and actually assert filtering
+```
 
-**Proven end to end in production**: four templates created via MCP, drained by
-the phone, verified with full exercise lists — the #79 regression (templates
-arriving empty) did not recur. Build installed to the phone 2026-07-28.
+`#96`, `#84` and `#89` were closed manually, because the `Closes` trailers
+cannot fire until these are pushed.
 
-Closed by #108: **#97** (approval gate had no client implementation) and
-**#95** (lost ack duplicated the write).
+## The test baseline changed — read this before judging any run
 
-## What #108 established
+**`xcodebuild test` now exits 0.** 671 Swift Testing pass, zero XCUITest
+failures, verified on iPhone 13 Pro Max / iOS 26.5.
 
-- Approval-required operations ack `awaitingApproval` **before** any mutation;
-  Home surfaces them; they apply only on explicit approve, `rejected` on decline.
-- Approval is derived from the operation **type** on both phone and server, so a
-  malformed or legacy envelope claiming `requiresApproval: false` cannot
-  auto-apply an update or delete. A flag/type mismatch fails terminally.
-- Creates derive entity identity from the operation id → replay upserts.
-- Ack semantics: same-status retry is an idempotent no-op; terminal operations
-  are never overwritten; an illegal transition from a **nonterminal** state still
-  goes terminal (leaving it pending would re-serve it every sync forever) but is
-  reported per-operation. A conflict no longer blocks `pushSnapshot`.
-- Durable snapshot-dirty marker; server-issued `custom:<slug>:<operation-uuid>`
-  external ids under one grammar across MCP, Functions, and the phone.
+This supersedes the long-standing note that exit 65 is expected. #96 is fixed,
+so **a non-zero exit is now a real regression** — do not dismiss one as "the
+known four". The other traps still hold: never pipe `xcodebuild` through `tail`
+without `set -o pipefail`, and remember XCUITest failures print
+`Test Case '-[...]' failed`, not Swift Testing's `✘`.
 
-## Known-open — read before touching the write path
+## What shipped
 
-- **#103** — approval decisions are **not durable**. A lost *final* ack still lets
-  a user contradict a decision already applied, and `updateTemplate` can replay
-  over an intervening edit. Needs a local operation receipt keyed by operation id.
-  **Biggest remaining gap; the natural next piece of work.**
-- **#104** — UI-created custom exercises are never pushed (`Exercise` is absent
-  from `hasPendingChanges`). **Pre-existing**; the dirty marker covers only the
-  inbox case.
-- #98 partial `create_program` enqueue · #99 import/sync ordering race ·
-  #100 Home staleness after apply · #101 stale-write preconditions ·
-  #102 producer-side enqueue idempotency · #105 MCP trusting historical `applied`
-  records · #106 unconditional Cosmos replace on ack · #107 approval prompt
-  trusts the payload name.
-- **#96** — four Exercise Library UI tests are permanently red (they query
-  `textFields` for a `.searchable` field). Pre-existing, unrelated.
+Installed to Evan's iPhone 2026-07-29 ~21:30, from `9e2213c`.
 
-## Verified state as of 2026-07-28
+Four gym-session complaints, and what actually caused each:
 
-| Piece | State |
+| Complaint | Cause |
 |---|---|
-| Swift Testing suites | 650 passed (iPhone 13 Pro Max / iOS 26.5) |
-| XCUITest | 4 failing — pre-existing #96 |
-| Functions (Jest) | 145 passed |
-| MCP (vitest) | 52 passed, tsc clean, builds |
-| Functions inbox endpoints | deployed live (`inboxEnqueue`, `inboxList`, `inboxAck`) |
-| Cosmos `inbox` container | created, pk `/id` |
-| App on phone | installed 2026-07-28 from merged code |
+| Many "Done" buttons, none working | `ToolbarItemGroup(placement: .keyboard)` declared **inside** `SetRowView`, so every visible row contributed one to the same keyboard region, each clearing only its own `private @FocusState` |
+| `0` in every weight box; typing 40 gave `040` | `Binding<Double>` with `set.weight ?? 0` — nil rendered as the literal string `0`, and the `"0"` prompt was dead code. The model (`Double?`) and ViewModel already accepted nil; **only the view erased it** |
+| Can't tell weight from reps | No column headers; no `accessibilityLabel` on either field |
+| Timer blocked the screen | ~200pt opaque card in a `ZStack` over a scroll view reserving only `.padding(.bottom, 80)` |
+
+Now: one screen-level `@FocusState` keyed on exercise+set UUID with a single
+keyboard accessory bar (prev/next/Done); `Binding<Double?>` via the optional
+`TextField` overload, so nil renders empty with the previous session as a grey
+prompt; select-all on focus so editing `40` to `45` no longer yields `4045`; a
+`Grid` with SET/PREVIOUS/WEIGHT/REPS headers, ≥44pt targets and a stacked
+`LabeledContent` layout at accessibility type sizes; and the rest timer as a
+compact `safeAreaInset` bar backed by a **screen-owned** `RestTimerSession`.
+
+Also fixed while in these files: `removeSet` left numbering gaps (Set 1, Set 3);
+a second tap on ✓ silently rewrote `completedAt` and restarted the timer (now
+un-completes); accessibility identifiers collided across exercises, which is why
+the UI tests needed `firstMatch`.
+
+## Ghost adoption was built and deliberately cut — do not re-add naively
+
+The plan called for empty fields that adopt the greyed previous value on ✓.
+It was implemented, then removed after adversarial review.
+
+**`WorkoutSet.weight` is `Double?` and nil already means bodyweight.** So
+"adopt when nil" cannot distinguish "accept the ghost" from "I meant blank":
+previous 80 kg × 8, user wants bodyweight × 12, leaves weight empty → logs
+**80 kg × 12**, silently. It also broke `LogSetTool`, which reads model fields
+directly and would have logged visible ghosts as `weight=nil, reps=nil`.
+
+Values are pre-written as before. The PREVIOUS column and prompts remain,
+**display-only**, so a stale ghost is cosmetic rather than a wrong logged
+weight. Revisiting this needs an explicit touched/cleared state or a bodyweight
+control — and must be checked against the ChatTools write paths, which bypass
+the ViewModel.
+
+## Open follow-ups from this sprint
+
+- **#117** — `WorkoutDetailView.swift:135-144` writes `set.weight` directly to
+  the model, bypassing the mutation API, so **history edits never sync**; also
+  can't clear a value, and parses with non-locale `Double(String)`. Fix this
+  before or with #122, which restyles the same row.
+- **#122** — extend the new set-row visual language to History and Home (the
+  Phase 3 that was cut).
+- **#120** — Coach `end_workout` can't reach the screen-owned `RestTimerSession`,
+  so a Coach-ended workout still chimes and stays onscreen.
+- **#121** — `persistMutation()` is documented as debounced but has no delay or
+  cancellation check.
+- **#118** Live Activities · **#119** app-wide accessibility.
+- **#86** stays open: only three silent-failure items were taken (insight
+  dismissal, photo attach, exercise save). Keychain, auth comparison, Bicep
+  outputs and stale docs are untouched.
 
 ## Gotchas worth keeping
 
-- The `workout` MCP server loads its code at **session start**. After rebuilding
-  `infra/mcp/dist/`, Claude Code must be restarted before new tools appear.
-- The **iPhone 13 Pro Max simulator may not exist** and must be created rather
-  than substituted (`xcrun simctl create` against the iOS 26.5 runtime). iPhone 17
-  is documented to produce a false `ChatCoachTests` failure.
-- The physical device destination in CLAUDE.md uses a **typographic apostrophe**
-  in "Evan DeLord’s iPhone"; a straight quote fails to match. Prefer
-  `-destination 'platform=iOS,id=<id>'` from `xcodebuild -showdestinations`.
-- **`xcodebuild test` exits 65 even when your change is fine**, because of #96.
-  Those are XCUITest and print `Test Case '-[...]' failed`, so grepping only
-  Swift Testing's `✘` format misses them. Read the `Failing tests:` block and
-  diff it against a baseline run. Never pipe `xcodebuild` through `tail` without
-  `set -o pipefail` — it masks the exit code.
-- Static typechecks are not a test run. Two rounds of this work typechecked
-  cleanly and still failed the simulator suite.
-- Writing "Closes #97 and #95" links only the **first** issue. Use a separate
-  `Closes #N` per issue.
+- `.searchable` exposes a **search field** (`app.searchFields`), not a text
+  field — that was #96's whole cause. Its **Cancel button is not exposed to
+  XCUITest on iOS 26.5**; clear the query instead. And an empty search field
+  reports its **placeholder** as `value`, not `""`.
+- The **iPhone 13 Pro Max simulator may not exist** and must be created, not
+  substituted. iPhone 17 produces a false `ChatCoachTests` failure.
+- Prefer `-destination 'platform=iOS,id=676B845C-62CA-52B1-A6DA-1FACF77CAC01'`
+  over the device name — CLAUDE.md's string contains a typographic apostrophe
+  that a straight quote will not match.
+- Static typechecks are not a test run.

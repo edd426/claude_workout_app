@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Combine
 import AudioToolbox
 import UIKit
 
@@ -103,5 +104,122 @@ final class RestTimerViewModel {
             AudioServicesPlaySystemSound(1007)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
+    }
+}
+
+/// Screen-owned lifecycle for the rest countdown. Keeping the tick
+/// subscription here means changing between the pinned bar and the keyboard
+/// toolbar never stops or recreates the countdown.
+@Observable
+@MainActor
+final class RestTimerSession {
+    private(set) var countdown: RestTimerViewModel?
+
+    private let timerService: any RestTimerServiceProtocol
+    private let notificationScheduler: any NotificationScheduling
+    private let now: () -> Date
+    private var tickSubscription: AnyCancellable?
+
+    var remainingSeconds: Int {
+        countdown?.remainingSeconds ?? 0
+    }
+
+    var totalSeconds: Int {
+        countdown?.totalSeconds ?? 0
+    }
+
+    var isRunning: Bool {
+        countdown?.isRunning == true
+    }
+
+    var progress: Double {
+        countdown?.progress ?? 0
+    }
+
+    var endDate: Date? {
+        countdown?.endDate
+    }
+
+    init(
+        timerService: any RestTimerServiceProtocol,
+        notificationScheduler: any NotificationScheduling,
+        now: @escaping () -> Date = { Date() }
+    ) {
+        self.timerService = timerService
+        self.notificationScheduler = notificationScheduler
+        self.now = now
+    }
+
+    func start(duration: Int) {
+        guard !isRunning else {
+            restart(duration: duration)
+            return
+        }
+        begin(duration: duration)
+    }
+
+    func restart(duration: Int) {
+        stopTicking()
+        countdown?.skip()
+        begin(duration: duration)
+    }
+
+    func cancel() {
+        stopTicking()
+        if let countdown {
+            countdown.skip()
+        } else {
+            notificationScheduler.cancelRestCompleteNotification()
+        }
+        self.countdown = nil
+    }
+
+    func skip() {
+        cancel()
+    }
+
+    func addTime(_ seconds: Int) {
+        countdown?.addTime(seconds)
+        stopTickingIfExpired()
+    }
+
+    func subtractTime(_ seconds: Int) {
+        countdown?.subtractTime(seconds)
+        stopTickingIfExpired()
+    }
+
+    func refreshFromClock() {
+        countdown?.refreshFromClock()
+        stopTickingIfExpired()
+    }
+
+    private func begin(duration: Int) {
+        let countdown = RestTimerViewModel(
+            durationSeconds: duration,
+            notificationScheduler: notificationScheduler,
+            now: now
+        )
+        self.countdown = countdown
+        countdown.start()
+        timerService.start()
+        tickSubscription = timerService.tickPublisher.sink { [weak self] in
+            self?.handleTick()
+        }
+    }
+
+    private func handleTick() {
+        countdown?.tick()
+        stopTickingIfExpired()
+    }
+
+    private func stopTickingIfExpired() {
+        guard countdown?.isExpired == true else { return }
+        stopTicking()
+    }
+
+    private func stopTicking() {
+        tickSubscription?.cancel()
+        tickSubscription = nil
+        timerService.stop()
     }
 }

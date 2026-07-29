@@ -1,106 +1,218 @@
 import SwiftUI
 
-/// One row of an exercise card: [weight field] × [reps field] [checkmark].
+enum SetRowLayout {
+    case compact
+    case stacked
+}
+
+/// One model-derived set-entry row.
 ///
 /// Display is derived directly from the `WorkoutSet` model (SwiftData
 /// `@Model` classes are Observation-tracked on iOS 17+), so external changes
 /// — auto-fill, sync pull, Coach tool calls — refresh the row automatically.
 /// There is deliberately NO local `@State` copy of weight/reps: the old copy
-/// was seeded once in `init` and written back on complete, clobbering any
-/// newer model values (#76). Edits commit through the `onEditWeight` /
-/// `onEditReps` callbacks, which route to the ViewModel's mutation API.
+/// was seeded once in `init` and written back on complete, clobbering newer
+/// model values (#76). Edits commit through the ViewModel mutation callbacks.
 struct SetRowView: View {
+    let workoutExerciseID: UUID
     let set: WorkoutSet
+    let previous: AutoFillResult?
+    let layout: SetRowLayout
+    let focusedField: FocusState<SetEntryFieldID?>.Binding
     let onComplete: (WorkoutSet) -> Void
-    let onEditWeight: (WorkoutSet, Double) -> Void
-    let onEditReps: (WorkoutSet, Int) -> Void
+    let onEditWeight: (WorkoutSet, Double?) -> Void
+    let onEditReps: (WorkoutSet, Int?) -> Void
 
-    @FocusState private var focusedField: FocusField?
+    @Environment(\.locale) private var locale
 
-    private enum FocusField {
-        case weight, reps
+    private var weightFieldID: SetEntryFieldID {
+        SetEntryFieldID(
+            exerciseID: workoutExerciseID,
+            setID: set.id,
+            kind: .weight
+        )
     }
 
-    /// Model-derived binding: reads the live model value, writes through the
-    /// ViewModel API. `TextField(value:format:)` only calls the setter when
-    /// the user commits (focus loss / Done), so typing isn't interrupted.
-    private var weightBinding: Binding<Double> {
+    private var repsFieldID: SetEntryFieldID {
+        SetEntryFieldID(
+            exerciseID: workoutExerciseID,
+            setID: set.id,
+            kind: .reps
+        )
+    }
+
+    private var weightBinding: Binding<Double?> {
         Binding(
-            get: { set.weight ?? 0 },
+            get: { set.weight },
             set: { onEditWeight(set, $0) }
         )
     }
 
-    private var repsBinding: Binding<Int> {
+    private var repsBinding: Binding<Int?> {
         Binding(
-            get: { set.reps ?? 0 },
+            get: { set.reps },
             set: { onEditReps(set, $0) }
         )
     }
 
+    private var weightFormat: FloatingPointFormatStyle<Double> {
+        .number
+            .locale(locale)
+            .grouping(.never)
+            .precision(.fractionLength(0...3))
+    }
+
+    private var repsFormat: IntegerFormatStyle<Int> {
+        .number.locale(locale).grouping(.never)
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            setNumberLabel
-            weightField
-            Text("×").foregroundStyle(.secondary)
-            repsField
+        Group {
+            switch layout {
+            case .compact:
+                compactRow
+            case .stacked:
+                stackedRow
+            }
+        }
+        .padding(.vertical, 4)
+        .background(
+            set.isCompleted
+                ? BrandTheme.terracotta.opacity(0.1)
+                : Color.clear
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var compactRow: some View {
+        GridRow(alignment: .center) {
+            Text("\(set.order + 1)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .gridColumnAlignment(.leading)
+            previousLabel
+                .gridColumnAlignment(.trailing)
+            weightEntry
+                .gridColumnAlignment(.trailing)
+            repsEntry
+                .gridColumnAlignment(.trailing)
             completeButton
         }
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .background(set.isCompleted ? BrandTheme.terracotta.opacity(0.1) : Color.clear)
-        .cornerRadius(8)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
+    }
+
+    private var stackedRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Set \(set.order + 1)")
+                    .font(.headline)
                 Spacer()
-                Button("Done") { focusedField = nil }
+                completeButton
+            }
+            LabeledContent("Previous") {
+                previousLabel
+            }
+            LabeledContent("Weight") {
+                weightEntry
+            }
+            LabeledContent("Reps") {
+                repsEntry
             }
         }
     }
 
-    private var setNumberLabel: some View {
-        Text("Set \(set.order + 1)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(width: 44, alignment: .leading)
+    @ViewBuilder
+    private var previousLabel: some View {
+        if let previous {
+            let weight = previous.weight.map {
+                Text($0, format: weightFormat)
+            } ?? Text("—")
+            let reps = previous.reps.map {
+                Text($0, format: repsFormat)
+            } ?? Text("—")
+            Text("\(weight) × \(reps)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        } else {
+            Text("—")
+                .foregroundStyle(.tertiary)
+        }
     }
 
-    private var weightField: some View {
+    private var weightEntry: some View {
         HStack(spacing: 4) {
-            TextField("0", value: weightBinding, format: .number)
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.center)
-                .frame(width: 60)
-                .focused($focusedField, equals: .weight)
-                .accessibilityIdentifier("weight_\(set.order)")
-            Text(set.weightUnit.rawValue)
+            TextField(
+                "Weight",
+                value: weightBinding,
+                format: weightFormat,
+                prompt: previous?.weight.map {
+                    Text($0, format: weightFormat)
+                }
+            )
+            .keyboardType(.decimalPad)
+            .multilineTextAlignment(.center)
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 52, maxWidth: 72, minHeight: 44)
+            .focused(focusedField, equals: weightFieldID)
+            .accessibilityLabel("Weight for set \(set.order + 1)")
+            .accessibilityIdentifier(
+                "weight_\(workoutExerciseID.uuidString)_\(set.id.uuidString)"
+            )
+            Text(displayedWeightUnit.rawValue)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
-    private var repsField: some View {
-        TextField("0", value: repsBinding, format: .number)
-            .keyboardType(.numberPad)
-            .multilineTextAlignment(.center)
-            .frame(width: 44)
-            .focused($focusedField, equals: .reps)
-            .accessibilityIdentifier("reps_\(set.order)")
+    private var displayedWeightUnit: WeightUnit {
+        if set.weight == nil, let previous {
+            return previous.weightUnit
+        }
+        return set.weightUnit
+    }
+
+    private var repsEntry: some View {
+        TextField(
+            "Reps",
+            value: repsBinding,
+            format: repsFormat,
+            prompt: previous?.reps.map {
+                Text($0, format: repsFormat)
+            }
+        )
+        .keyboardType(.numberPad)
+        .multilineTextAlignment(.center)
+        .textFieldStyle(.roundedBorder)
+        .frame(minWidth: 44, maxWidth: 56, minHeight: 44)
+        .focused(focusedField, equals: repsFieldID)
+        .accessibilityLabel("Reps for set \(set.order + 1)")
+        .accessibilityIdentifier(
+            "reps_\(workoutExerciseID.uuidString)_\(set.id.uuidString)"
+        )
     }
 
     private var completeButton: some View {
         Button {
-            // Resigning focus commits any in-progress field edit through the
-            // model-derived bindings (→ ViewModel API) before completion.
-            focusedField = nil
             onComplete(set)
         } label: {
-            Image(systemName: set.isCompleted ? "checkmark.circle.fill" : "circle")
-                .font(.title2)
-                .foregroundStyle(set.isCompleted ? BrandTheme.terracotta : .secondary)
+            Image(
+                systemName: set.isCompleted
+                    ? "checkmark.circle.fill"
+                    : "circle"
+            )
+            .font(.title2)
+            .foregroundStyle(
+                set.isCompleted ? BrandTheme.terracotta : .secondary
+            )
         }
         .frame(width: 44, height: 44)
         .buttonStyle(.plain)
-        .accessibilityIdentifier("completeSet_\(set.order)")
+        .accessibilityLabel(
+            set.isCompleted
+                ? "Uncomplete set \(set.order + 1)"
+                : "Complete set \(set.order + 1)"
+        )
+        .accessibilityIdentifier(
+            "completeSet_\(workoutExerciseID.uuidString)_\(set.id.uuidString)"
+        )
     }
 }

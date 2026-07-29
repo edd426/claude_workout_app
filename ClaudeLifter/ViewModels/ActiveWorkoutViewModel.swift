@@ -10,6 +10,7 @@ final class ActiveWorkoutViewModel {
     var errorMessage: String? = nil
     var lastCompletedSet: WorkoutSet? = nil
     var detectedPRs: [PersonalRecord] = []
+    private(set) var previousValues: [UUID: AutoFillResult] = [:]
 
     private let template: WorkoutTemplate?
     private let adHocName: String?
@@ -34,12 +35,22 @@ final class ActiveWorkoutViewModel {
     /// ModelContext is reset. Cancelled before each new save to coalesce
     /// rapid mutations.
     private(set) var pendingSave: Task<Void, Never>?
+    private(set) var pendingPreviousValuesLoad: Task<Void, Never>?
+    private var didLoadInitialPreviousValues = false
 
     /// Awaits any in-flight save triggered by the last mutation. Useful in
     /// tests and wherever deterministic persistence is required before the
     /// next action.
     func awaitPendingSave() async {
         await pendingSave?.value
+    }
+
+    func awaitPreviousValuesLoad() async {
+        await pendingPreviousValuesLoad?.value
+    }
+
+    func previous(for set: WorkoutSet) -> AutoFillResult? {
+        previousValues[set.id]
     }
 
     var totalSetsCompleted: Int {
@@ -109,10 +120,19 @@ final class ActiveWorkoutViewModel {
     }
 
     func startWorkout() async {
-        // A resumed session (init(resuming:)) is already fully constructed —
-        // never rebuild it or run cleanup over it. ActiveWorkoutView fires
-        // this from .task, so it must be idempotent.
-        guard workout == nil else { return }
+        // A resumed session is already constructed, but its prior-session
+        // ghosts are transient ViewModel state and must be rebuilt after a
+        // crash/relaunch. Keep the model intact while repopulating that map.
+        if let workout {
+            guard !didLoadInitialPreviousValues else { return }
+            let sourceTemplate = await templateForPreviousValues(in: workout)
+            await populatePreviousValues(
+                in: workout,
+                sourceTemplate: sourceTemplate
+            )
+            didLoadInitialPreviousValues = true
+            return
+        }
 
         // Clean up genuinely empty ghost sessions (no exercises, no notes)
         // left behind by a crash between "start" and the first mutation.
@@ -152,6 +172,7 @@ final class ActiveWorkoutViewModel {
         do {
             try await saveWorkout(newWorkout)
             workout = newWorkout
+            didLoadInitialPreviousValues = true
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -173,6 +194,7 @@ final class ActiveWorkoutViewModel {
             // Per-set-index auto-fill from the previous session (#82):
             // set 1 → set 1, set 2 → set 2, … preserving warm-up → top-set
             // structure. Empty when there's no history → template defaults.
+            // The previous-value map remains display-only.
             let autoFills = (try? await autoFillService.autoFillValues(
                 exerciseId: exercise.id,
                 setCount: templateExercise.defaultSets
@@ -181,19 +203,24 @@ final class ActiveWorkoutViewModel {
                 let autoFill = i < autoFills.count ? autoFills[i] : nil
                 let set = WorkoutSet(
                     order: i,
-                    weight: autoFill?.weight ?? templateExercise.defaultWeight,
-                    // Last session's unit carries forward (per-set continuity);
-                    // without history, fall back to the global preference (#83).
-                    weightUnit: autoFill?.weightUnit ?? defaultWeightUnit,
-                    reps: autoFill?.reps ?? templateExercise.defaultReps
+                    weight: autoFill?.weight
+                        ?? templateExercise.defaultWeight,
+                    weightUnit: autoFill?.weightUnit
+                        ?? defaultWeightUnit,
+                    reps: autoFill?.reps
+                        ?? templateExercise.defaultReps
                 )
                 we.sets.append(set)
+                if let autoFill {
+                    previousValues[set.id] = autoFill
+                }
             }
             newWorkout.exercises.append(we)
         }
         do {
             try await saveWorkout(newWorkout)
             workout = newWorkout
+            didLoadInitialPreviousValues = true
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -226,6 +253,11 @@ final class ActiveWorkoutViewModel {
 
     func updateSetWeight(_ set: WorkoutSet, weight: Double?) {
         guard set.weight != weight else { return }
+        if set.weight == nil,
+           weight != nil,
+           let previous = previous(for: set) {
+            set.weightUnit = previous.weightUnit
+        }
         set.weight = weight
         persistMutation()
     }
@@ -236,24 +268,56 @@ final class ActiveWorkoutViewModel {
         persistMutation()
     }
 
-    func completeSet(_ set: WorkoutSet) {
+    @discardableResult
+    func completeSet(_ set: WorkoutSet) -> Bool {
+        if set.isCompleted {
+            set.isCompleted = false
+            set.completedAt = nil
+            if lastCompletedSet?.id == set.id {
+                lastCompletedSet = nil
+            }
+            persistMutation()
+            return false
+        }
+
         set.isCompleted = true
         set.completedAt = .now
         lastCompletedSet = set
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         persistMutation()
+        return true
     }
 
     func addSet(to workoutExercise: WorkoutExercise) {
         let nextOrder = (workoutExercise.sets.map(\.order).max() ?? -1) + 1
-        workoutExercise.sets.append(
-            WorkoutSet(order: nextOrder, weightUnit: defaultWeightUnit)
+        let lastPrevious = workoutExercise.sets
+            .sorted(by: { $0.order < $1.order })
+            .compactMap { previous(for: $0) }
+            .last
+        let newSet = WorkoutSet(
+            order: nextOrder,
+            weight: lastPrevious?.weight,
+            weightUnit: lastPrevious?.weightUnit ?? defaultWeightUnit,
+            reps: lastPrevious?.reps
         )
+        if let lastPrevious {
+            previousValues[newSet.id] = lastPrevious
+        }
+        workoutExercise.sets.append(newSet)
         persistMutation()
+        if lastPrevious == nil {
+            queuePreviousValuesLoad(for: workoutExercise)
+        }
     }
 
     func removeSet(_ set: WorkoutSet, from workoutExercise: WorkoutExercise) {
         workoutExercise.sets.removeAll { $0.id == set.id }
+        previousValues[set.id] = nil
+        for (index, survivor) in workoutExercise.sets
+            .sorted(by: { $0.order < $1.order })
+            .enumerated() {
+            survivor.order = index
+        }
         persistMutation()
     }
 
@@ -266,11 +330,97 @@ final class ActiveWorkoutViewModel {
             we.sets.append(WorkoutSet(order: i, weightUnit: defaultWeightUnit))
         }
         persistMutation()
+        queuePreviousValuesLoad(for: we)
     }
 
     func removeExercise(_ workoutExercise: WorkoutExercise) {
+        for set in workoutExercise.sets {
+            previousValues[set.id] = nil
+        }
         workout?.exercises.removeAll { $0.id == workoutExercise.id }
         persistMutation()
+    }
+
+    private func previousValue(
+        at index: Int,
+        autoFills: [AutoFillResult],
+        templateExercise: TemplateExercise?
+    ) -> AutoFillResult? {
+        if index < autoFills.count {
+            return autoFills[index]
+        }
+        guard let templateExercise else { return nil }
+        return AutoFillResult(
+            weight: templateExercise.defaultWeight,
+            weightUnit: defaultWeightUnit,
+            reps: templateExercise.defaultReps,
+            date: .distantPast
+        )
+    }
+
+    private func templateForPreviousValues(
+        in workout: Workout
+    ) async -> WorkoutTemplate? {
+        if let template {
+            return template
+        }
+        guard
+            let templateID = workout.templateId,
+            let templateRepository
+        else {
+            return nil
+        }
+        return try? await templateRepository.fetch(id: templateID)
+    }
+
+    /// Rebuilds transient ghosts for every set in a newly started or resumed
+    /// workout without mutating any committed set-entry value.
+    private func populatePreviousValues(
+        in workout: Workout,
+        sourceTemplate: WorkoutTemplate?
+    ) async {
+        for workoutExercise in workout.exercises {
+            let templateExercise = sourceTemplate?.exercises.first {
+                $0.exercise?.id == workoutExercise.exercise?.id
+            }
+            await populatePreviousValues(
+                for: workoutExercise,
+                templateExercise: templateExercise
+            )
+        }
+    }
+
+    private func populatePreviousValues(
+        for workoutExercise: WorkoutExercise,
+        templateExercise: TemplateExercise? = nil
+    ) async {
+        guard let exerciseID = workoutExercise.exercise?.id else { return }
+        let sortedSets = workoutExercise.sets.sorted(by: { $0.order < $1.order })
+        let autoFills = (try? await autoFillService.autoFillValues(
+            exerciseId: exerciseID,
+            setCount: sortedSets.count,
+            excludingWorkoutId: workout?.id
+        )) ?? []
+
+        for (index, set) in sortedSets.enumerated() {
+            guard let previous = previousValue(
+                at: index,
+                autoFills: autoFills,
+                templateExercise: templateExercise
+            ) else {
+                continue
+            }
+            previousValues[set.id] = previous
+        }
+    }
+
+    private func queuePreviousValuesLoad(for workoutExercise: WorkoutExercise) {
+        let precedingLoad = pendingPreviousValuesLoad
+        pendingPreviousValuesLoad = Task { [weak self] in
+            await precedingLoad?.value
+            guard let self else { return }
+            await self.populatePreviousValues(for: workoutExercise)
+        }
     }
 
     func saveDraft() async {

@@ -197,9 +197,14 @@ struct IntegrationTests {
         #expect(sortedExercises[0].sets.count == 3, "Bench should have 3 sets")
         #expect(sortedExercises[1].sets.count == 4, "Squat should have 4 sets")
 
-        // Auto-fill should have populated bench press weight from prior history
-        let firstBenchSet = sortedExercises[0].sets.first
-        #expect(firstBenchSet?.weight == 80.0, "Auto-fill should use prior 80kg bench press")
+        // Auto-fill should have populated bench press from prior history.
+        let firstBenchSet = try #require(sortedExercises[0].sets.first)
+        #expect(firstBenchSet.weight == 80.0)
+        #expect(firstBenchSet.reps == 8)
+        #expect(
+            workoutVM.previous(for: firstBenchSet)?.weight == 80.0,
+            "Previous should show the prior 80kg bench press"
+        )
 
         // Log and complete all sets
         for we in workout.exercises {

@@ -22,8 +22,10 @@ final class FullUserSessionTests: XCTestCase {
         app.startWorkoutFromTemplate("Push Day")
         XCTAssertTrue(app.staticTexts["Bench Press"].waitForExistence(timeout: 5))
 
-        // 3. Complete first set (firstMatch avoids ambiguity when multiple exercises share set order 0)
-        let completeButton = app.buttons.matching(identifier: "completeSet_0").firstMatch
+        // 3. Complete the first UUID-identified set.
+        let completeButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'completeSet_'")
+        ).element(boundBy: 0)
         XCTAssertTrue(completeButton.waitForExistence(timeout: 5))
         completeButton.tap()
 

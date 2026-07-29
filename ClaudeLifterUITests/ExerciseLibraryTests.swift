@@ -75,9 +75,12 @@ final class ExerciseLibraryTests: XCTestCase {
                 count: query.count
             )
         )
-        XCTAssertEqual(
-            searchBar.value as? String ?? "",
-            "",
+        // An empty search field reports its placeholder ("Search exercises...")
+        // as `value`, not "", so assert the query is gone rather than
+        // comparing against empty.
+        XCTAssertNotEqual(
+            searchBar.value as? String,
+            query,
             "Expected the search query to be cleared",
             file: file,
             line: line

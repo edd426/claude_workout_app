@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import Combine
 @testable import ClaudeLifter
 
 /// Mutable clock so tests can simulate suspension by jumping time.
@@ -13,6 +14,28 @@ private final class TestClock {
 
     func advance(by seconds: TimeInterval) {
         now = now.addingTimeInterval(seconds)
+    }
+}
+
+private final class MockRestTimerService: RestTimerServiceProtocol {
+    private let subject = PassthroughSubject<Void, Never>()
+    private(set) var startCallCount = 0
+    private(set) var stopCallCount = 0
+
+    var tickPublisher: AnyPublisher<Void, Never> {
+        subject.eraseToAnyPublisher()
+    }
+
+    func start() {
+        startCallCount += 1
+    }
+
+    func stop() {
+        stopCallCount += 1
+    }
+
+    func sendTick() {
+        subject.send()
     }
 }
 
@@ -258,5 +281,46 @@ struct RestTimerViewModelTests {
         #expect(scheduler.cancelCount == 1)
         // Only the schedule from start(); no reschedule for an already-passed deadline.
         #expect(scheduler.scheduledFireDates.count == 1)
+    }
+
+    @Test("rest session restart resets the countdown to the new duration")
+    func restSessionRestartResetsCountdown() {
+        let clock = TestClock()
+        let scheduler = MockNotificationScheduler()
+        let timerService = MockRestTimerService()
+        let session = RestTimerSession(
+            timerService: timerService,
+            notificationScheduler: scheduler,
+            now: { clock.now }
+        )
+        session.start(duration: 90)
+        clock.advance(by: 30)
+        timerService.sendTick()
+        #expect(session.remainingSeconds == 60)
+
+        session.restart(duration: 120)
+
+        #expect(session.remainingSeconds == 120)
+        #expect(session.totalSeconds == 120)
+        #expect(session.endDate == clock.now.addingTimeInterval(120))
+        #expect(session.isRunning)
+        #expect(timerService.startCallCount == 2)
+    }
+
+    @Test("rest session cancellation stops ticking and cancels its notification")
+    func restSessionCancellationStopsAndCancelsNotification() {
+        let scheduler = MockNotificationScheduler()
+        let timerService = MockRestTimerService()
+        let session = RestTimerSession(
+            timerService: timerService,
+            notificationScheduler: scheduler
+        )
+        session.start(duration: 90)
+
+        session.cancel()
+
+        #expect(!session.isRunning)
+        #expect(scheduler.cancelCount == 1)
+        #expect(timerService.stopCallCount == 1)
     }
 }

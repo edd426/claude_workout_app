@@ -150,6 +150,61 @@ struct AutoFillServiceTests {
         #expect(result?.weight == nil)
         #expect(abs(result!.date.timeIntervalSince(completedAt)) < 1.0)
     }
+
+    @Test("ghost lookup can exclude the active draft from previous-session results")
+    @MainActor
+    func excludesActiveDraft() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let exercise = TestFixtures.makeExercise(name: "Resume Bench")
+        context.insert(exercise)
+
+        let previousWorkout = Workout(
+            name: "Previous",
+            startedAt: Date(timeIntervalSinceNow: -7_200),
+            completedAt: Date(timeIntervalSinceNow: -5_000)
+        )
+        let previousExercise = WorkoutExercise(order: 0, exercise: exercise)
+        let previousSet = WorkoutSet(
+            order: 0,
+            weight: 80,
+            reps: 8,
+            isCompleted: true,
+            completedAt: Date(timeIntervalSinceNow: -5_500)
+        )
+        previousExercise.sets = [previousSet]
+        previousWorkout.exercises = [previousExercise]
+        context.insert(previousWorkout)
+
+        let activeDraft = Workout(
+            name: "Active",
+            startedAt: Date(timeIntervalSinceNow: -1_800)
+        )
+        let activeExercise = WorkoutExercise(order: 0, exercise: exercise)
+        let activeSet = WorkoutSet(
+            order: 0,
+            weight: 100,
+            reps: 5,
+            isCompleted: true,
+            completedAt: Date(timeIntervalSinceNow: -1_200)
+        )
+        activeExercise.sets = [activeSet]
+        activeDraft.exercises = [activeExercise]
+        context.insert(activeDraft)
+        try context.save()
+        let service = AutoFillService(
+            workoutRepository: SwiftDataWorkoutRepository(context: context)
+        )
+
+        let values = try await service.autoFillValues(
+            exerciseId: exercise.id,
+            setCount: 1,
+            excludingWorkoutId: activeDraft.id
+        )
+
+        #expect(values.first?.weight == 80)
+        #expect(values.first?.reps == 8)
+    }
 }
 
 /// Issue #82 — auto-fill must map per set index from the previous session

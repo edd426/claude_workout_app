@@ -58,30 +58,56 @@ final class WorkoutFlowTests: XCTestCase {
 
     func testCompleteASet() throws {
         app.startWorkoutFromTemplate("Push Day")
-        // Scope to first match to avoid ambiguity when multiple exercises each have set order 0
-        let completeButton = app.buttons.matching(identifier: "completeSet_0").firstMatch
+        let completeButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'completeSet_'")
+        ).element(boundBy: 0)
         XCTAssertTrue(completeButton.waitForExistence(timeout: 5))
         completeButton.tap()
         // Rest timer or completed state should appear
         XCTAssertTrue(app.buttons["finishWorkout"].exists)
     }
 
+    func testUncompletingSetCancelsRestTimer() throws {
+        app.startWorkoutFromTemplate("Push Day")
+        let completeButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'completeSet_'")
+        ).element(boundBy: 0)
+        XCTAssertTrue(completeButton.waitForExistence(timeout: 5))
+
+        completeButton.tap()
+        let restTime = app.staticTexts["Rest time remaining"]
+        XCTAssertTrue(restTime.waitForExistence(timeout: 2))
+
+        completeButton.tap()
+        let timerRemoved = expectation(
+            for: NSPredicate(format: "exists == false"),
+            evaluatedWith: restTime
+        )
+        wait(for: [timerRemoved], timeout: 2)
+    }
+
     func testWeightFieldIsAccessible() throws {
         app.startWorkoutFromTemplate("Push Day")
-        let weightField = app.textFields["weight_0"]
+        let weightField = app.textFields.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'weight_'")
+        ).element(boundBy: 0)
         XCTAssertTrue(weightField.waitForExistence(timeout: 5))
     }
 
     func testRepsFieldIsAccessible() throws {
         app.startWorkoutFromTemplate("Push Day")
-        let repsField = app.textFields["reps_0"]
+        let repsField = app.textFields.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'reps_'")
+        ).element(boundBy: 0)
         XCTAssertTrue(repsField.waitForExistence(timeout: 5))
     }
 
     func testFinishWorkoutShowsSummary() throws {
         app.startWorkoutFromTemplate("Push Day")
         // Must complete a set before Finish is enabled.
-        let completeButton = app.buttons.matching(identifier: "completeSet_0").firstMatch
+        let completeButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'completeSet_'")
+        ).element(boundBy: 0)
         XCTAssertTrue(completeButton.waitForExistence(timeout: 5))
         completeButton.tap()
         let finish = app.buttons["finishWorkout"]
@@ -92,7 +118,9 @@ final class WorkoutFlowTests: XCTestCase {
 
     func testWorkoutSummaryDoneButtonDismisses() throws {
         app.startWorkoutFromTemplate("Push Day")
-        let completeButton = app.buttons.matching(identifier: "completeSet_0").firstMatch
+        let completeButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'completeSet_'")
+        ).element(boundBy: 0)
         XCTAssertTrue(completeButton.waitForExistence(timeout: 5))
         completeButton.tap()
         let finish = app.buttons["finishWorkout"]

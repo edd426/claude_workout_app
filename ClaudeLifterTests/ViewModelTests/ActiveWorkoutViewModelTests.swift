@@ -63,9 +63,39 @@ struct ActiveWorkoutViewModelTests {
         )
         await vm.startWorkout()
 
-        let firstSet = vm.workout?.exercises.first?.sets.first
-        #expect(firstSet?.weight == 80.0)
-        #expect(firstSet?.reps == 5)
+        let firstSet = try #require(vm.workout?.exercises.first?.sets.first)
+        #expect(firstSet.weight == 80.0)
+        #expect(firstSet.reps == 5)
+        #expect(vm.previous(for: firstSet)?.weight == 80.0)
+        #expect(vm.previous(for: firstSet)?.reps == 5)
+    }
+
+    @Test("startFromTemplate leaves weight empty without history or a template weight")
+    func startFromTemplateLeavesWeightEmptyWithoutSourceValue() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let templateExercise = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 1,
+            defaultReps: 8
+        )
+        context.insert(templateExercise)
+        template.exercises.append(templateExercise)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        #expect(set.weight == nil)
+        #expect(set.reps == 8)
+        #expect(vm.previous(for: set) == nil)
+        withExtendedLifetime(container) {}
     }
 
     @Test("completeSet marks set completed and records timestamp")
@@ -252,6 +282,36 @@ struct ActiveWorkoutViewModelTests {
         vm.removeSet(setToRemove, from: we)
 
         #expect(we.sets.count == 2)
+    }
+
+    @Test("removeSet renumbers surviving sets without gaps")
+    func removeSetRenumbersSurvivors() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 3,
+            defaultReps: 8
+        )
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let workoutExercise = try #require(vm.workout?.exercises.first)
+        let middleSet = try #require(
+            workoutExercise.sets.first(where: { $0.order == 1 })
+        )
+
+        vm.removeSet(middleSet, from: workoutExercise)
+
+        #expect(workoutExercise.sets.map(\.order).sorted() == [0, 1])
     }
 
     @Test("hasCompletedSets is false when no sets are completed")
@@ -703,7 +763,7 @@ extension ActiveWorkoutViewModelTests {
         withExtendedLifetime(container) {}
     }
 
-    @Test("startFromTemplate keeps auto-fill unit over global preference (per-set continuity)")
+    @Test("startFromTemplate keeps auto-fill unit over global preference")
     func startFromTemplateAutoFillUnitWinsOverGlobal() async throws {
         let (container, exercise, template) = try makeSetup()
         let context = container.mainContext
@@ -725,7 +785,12 @@ extension ActiveWorkoutViewModelTests {
         await vm.startWorkout()
 
         let set = try #require(vm.workout?.exercises.first?.sets.first)
-        #expect(set.weightUnit == .kg, "Last session's unit must carry forward over the global default")
+        #expect(set.weight == 100)
+        #expect(
+            set.weightUnit == .kg,
+            "Last session's unit must carry forward over the global default"
+        )
+        #expect(vm.previous(for: set)?.weightUnit == .kg)
         withExtendedLifetime(container) {}
     }
 
@@ -884,5 +949,242 @@ extension ActiveWorkoutViewModelTests {
 
         // Without a templateRepository the template should be untouched
         #expect(template.timesPerformed == initialCount)
+    }
+}
+
+extension ActiveWorkoutViewModelTests {
+
+    // MARK: - Active-workout set entry usability
+
+    @Test("ordered set-entry fields follow exercise order, set order, then weight and reps")
+    func orderedSetEntryFieldsFollowWorkoutOrder() {
+        let firstExercise = TestFixtures.makeExercise(name: "First")
+        let secondExercise = TestFixtures.makeExercise(name: "Second")
+        let workout = Workout(name: "Ordered", startedAt: .now)
+        let laterWorkoutExercise = WorkoutExercise(
+            order: 1,
+            exercise: secondExercise
+        )
+        let earlierWorkoutExercise = WorkoutExercise(
+            order: 0,
+            exercise: firstExercise
+        )
+        let secondSet = WorkoutSet(order: 1)
+        let firstSet = WorkoutSet(order: 0)
+        earlierWorkoutExercise.sets = [secondSet, firstSet]
+        let onlyLaterSet = WorkoutSet(order: 0)
+        laterWorkoutExercise.sets = [onlyLaterSet]
+        workout.exercises = [laterWorkoutExercise, earlierWorkoutExercise]
+
+        let fields = orderedSetEntryFields(in: workout)
+
+        #expect(fields == [
+            SetEntryFieldID(
+                exerciseID: earlierWorkoutExercise.id,
+                setID: firstSet.id,
+                kind: .weight
+            ),
+            SetEntryFieldID(
+                exerciseID: earlierWorkoutExercise.id,
+                setID: firstSet.id,
+                kind: .reps
+            ),
+            SetEntryFieldID(
+                exerciseID: earlierWorkoutExercise.id,
+                setID: secondSet.id,
+                kind: .weight
+            ),
+            SetEntryFieldID(
+                exerciseID: earlierWorkoutExercise.id,
+                setID: secondSet.id,
+                kind: .reps
+            ),
+            SetEntryFieldID(
+                exerciseID: laterWorkoutExercise.id,
+                setID: onlyLaterSet.id,
+                kind: .weight
+            ),
+            SetEntryFieldID(
+                exerciseID: laterWorkoutExercise.id,
+                setID: onlyLaterSet.id,
+                kind: .reps
+            ),
+        ])
+    }
+
+    @Test("select-all scope accepts only UUID-addressed set-entry fields")
+    func selectAllScopeAcceptsOnlySetEntryFields() {
+        let exerciseID = UUID()
+        let setID = UUID()
+
+        #expect(isSetEntryFieldAccessibilityIdentifier(
+            "weight_\(exerciseID.uuidString)_\(setID.uuidString)"
+        ))
+        #expect(isSetEntryFieldAccessibilityIdentifier(
+            "reps_\(exerciseID.uuidString)_\(setID.uuidString)"
+        ))
+        #expect(!isSetEntryFieldAccessibilityIdentifier("exerciseSearch"))
+        #expect(!isSetEntryFieldAccessibilityIdentifier("weight_not-a-set"))
+        #expect(!isSetEntryFieldAccessibilityIdentifier(nil))
+    }
+
+    @Test("resuming a workout populates previous-value ghosts")
+    func resumePopulatesPreviousValues() async throws {
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        let workout = Workout(name: "Draft", startedAt: .now)
+        let workoutExercise = WorkoutExercise(order: 0, exercise: exercise)
+        let set = WorkoutSet(order: 0)
+        workoutExercise.sets = [set]
+        workout.exercises = [workoutExercise]
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 82.5,
+            weightUnit: .kg,
+            reps: 6,
+            date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            resuming: workout,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+
+        await vm.startWorkout()
+
+        #expect(vm.previous(for: set)?.weight == 82.5)
+        #expect(vm.previous(for: set)?.reps == 6)
+        #expect(autoFill.excludedWorkoutIds.last == workout.id)
+    }
+
+    @Test("adding a set populates its previous-value ghost")
+    func addSetPopulatesPreviousValue() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let templateExercise = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 1,
+            defaultReps: 8
+        )
+        context.insert(templateExercise)
+        template.exercises.append(templateExercise)
+        try context.save()
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 70,
+            weightUnit: .kg,
+            reps: 10,
+            date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+        let workoutExercise = try #require(vm.workout?.exercises.first)
+
+        vm.addSet(to: workoutExercise)
+        await vm.awaitPreviousValuesLoad()
+
+        let addedSet = try #require(
+            workoutExercise.sets.max(by: { $0.order < $1.order })
+        )
+        #expect(addedSet.weight == 70)
+        #expect(addedSet.reps == 10)
+        #expect(addedSet.weightUnit == .kg)
+        #expect(vm.previous(for: addedSet)?.weight == 70)
+        #expect(vm.previous(for: addedSet)?.reps == 10)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("adding an exercise populates previous-value ghosts for its sets")
+    func addExercisePopulatesPreviousValues() async throws {
+        let workoutRepository = MockWorkoutRepository()
+        let autoFill = MockAutoFillService()
+        let exercise = TestFixtures.makeExercise(name: "Deadlift")
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 120,
+            weightUnit: .kg,
+            reps: 5,
+            date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: workoutRepository,
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+
+        vm.addExercise(exercise)
+        await vm.awaitPreviousValuesLoad()
+
+        let addedSets = try #require(
+            vm.workout?.exercises.first(where: { $0.exercise?.id == exercise.id })?.sets
+        )
+        #expect(addedSets.count == 3)
+        #expect(addedSets.allSatisfy { vm.previous(for: $0)?.weight == 120 })
+        #expect(addedSets.allSatisfy { vm.previous(for: $0)?.reps == 5 })
+    }
+
+    @Test("completing a set preserves values the user intentionally cleared")
+    func completeSetPreservesIntentionallyClearedValues() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let templateExercise = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 1,
+            defaultReps: 8
+        )
+        context.insert(templateExercise)
+        template.exercises.append(templateExercise)
+        try context.save()
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 80,
+            weightUnit: .kg,
+            reps: 5,
+            date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        #expect(set.weight == 80)
+        #expect(set.reps == 5)
+        #expect(vm.previous(for: set)?.weight == 80)
+
+        vm.updateSetWeight(set, weight: nil)
+        vm.updateSetReps(set, reps: nil)
+        vm.completeSet(set)
+
+        #expect(set.weight == nil)
+        #expect(set.reps == nil)
+        #expect(set.isCompleted)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("tapping a completed set again un-completes it without requesting rest")
+    func secondCompletionTapUncompletesWithoutRest() async throws {
+        let (container, _, vm, _, workoutExercise) = try await makeStartedWorkout(
+            setCount: 1
+        )
+        let set = try #require(workoutExercise.sets.first)
+
+        let firstTapStartsRest = vm.completeSet(set)
+        let secondTapStartsRest = vm.completeSet(set)
+
+        #expect(firstTapStartsRest)
+        #expect(secondTapStartsRest == false)
+        #expect(set.isCompleted == false)
+        #expect(set.completedAt == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
     }
 }

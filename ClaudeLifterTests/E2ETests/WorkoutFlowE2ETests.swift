@@ -9,7 +9,7 @@ struct WorkoutFlowE2ETests {
 
     // MARK: - Test 1: Workout from Template
 
-    @Test("workoutFromTemplate: template exercises auto-fill and finish with completedAt set")
+    @Test("workoutFromTemplate: template values pre-fill and workout finishes")
     func workoutFromTemplate() async throws {
         let container = try makeTestContainer()
         let context = container.mainContext
@@ -53,10 +53,11 @@ struct WorkoutFlowE2ETests {
         #expect(firstExercise.sets.count == 3)
         #expect(secondExercise.sets.count == 4)
 
-        // Verify auto-fill from template defaults (no prior history)
+        // Verify auto-fill from template defaults (no prior history).
         let firstSet = firstExercise.sets[0]
         #expect(firstSet.weight == 80.0)
         #expect(firstSet.reps == 8)
+        #expect(vm.previous(for: firstSet) == nil)
 
         // Mark all sets complete
         for exercise in workout.exercises {

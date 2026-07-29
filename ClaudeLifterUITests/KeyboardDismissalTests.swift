@@ -15,19 +15,29 @@ final class KeyboardDismissalTests: XCTestCase {
 
     func testKeyboardDismissesInWorkout() throws {
         app.startWorkoutFromTemplate("Push Day")
-        // Use firstMatch to avoid ambiguity when multiple exercises each have set order 0
-        let weightField = app.textFields.matching(identifier: "weight_0").firstMatch
+        let weightField = app.textFields.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'weight_'")
+        ).element(boundBy: 0)
         XCTAssertTrue(weightField.waitForExistence(timeout: 5))
         weightField.tap()
         XCTAssertTrue(app.keyboards.count > 0)
-        // Tap done button in keyboard toolbar (firstMatch avoids ambiguity across multiple SetRowView toolbars)
         let doneButton = app.toolbars.buttons.matching(identifier: "Done").firstMatch
-        if doneButton.exists {
-            doneButton.tap()
-        } else {
-            app.swipeDown()
-        }
-        XCTAssertTrue(app.buttons["finishWorkout"].exists)
+        XCTAssertEqual(app.toolbars.buttons.matching(identifier: "Done").count, 1)
+        doneButton.tap()
+        XCTAssertEqual(app.keyboards.count, 0)
+    }
+
+    func testEmptyWeightFieldDoesNotPrefixTypedValueWithZero() throws {
+        app.startWorkoutFromTemplate("Push Day")
+        let weightField = app.textFields.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'weight_'")
+        ).element(boundBy: 0)
+        XCTAssertTrue(weightField.waitForExistence(timeout: 5))
+
+        weightField.tap()
+        weightField.typeText("40")
+
+        XCTAssertEqual(weightField.value as? String, "40")
     }
 
     func testKeyboardDismissesInChat() throws {

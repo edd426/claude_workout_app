@@ -105,6 +105,22 @@ struct HomeViewModelTests {
         #expect(workoutRepo.savedWorkouts.count == 1)
         #expect(workoutRepo.savedWorkouts.first?.name == "Quick Workout")
     }
+
+    @Test("failed insight dismissal reports the failure and keeps the insight unread")
+    func failedInsightDismissalKeepsInsightUnread() async {
+        let insight = TestFixtures.makeInsight(content: "Add a recovery day")
+        let insightRepo = MockInsightRepository()
+        insightRepo.insights = [insight]
+        insightRepo.errorToThrow = NSError(domain: "test", code: 1)
+        let vm = HomeViewModel(templateRepository: MockTemplateRepository())
+
+        let dismissed = await vm.dismissInsight(insight, using: insightRepo)
+
+        #expect(dismissed == false)
+        #expect(insight.isRead == false)
+        #expect(insightRepo.markedReadInsights.isEmpty)
+        #expect(vm.errorMessage == "Could not dismiss this insight. Try again.")
+    }
 }
 
 @Suite("InboxApprovalViewModel Tests")

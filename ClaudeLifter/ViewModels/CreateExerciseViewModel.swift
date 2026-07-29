@@ -11,6 +11,8 @@ final class CreateExerciseViewModel {
     var mechanic: String = ""
     var force: String = ""
     var notes: String = ""
+    var errorMessage: String?
+    var isSaved = false
 
     var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
@@ -46,6 +48,17 @@ final class CreateExerciseViewModel {
             exercise.tags.append(ExerciseTag(category: "force", value: force))
         }
         try await repository.save(exercise)
+    }
+
+    func submit(using repository: any ExerciseRepository) async {
+        errorMessage = nil
+        isSaved = false
+        do {
+            try await save(using: repository)
+            isSaved = true
+        } catch {
+            errorMessage = "Could not create the exercise. Check your details and try again."
+        }
     }
 }
 

@@ -15,43 +15,46 @@ struct CreateExerciseView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Name") {
-                    TextField("Exercise name", text: $vm.name)
-                        .accessibilityIdentifier("exerciseName")
-                }
-                Section("Details") {
-                    Picker("Equipment", selection: $vm.equipment) {
-                        Text("None").tag("")
-                        ForEach(equipmentOptions, id: \.self) { opt in
-                            Text(opt.replacingOccurrences(of: "_", with: " ").capitalized).tag(opt)
+            VStack(spacing: 0) {
+                errorBanner
+                Form {
+                    Section("Name") {
+                        TextField("Exercise name", text: $vm.name)
+                            .accessibilityIdentifier("exerciseName")
+                    }
+                    Section("Details") {
+                        Picker("Equipment", selection: $vm.equipment) {
+                            Text("None").tag("")
+                            ForEach(equipmentOptions, id: \.self) { opt in
+                                Text(opt.replacingOccurrences(of: "_", with: " ").capitalized).tag(opt)
+                            }
+                        }
+                        Picker("Level", selection: $vm.level) {
+                            Text("None").tag("")
+                            ForEach(levelOptions, id: \.self) { opt in
+                                Text(opt.capitalized).tag(opt)
+                            }
+                        }
+                        Picker("Mechanic", selection: $vm.mechanic) {
+                            Text("None").tag("")
+                            ForEach(mechanicOptions, id: \.self) { opt in
+                                Text(opt.capitalized).tag(opt)
+                            }
+                        }
+                        Picker("Force", selection: $vm.force) {
+                            Text("None").tag("")
+                            ForEach(forceOptions, id: \.self) { opt in
+                                Text(opt.capitalized).tag(opt)
+                            }
                         }
                     }
-                    Picker("Level", selection: $vm.level) {
-                        Text("None").tag("")
-                        ForEach(levelOptions, id: \.self) { opt in
-                            Text(opt.capitalized).tag(opt)
-                        }
+                    Section("Primary Muscles") {
+                        muscleMultiSelect
                     }
-                    Picker("Mechanic", selection: $vm.mechanic) {
-                        Text("None").tag("")
-                        ForEach(mechanicOptions, id: \.self) { opt in
-                            Text(opt.capitalized).tag(opt)
-                        }
+                    Section("Notes") {
+                        TextField("Optional notes", text: $vm.notes, axis: .vertical)
+                            .lineLimit(3...6)
                     }
-                    Picker("Force", selection: $vm.force) {
-                        Text("None").tag("")
-                        ForEach(forceOptions, id: \.self) { opt in
-                            Text(opt.capitalized).tag(opt)
-                        }
-                    }
-                }
-                Section("Primary Muscles") {
-                    muscleMultiSelect
-                }
-                Section("Notes") {
-                    TextField("Optional notes", text: $vm.notes, axis: .vertical)
-                        .lineLimit(3...6)
                 }
             }
             .navigationTitle("New Exercise")
@@ -64,16 +67,43 @@ struct CreateExerciseView: View {
                     Button("Save") {
                         Task {
                             if let deps {
-                                try? await vm.save(using: deps.exerciseRepository)
+                                await vm.submit(using: deps.exerciseRepository)
                             }
-                            onSaved?()
-                            dismiss()
+                            if vm.isSaved {
+                                onSaved?()
+                                dismiss()
+                            }
                         }
                     }
                     .disabled(!vm.canSave)
                     .accessibilityIdentifier("saveExercise")
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let errorMessage = vm.errorMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    vm.errorMessage = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Dismiss error")
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .accessibilityIdentifier("createExerciseErrorBanner")
         }
     }
 

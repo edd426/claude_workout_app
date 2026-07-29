@@ -110,4 +110,18 @@ struct CreateExerciseViewModelTests {
             try await vm.save(using: repo)
         }
     }
+
+    @Test("failed submission reports the failure and does not mark the exercise as saved")
+    func failedSubmissionKeepsCreateSheetOpen() async {
+        let repo = MockExerciseRepository()
+        repo.errorToThrow = NSError(domain: "test", code: 1)
+        let vm = CreateExerciseViewModel()
+        vm.name = "Standing Cable Row"
+
+        await vm.submit(using: repo)
+
+        #expect(vm.isSaved == false)
+        #expect(repo.savedExercises.isEmpty)
+        #expect(vm.errorMessage == "Could not create the exercise. Check your details and try again.")
+    }
 }

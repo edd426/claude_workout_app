@@ -105,6 +105,7 @@ struct HomeView: View {
 
     private var templatePickerView: some View {
         VStack(spacing: 0) {
+            errorBanner
             if let deps {
                 // Surfaces the silent-no-op state from `SyncManager.syncIfNeeded`'s
                 // serverURL guard. Rendered as a no-op for every other state, so
@@ -153,13 +154,40 @@ struct HomeView: View {
         VStack(spacing: 8) {
             ForEach(unreadInsights, id: \.id) { insight in
                 InsightCardView(insight: insight) {
-                    try? await deps?.insightRepository.markAsRead(insight)
-                    unreadInsights.removeAll { $0.id == insight.id }
+                    guard let deps, let vm else { return }
+                    if await vm.dismissInsight(insight, using: deps.insightRepository) {
+                        unreadInsights.removeAll { $0.id == insight.id }
+                    }
                 }
             }
         }
         .padding(.horizontal)
         .padding(.top, 8)
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let errorMessage = vm?.errorMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    vm?.errorMessage = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Dismiss error")
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .accessibilityIdentifier("homeErrorBanner")
+        }
     }
 
     private func emptyState(vm: HomeViewModel) -> some View {

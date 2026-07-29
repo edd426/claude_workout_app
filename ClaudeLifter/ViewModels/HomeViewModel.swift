@@ -37,6 +37,21 @@ final class HomeViewModel {
         return workout
     }
 
+    @discardableResult
+    func dismissInsight(
+        _ insight: ProactiveInsight,
+        using repository: any InsightRepository
+    ) async -> Bool {
+        errorMessage = nil
+        do {
+            try await repository.markAsRead(insight)
+            return true
+        } catch {
+            errorMessage = "Could not dismiss this insight. Try again."
+            return false
+        }
+    }
+
     // MARK: - Crash recovery (#75)
 
     /// The most recent in-progress workout with actual content, surfaced on

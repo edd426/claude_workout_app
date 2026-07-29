@@ -4,29 +4,38 @@ import PhotosUI
 struct ExerciseDetailView: View {
     let exercise: Exercise
 
-    @State private var photoURL: String?
+    @State private var photoVM = ExercisePhotoViewModel()
     @State private var selectedItem: PhotosPickerItem? = nil
-    @State private var isSaving = false
 
     var body: some View {
-        List {
-            imageSection
-            photoSection
-            musclesSection
-            if !exercise.instructions.isEmpty {
-                instructionsSection
+        VStack(spacing: 0) {
+            errorBanner
+            List {
+                imageSection
+                photoSection
+                musclesSection
+                if !exercise.instructions.isEmpty {
+                    instructionsSection
+                }
+                metadataSection
             }
-            metadataSection
         }
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.large)
         // Use .task instead of .onAppear — .onAppear re-fires on every view
         // redraw (e.g. navigation push/pop, orientation change), which would
         // overwrite any local photo state the user has just chosen.
-        .task { photoURL = exercise.photoURL }
+        .task {
+            if photoVM.photoURL == nil {
+                photoVM.photoURL = exercise.photoURL
+            }
+        }
         .onChange(of: selectedItem) { _, newItem in
             guard let newItem else { return }
-            Task { await handlePhotoSelection(newItem) }
+            Task {
+                await handlePhotoSelection(newItem)
+                selectedItem = nil
+            }
         }
     }
 
@@ -63,12 +72,11 @@ struct ExerciseDetailView: View {
     @ViewBuilder
     private var photoSection: some View {
         Section {
-            if let photoURL, !photoURL.isEmpty,
+            if let photoURL = photoVM.photoURL, !photoURL.isEmpty,
                let uiImage = LocalPhotoStorage.loadImage(relativePath: photoURL) {
                 UserPhotoView(
                     image: Image(uiImage: uiImage),
-                    exercise: exercise,
-                    onPhotoUpdated: { self.photoURL = $0; exercise.photoURL = $0 }
+                    onPhotoSelected: handlePhotoSelection
                 )
                 .listRowInsets(EdgeInsets())
             } else {
@@ -89,20 +97,39 @@ struct ExerciseDetailView: View {
             }
             .foregroundStyle(BrandTheme.accent)
         }
-        .disabled(isSaving)
+        .disabled(photoVM.isSaving)
     }
 
     // MARK: - Photo handling
 
     private func handlePhotoSelection(_ item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let uiImage = UIImage(data: data),
-              let jpegData = uiImage.jpegData(compressionQuality: 0.8) else { return }
-        isSaving = true
-        defer { isSaving = false }
-        if let path = try? LocalPhotoStorage.savePhoto(data: jpegData, exerciseId: exercise.id) {
-            photoURL = path
-            exercise.photoURL = path
+        await photoVM.attachPhoto(to: exercise) {
+            try await item.loadTransferable(type: Data.self)
+        }
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let errorMessage = photoVM.errorMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    photoVM.errorMessage = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Dismiss error")
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .accessibilityIdentifier("exercisePhotoErrorBanner")
         }
     }
 
@@ -192,8 +219,7 @@ private struct BundledExerciseImagesView: View {
 
 private struct UserPhotoView: View {
     let image: Image
-    let exercise: Exercise
-    let onPhotoUpdated: (String) -> Void
+    let onPhotoSelected: (PhotosPickerItem) async -> Void
 
     @State private var selectedItem: PhotosPickerItem? = nil
 
@@ -218,16 +244,10 @@ private struct UserPhotoView: View {
         .padding(.vertical, 8)
         .onChange(of: selectedItem) { _, newItem in
             guard let newItem else { return }
-            Task { await handleSelection(newItem) }
-        }
-    }
-
-    private func handleSelection(_ item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let uiImage = UIImage(data: data),
-              let jpegData = uiImage.jpegData(compressionQuality: 0.8) else { return }
-        if let path = try? LocalPhotoStorage.savePhoto(data: jpegData, exerciseId: exercise.id) {
-            onPhotoUpdated(path)
+            Task {
+                await onPhotoSelected(newItem)
+                selectedItem = nil
+            }
         }
     }
 }

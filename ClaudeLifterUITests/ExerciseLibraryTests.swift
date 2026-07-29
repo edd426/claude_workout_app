@@ -20,9 +20,66 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Bench Press"].waitForExistence(timeout: 8))
     }
 
-    // Returns the custom search text field pinned above the filter chips
+    // SwiftUI's searchable modifier exposes a search field to XCUITest.
     private func revealSearchBar() -> XCUIElement {
-        return app.textFields["exerciseSearchField"]
+        return app.searchFields.firstMatch
+    }
+
+    private func search(for query: String) {
+        let searchBar = revealSearchBar()
+        XCTAssertTrue(searchBar.waitForExistence(timeout: 5))
+        searchBar.tap()
+        searchBar.typeText(query)
+        XCTAssertEqual(searchBar.value as? String, query)
+    }
+
+    private func assertSearchResults(
+        visible: [String],
+        hidden: [String],
+        file: StaticString = #file,
+        line: UInt = #line
+    ) {
+        for name in hidden {
+            XCTAssertTrue(
+                app.staticTexts[name].waitForNonExistence(timeout: 5),
+                "Expected '\(name)' to be filtered out",
+                file: file,
+                line: line
+            )
+        }
+        for name in visible {
+            XCTAssertTrue(
+                app.staticTexts[name].exists,
+                "Expected '\(name)' to remain in the filtered results",
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    private func cancelSearch(file: StaticString = #file, line: UInt = #line) {
+        let cancelButton = app.buttons["Cancel"].firstMatch
+        XCTAssertTrue(
+            cancelButton.waitForExistence(timeout: 3),
+            "Expected the search Cancel button to appear",
+            file: file,
+            line: line
+        )
+        cancelButton.tap()
+    }
+
+    private func assertFullSeededListIsVisible(
+        file: StaticString = #file,
+        line: UInt = #line
+    ) {
+        for name in ["Barbell Squat", "Bench Press", "Overhead Press"] {
+            XCTAssertTrue(
+                app.staticTexts[name].waitForExistence(timeout: 5),
+                "Expected '\(name)' to be restored after cancelling search",
+                file: file,
+                line: line
+            )
+        }
     }
 
     func testExercisesTabNavigatesCorrectly() throws {
@@ -38,42 +95,43 @@ final class ExerciseLibraryTests: XCTestCase {
         navigateToExercises()
         let searchBar = revealSearchBar()
         XCTAssertTrue(searchBar.waitForExistence(timeout: 5))
+        searchBar.tap()
+        searchBar.typeText("Squat")
+        assertSearchResults(
+            visible: ["Barbell Squat"],
+            hidden: ["Bench Press", "Overhead Press"]
+        )
+        cancelSearch()
+        assertFullSeededListIsVisible()
     }
 
     func testSearchForExercise() throws {
         navigateToExercises()
-        let searchBar = revealSearchBar()
-        XCTAssertTrue(searchBar.waitForExistence(timeout: 5))
-        // Verify the search bar is interactive (tap, type, then dismiss)
-        searchBar.tap()
-        searchBar.typeText("Bench")
-        XCTAssertEqual(searchBar.value as? String, "Bench")
+        search(for: "Bench")
+        assertSearchResults(
+            visible: ["Bench Press"],
+            hidden: ["Barbell Squat", "Overhead Press"]
+        )
     }
 
     func testSearchFiltersResults() throws {
         navigateToExercises()
-        let searchBar = revealSearchBar()
-        XCTAssertTrue(searchBar.waitForExistence(timeout: 5))
-        searchBar.tap()
-        searchBar.typeText("Bench")
-        // The search field should contain the typed text
-        XCTAssertEqual(searchBar.value as? String, "Bench")
-        let cancelButton = app.buttons.matching(NSPredicate(format: "label == 'Cancel'")).firstMatch
-        if cancelButton.waitForExistence(timeout: 3) {
-            cancelButton.tap()
-        }
+        search(for: "Press")
+        assertSearchResults(
+            visible: ["Bench Press", "Overhead Press"],
+            hidden: ["Barbell Squat"]
+        )
     }
 
     func testSearchCancelRestoresFullList() throws {
         navigateToExercises()
-        let searchBar = revealSearchBar()
-        XCTAssertTrue(searchBar.waitForExistence(timeout: 5))
-        searchBar.tap()
-        searchBar.typeText("XYZ_NOMATCH")
-        XCTAssertEqual(searchBar.value as? String, "XYZ_NOMATCH")
-        // Clear the search and verify nav bar remains
-        searchBar.clearAndTypeText("")
-        XCTAssertTrue(app.navigationBars["Exercises"].waitForExistence(timeout: 5))
+        search(for: "XYZ_NOMATCH")
+        assertSearchResults(
+            visible: [],
+            hidden: ["Barbell Squat", "Bench Press", "Overhead Press"]
+        )
+        cancelSearch()
+        assertFullSeededListIsVisible()
     }
 
     func testTapExerciseShowsDetail() throws {

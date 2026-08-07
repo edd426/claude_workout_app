@@ -1,14 +1,18 @@
 # ClaudeLifter — Deep refactor session handoff
 
-Last active: 2026-04-24. Work paused by user; app is on-device and behaving.
+> **HISTORICAL — 2026-04-24.** Kept for the fix-by-fix record below. Its session
+> state and test baseline are long superseded; for current pickup state read
+> `HANDOFF.md`, not this file. The commands at the bottom have been refreshed.
 
-## Session state
+## Session state (as of 2026-04-24)
 
-**15 commits on `main` ahead of `origin/main`, all local, nothing pushed yet.**
-Run `git push origin main` when you want to publish.
+15 commits were local and unpushed at the time. **Long since pushed** — `main`
+is published.
 
-Test baseline: **534 unit tests + 11 `WorkoutFlowTests` UI tests** — all green
-in the iPhone 16e (iOS 26.2) simulator. Zero fatal errors, zero failures.
+Test baseline then: **534 unit tests + 11 `WorkoutFlowTests` UI tests**, green
+on an iPhone 16e (iOS 26.2) simulator. Both are stale: that simulator no longer
+exists in Xcode, and the suite is now 681 unit + 69 UI on iPhone 13 Pro Max /
+iOS 26.5.
 
 Plan file (can archive when you're satisfied):
 `/Users/eddelord/.claude/plans/i-d-like-you-to-ticklish-hickey.md`
@@ -79,26 +83,27 @@ Nothing is broken; these are genuinely "next sprint" items, roughly in priority 
 
 ```bash
 # Full baseline (unit + key UI flow)
+set -o pipefail
 xcodebuild -scheme ClaudeLifter \
-  -destination 'platform=iOS Simulator,OS=26.2,name=iPhone 16e' test \
+  -destination 'platform=iOS Simulator,name=iPhone 13 Pro Max' test \
   -only-testing:ClaudeLifterTests \
   -only-testing:ClaudeLifterUITests/WorkoutFlowTests
 
-# Just the new regression suites
-xcodebuild -scheme ClaudeLifter \
-  -destination 'platform=iOS Simulator,OS=26.2,name=iPhone 16e' test \
-  -only-testing:ClaudeLifterTests/LastModifiedPropagationTests \
-  -only-testing:ClaudeLifterTests/ChatViewModelTests \
-  -only-testing:ClaudeLifterTests/BuildInfoTests \
-  -only-testing:ClaudeLifterTests/PaginationBoundsTests
-
-# Build & install on the plugged-in phone
-xcodebuild -scheme ClaudeLifter \
-  -destination 'platform=iOS,id=00008110-001E1D8114F3801E' build
-xcrun devicectl device install app \
-  --device 00008110-001E1D8114F3801E \
+# Build & install on the plugged-in phone (it must be UNLOCKED — a locked
+# screen gives "Waiting for the destination to become ready" and
+# ** BUILD INTERRUPTED ** before the build even starts)
+DEVICE=$(xcrun devicectl list devices 2>/dev/null | grep -i iphone \
+  | grep -oE '[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}' | head -1)
+# Don't hardcode the id — the one previously written here (00008110-...) is a
+# hardware UDID and no longer matches what devicectl reports.
+xcodebuild -scheme ClaudeLifter -destination "platform=iOS,id=$DEVICE" build
+xcrun devicectl device install app --device "$DEVICE" \
   ~/Library/Developer/Xcode/DerivedData/ClaudeLifter-hksekbwiejlwszcjbxmhraxgbzaf/Build/Products/Debug-iphoneos/ClaudeLifter.app
 
 # Publish when ready
 git push origin main
 ```
+
+Never pipe `xcodebuild` into `tail` without `set -o pipefail` — you get `tail`'s
+exit code, and a run that returned 65 reads as success. Capture `EXIT=$?` from
+the redirect instead.

@@ -27,14 +27,34 @@ while xcodebuild had returned 65), and XCUITest failures print
 before the build even starts — it looks like a toolchain problem and isn't.
 The full device UI suite takes over 10 minutes; run it in the background.
 
-**Four `KeyboardDismissalTests` fail on the device and pass on the simulator.**
-Verified pre-existing on 2026-08-07: the identical four fail on plain `main`.
-They are the four that assert `app.keyboards.count > 0` (Workout, Chat,
-Template Editor, Exercise Creation). The two that merely *type* into a field
-pass. That split is the signature of a **connected hardware keyboard** — text
-entry still works, but iOS never raises the on-screen keyboard, so the
-assertion is unsatisfiable. Unpair the keyboard before judging a device run,
-and do not attribute these to your change without checking `main` first.
+**`app.keyboards` is empty on Evan's iPhone even with the keyboard onscreen.**
+Resolved 2026-08-07; four `KeyboardDismissalTests` had been failing on device
+and passing on the simulator. The app was correct the whole time — the query
+was wrong.
+
+A diagnostic dump with a weight field focused showed:
+
+```
+keyboards.count = 0     keys.count = 12     fieldHasFocus = true
+Other, identifier: 'keyboard'      <- container is type Other, not Keyboard
+    Key '1' … Key 'Delete'         <- a full decimal pad, plainly present
+Button, label: 'Next keyboard', value: English (US)
+```
+
+The keyboard is exposed as an **`Other` element with identifier `"keyboard"`**
+rather than as a `Keyboard`-type element, so `app.keyboards.count > 0` is
+unsatisfiable while `app.keys` returns everything. The `Next keyboard` button
+shows a third-party keyboard is installed, which is what differs from the
+simulator.
+
+Use `app.isSoftwareKeyboardVisible` and `app.waitForKeyboardToDisappear()` in
+`UITestHelpers.swift`, never `app.keyboards.count`, or these tests will fail on
+device forever.
+
+Two earlier explanations were asserted and were both wrong — a hardware
+keyboard (nothing is paired) and SwiftKey suppressing the keyboard (the system
+decimal pad renders fine). Neither survived a look at the actual hierarchy.
+**Dump the hierarchy before theorising about a UI test failure.**
 
 ## What Phase 1 changed (#123, #124, #125, and #121's ordering half)
 

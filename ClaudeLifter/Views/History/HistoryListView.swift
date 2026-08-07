@@ -34,11 +34,20 @@ struct HistoryListView: View {
             Text("This cannot be undone.")
         }
         .task {
+            // Construct once, but reload on every appearance (#132). Loading
+            // inside the `vm == nil` guard meant the fetch ran once per launch,
+            // so anyone who opened History early in a session saw a list frozen
+            // at that moment — including after finishing a workout, which is
+            // the case that actually matters.
             if vm == nil, let deps {
                 vm = HistoryViewModel(workoutRepository: deps.workoutRepository)
                 calendarVM = CalendarViewModel(workoutRepository: deps.workoutRepository)
-                await vm?.loadWorkouts()
             }
+            await vm?.loadWorkouts()
+            // The heatmap has its own `.task`, but it only covers the case
+            // where that subview is on screen; reload here so the calendar
+            // cannot go stale independently of the list.
+            await calendarVM?.loadMonth()
         }
     }
 

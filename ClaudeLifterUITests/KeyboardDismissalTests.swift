@@ -20,11 +20,11 @@ final class KeyboardDismissalTests: XCTestCase {
         ).element(boundBy: 0)
         XCTAssertTrue(weightField.waitForExistence(timeout: 5))
         weightField.tap()
-        XCTAssertTrue(app.keyboards.count > 0)
+        XCTAssertTrue(app.isSoftwareKeyboardVisible)
         let doneButton = app.toolbars.buttons.matching(identifier: "Done").firstMatch
         XCTAssertEqual(app.toolbars.buttons.matching(identifier: "Done").count, 1)
         doneButton.tap()
-        XCTAssertEqual(app.keyboards.count, 0)
+        XCTAssertTrue(app.waitForKeyboardToDisappear())
     }
 
     func testEmptyWeightFieldDoesNotPrefixTypedValueWithZero() throws {
@@ -44,7 +44,7 @@ final class KeyboardDismissalTests: XCTestCase {
         app.tabBars.buttons["Coach"].tap()
         XCTAssertTrue(app.textFields["chatMessageInput"].waitForExistence(timeout: 5))
         app.textFields["chatMessageInput"].tap()
-        XCTAssertTrue(app.keyboards.count > 0)
+        XCTAssertTrue(app.isSoftwareKeyboardVisible)
         app.swipeDown()
         XCTAssertTrue(app.tabBars.firstMatch.exists)
     }
@@ -55,7 +55,7 @@ final class KeyboardDismissalTests: XCTestCase {
         app.navigationBars["Exercises"].buttons.firstMatch.tap()
         XCTAssertTrue(app.textFields["exerciseName"].waitForExistence(timeout: 5))
         app.textFields["exerciseName"].tap()
-        XCTAssertTrue(app.keyboards.count > 0)
+        XCTAssertTrue(app.isSoftwareKeyboardVisible)
         app.swipeDown()
         XCTAssertTrue(app.navigationBars["New Exercise"].waitForExistence(timeout: 5))
     }
@@ -65,7 +65,7 @@ final class KeyboardDismissalTests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'New Template'")).firstMatch.tap()
         XCTAssertTrue(app.textFields["templateName"].waitForExistence(timeout: 5))
         app.textFields["templateName"].tap()
-        XCTAssertTrue(app.keyboards.count > 0)
+        XCTAssertTrue(app.isSoftwareKeyboardVisible)
         app.swipeDown()
         XCTAssertTrue(app.tabBars.firstMatch.exists || app.navigationBars.firstMatch.exists)
     }

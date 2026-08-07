@@ -1,32 +1,91 @@
-# HANDOFF — workout logging usability sprint
+# HANDOFF — Finish reliability (Phase 1)
 
-Updated 2026-07-29. Nothing is in flight. **5 commits are local and unpushed.**
+Updated 2026-08-07. The usability sprint's 6 commits are **pushed**. Phase 1 of
+`WORKOUT_RELIABILITY_AND_TEMPLATE_PLAN.md` is on `fix/finish-reliability`.
 
-## Push this first
+## The test baseline — read this before judging any run
 
-```
-9e2213c Rebuild set entry: one Done button, empty fields, labelled columns
-c5b98e4 Clear the search query instead of tapping Cancel (#96)
-e73c8fe Stop three failures from reporting success (#86)
-03fdd10 Wire up PR detection, and normalise stats to kilograms
-07aa630 Fix #96: query searchFields, and actually assert filtering
-```
+**`xcodebuild test` exits 0 on `fix/finish-reliability`:** 681 Swift Testing
+(671 + 10 new), zero XCUITest failures, on iPhone 13 Pro Max / iOS 26.5.
 
-`#96`, `#84` and `#89` were closed manually, because the `Closes` trailers
-cannot fire until these are pushed.
+The previous note that "a non-zero exit is now a real regression" was **wrong
+for the first ~10 days of any month**, and cost a full investigation on
+2026-08-07. `calendarHeatmap` seeded workouts at `today - 10 days` while
+`CalendarViewModel.loadMonth()` fetches only the *current* month, so the light
+workout fell into the previous month and vanished. The 2026-07-29 green run
+happened on the 29th, which is why nobody saw it. Fixed in #131; the fixture is
+now anchored to fixed days of the current month.
 
-## The test baseline changed — read this before judging any run
-
-**`xcodebuild test` now exits 0.** 671 Swift Testing pass, zero XCUITest
-failures, verified on iPhone 13 Pro Max / iOS 26.5.
-
-This supersedes the long-standing note that exit 65 is expected. #96 is fixed,
-so **a non-zero exit is now a real regression** — do not dismiss one as "the
-known four". The other traps still hold: never pipe `xcodebuild` through `tail`
-without `set -o pipefail`, and remember XCUITest failures print
+With that fixed the claim finally holds: **a non-zero exit is a real
+regression.** The other traps still apply: never pipe `xcodebuild` through
+`tail` without `set -o pipefail` (a background wrapper reported "exit code 0"
+while xcodebuild had returned 65), and XCUITest failures print
 `Test Case '-[...]' failed`, not Swift Testing's `✘`.
 
-## What shipped
+**Device runs need the phone unlocked.** A locked screen produces
+`Waiting for the destination to become ready` and `** BUILD INTERRUPTED **`
+before the build even starts — it looks like a toolchain problem and isn't.
+The full device UI suite takes over 10 minutes; run it in the background.
+
+**`app.keyboards` is empty on Evan's iPhone even with the keyboard onscreen.**
+Resolved 2026-08-07; four `KeyboardDismissalTests` had been failing on device
+and passing on the simulator. The app was correct the whole time — the query
+was wrong.
+
+A diagnostic dump with a weight field focused showed:
+
+```
+keyboards.count = 0     keys.count = 12     fieldHasFocus = true
+Other, identifier: 'keyboard'      <- container is type Other, not Keyboard
+    Key '1' … Key 'Delete'         <- a full decimal pad, plainly present
+Button, label: 'Next keyboard', value: English (US)
+```
+
+The keyboard is exposed as an **`Other` element with identifier `"keyboard"`**
+rather than as a `Keyboard`-type element, so `app.keyboards.count > 0` is
+unsatisfiable while `app.keys` returns everything. The `Next keyboard` button
+shows a third-party keyboard is installed, which is what differs from the
+simulator.
+
+Use `app.isSoftwareKeyboardVisible` and `app.waitForKeyboardToDisappear()` in
+`UITestHelpers.swift`, never `app.keyboards.count`, or these tests will fail on
+device forever.
+
+Two earlier explanations were asserted and were both wrong — a hardware
+keyboard (nothing is paired) and SwiftKey suppressing the keyboard (the system
+decimal pad renders fine). Neither survived a look at the actual hierarchy.
+**Dump the hierarchy before theorising about a UI test failure.**
+
+## What Phase 1 changed (#123, #124, #125, and #121's ordering half)
+
+`isFinished` was a **stored one-way Bool** that nothing ever reset, and an
+`onChange` on it was the *only* trigger for the summary sheet. `endWorkout()`
+lived solely in that sheet's Done button, and the sheet had no
+`interactiveDismissDisabled`. Swipe it away and you stayed inside a workout that
+was already saved and synced, with a Finish button that could never present
+anything again — while each further tap silently re-stamped `completedAt`,
+re-saved, re-bumped `timesPerformed` and re-ran PR detection.
+
+The circle was structural: `endWorkout()` nils `activeWorkoutVM`, tearing down
+the view that owned the sheet, so presenting the summary *required* postponing
+the exit. The fix hands the receipt to `AppState` as a
+`WorkoutCompletionSummary` presented over Home, making the two independent.
+
+`isFinished` remains as a **derived** property, so its nine existing assertions
+keep their meaning. The hazard was the stored one-way flag doubling as the sole
+presentation trigger, not the name.
+
+Post-commit work (`timesPerformed`, PR detection) now runs in a tracked
+`postCommitTask`; join it with `awaitPostCommitWork()`, the same idiom as
+`awaitPendingSave()`. Several E2E tests were passing only through incidental
+main-actor ordering and now join explicitly.
+
+**#132 was found and deliberately not fixed:** `HistoryListView` loads behind
+`if vm == nil`, so `loadWorkouts()` runs once per launch and the History tab
+serves a stale list — finish a workout and it's absent until you pull to
+refresh. Different surface; would have widened the PR past Phase 1.
+
+## What shipped previously
 
 Installed to Evan's iPhone 2026-07-29 ~21:30, from `9e2213c`.
 

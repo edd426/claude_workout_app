@@ -27,5 +27,10 @@ struct WorkoutHistoryRowView: View {
             }
         }
         .padding(.vertical, 2)
+        // One addressable element per logged workout. Combining also gives
+        // VoiceOver the whole row as a single announcement instead of five
+        // disconnected fragments.
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("historyRow_\(workout.id)")
     }
 }

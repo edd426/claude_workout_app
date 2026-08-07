@@ -59,7 +59,6 @@ struct ActiveWorkoutView: View {
     var onDismiss: (() -> Void)? = nil
 
     @State private var restSession: RestTimerSession?
-    @State private var showSummary = false
     @State private var showExercisePicker = false
     @State private var showCancelDialog = false
     @FocusState private var focusedField: SetEntryFieldID?
@@ -79,7 +78,6 @@ struct ActiveWorkoutView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent(scrollProxy: scrollProxy) }
                 .task { await vm.startWorkout() }
-                .sheet(isPresented: $showSummary) { summarySheet }
                 .sheet(isPresented: $showExercisePicker) { exercisePicker }
                 .confirmationDialog(
                     "Exit workout?",
@@ -88,9 +86,6 @@ struct ActiveWorkoutView: View {
                     exitDialogActions
                 } message: {
                     exitDialogMessage
-                }
-                .onChange(of: vm.isFinished) { _, finished in
-                    if finished { showSummary = true }
                 }
                 .onChange(of: orderedFields) { _, fields in
                     guard let focusedField else { return }
@@ -258,10 +253,16 @@ struct ActiveWorkoutView: View {
             .accessibilityIdentifier("cancelWorkout")
         }
         ToolbarItem(placement: .primaryAction) {
-            Button("Finish") {
+            Button {
                 finishWorkoutAfterFlushingField()
+            } label: {
+                if vm.isFinishing {
+                    ProgressView()
+                } else {
+                    Text("Finish")
+                }
             }
-            .disabled(!vm.hasCompletedSets)
+            .disabled(!vm.hasCompletedSets || vm.isFinishing)
             .foregroundStyle(BrandTheme.terracotta)
             .accessibilityIdentifier("finishWorkout")
         }
@@ -291,22 +292,6 @@ struct ActiveWorkoutView: View {
             Spacer()
             Button("Done") {
                 focusedField = nil
-            }
-        }
-    }
-
-    private var summarySheet: some View {
-        Group {
-            if let workout = vm.workout {
-                WorkoutSummaryView(
-                    workout: workout,
-                    personalRecords: vm.detectedPRs
-                ) {
-                    restSession?.cancel()
-                    showSummary = false
-                    appState.endWorkout()
-                    onDismiss?()
-                }
             }
         }
     }
@@ -354,6 +339,15 @@ struct ActiveWorkoutView: View {
             restSession?.cancel()
             Task {
                 await vm.finishWorkout()
+                // Leave the workout the moment the critical save has committed.
+                // Deliberately not tied to the summary: the receipt is handed to
+                // AppState and presented over Home, so dismissing it — Done,
+                // swipe, or never appearing at all — cannot strand the user in a
+                // workout that is already saved (#123).
+                if case .finished(let summary) = vm.completionState {
+                    appState.endWorkout(showing: summary)
+                    onDismiss?()
+                }
             }
         }
     }

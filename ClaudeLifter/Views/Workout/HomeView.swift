@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var path = NavigationPath()
 
     var body: some View {
+        @Bindable var appState = appState
         NavigationStack(path: $path) {
             Group {
                 if let activeVM = appState.activeWorkoutVM {
@@ -24,6 +25,18 @@ struct HomeView: View {
                 }
             }
             .navigationTitle("ClaudeLifter")
+        }
+        // The completion summary is presented here, not inside
+        // ActiveWorkoutView, because ending the workout tears that view down.
+        // Presenting it over Home means the workout is already safely closed by
+        // the time this appears, so any way of dismissing it is harmless (#123).
+        .sheet(item: $appState.completedWorkoutSummary) { summary in
+            WorkoutSummaryView(
+                workout: summary.workout,
+                personalRecords: summary.personalRecords
+            ) {
+                appState.completedWorkoutSummary = nil
+            }
         }
         .task {
             guard let deps else { return }

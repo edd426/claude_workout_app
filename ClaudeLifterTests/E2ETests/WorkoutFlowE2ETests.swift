@@ -243,6 +243,11 @@ struct WorkoutFlowE2ETests {
         await vm.finishWorkout()
         #expect(vm.isFinished)
 
+        // Template bookkeeping is post-commit (#125) — it runs after the
+        // workout is durably saved, so it needs an explicit join rather than
+        // relying on the next await happening to let it through.
+        await vm.awaitPostCommitWork()
+
         // finishWorkout() should have incremented timesPerformed automatically
         let updatedTemplates = try await templateRepo.fetchAll()
         let updatedTemplate = try #require(updatedTemplates.first { $0.id == template.id })
@@ -321,6 +326,7 @@ struct WorkoutFlowE2ETests {
             for set in exercise.sets { vm1.completeSet(set) }
         }
         await vm1.finishWorkout()
+        await vm1.awaitPostCommitWork()
         #expect(template.timesPerformed == 1)
 
         // Second workout
@@ -336,6 +342,7 @@ struct WorkoutFlowE2ETests {
             for set in exercise.sets { vm2.completeSet(set) }
         }
         await vm2.finishWorkout()
+        await vm2.awaitPostCommitWork()
         #expect(template.timesPerformed == 2)
         await vm1.awaitPendingSave()
         await vm2.awaitPendingSave()
@@ -370,6 +377,7 @@ struct WorkoutFlowE2ETests {
             for set in exercise.sets { vm.completeSet(set) }
         }
         await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
 
         // Fetch fresh from repository
         let allTemplates = try await templateRepo.fetchAll()
@@ -439,10 +447,22 @@ struct WorkoutFlowE2ETests {
         let workoutRepo = SwiftDataWorkoutRepository(context: context)
 
         let calendar = Calendar.current
-        let today = Date()
-        guard let daysAgo2 = calendar.date(byAdding: .day, value: -2, to: today),
-              let daysAgo5 = calendar.date(byAdding: .day, value: -5, to: today),
-              let daysAgo10 = calendar.date(byAdding: .day, value: -10, to: today) else {
+
+        // Anchor the fixture to fixed days *of the current month* rather than
+        // subtracting from `Date()` (#131). `loadMonth()` fetches only
+        // `currentMonth`, so a date like `today - 10` silently lands in the
+        // previous month whenever the run happens before the 11th — the
+        // workout then never appears in `workoutDays` and the assertion reads
+        // `nil`. Every month has at least 28 days, so days 2/5/10 are always
+        // in range. `buildIntensityMap` keys off `startedAt` and does not
+        // exclude days later than today, so this holds whatever the date is.
+        let monthStart = calendar.date(
+            from: calendar.dateComponents([.year, .month], from: Date())
+        )
+        guard let monthStart,
+              let daysAgo10 = calendar.date(byAdding: DateComponents(day: 1, hour: 12), to: monthStart),
+              let daysAgo5 = calendar.date(byAdding: DateComponents(day: 4, hour: 12), to: monthStart),
+              let daysAgo2 = calendar.date(byAdding: DateComponents(day: 9, hour: 12), to: monthStart) else {
             throw NSError(domain: "Test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create dates"])
         }
 
@@ -947,6 +967,10 @@ struct WorkoutFlowE2ETests {
         await vm.finishWorkout()
         #expect(vm.isFinished)
         #expect(workout.completedAt != nil)
+
+        // PR detection is post-commit (#125), so that a slow detector cannot
+        // hold the user inside a workout that is already saved.
+        await vm.awaitPostCommitWork()
 
         // PRs should have been detected
         #expect(!vm.detectedPRs.isEmpty)

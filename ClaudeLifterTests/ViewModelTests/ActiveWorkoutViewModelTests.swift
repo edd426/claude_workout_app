@@ -462,6 +462,240 @@ struct ActiveWorkoutViewModelTests {
         #expect(vm.isFinished == true)
         #expect(workoutRepo.deletedWorkouts.isEmpty, "Should NOT delete a workout with completed sets")
     }
+
+    // MARK: - #124: Finish is idempotent
+    //
+    // The user-visible bug (#123) is that a swipe-dismissed summary leaves the
+    // workout onscreen. What makes that state *corrupting* rather than merely
+    // annoying is this: every further Finish tap re-entered finishWorkout(),
+    // which found the workout still non-nil and re-ran the whole path.
+
+    /// A started workout with one completed set, ready to finish.
+    ///
+    /// Holds the `ModelContainer` as well as the objects under test. Dropping it
+    /// deallocates the container, and on iOS 26.5 the next touch of a model
+    /// object then traps with "This model instance was destroyed by calling
+    /// ModelContext.reset" — a crash, not a test failure, so it presents as an
+    /// unrelated mess rather than a lifetime bug.
+    private struct FinishableWorkout {
+        let container: ModelContainer
+        let vm: ActiveWorkoutViewModel
+        let template: WorkoutTemplate
+    }
+
+    /// Builds a started workout with exactly one completed set, ready to finish.
+    private func makeFinishableWorkout(
+        workoutRepository: MockWorkoutRepository = MockWorkoutRepository(),
+        templateRepository: MockTemplateRepository? = nil,
+        prDetectionService: MockPRDetectionService? = nil
+    ) async throws -> FinishableWorkout {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: workoutRepository,
+            autoFillService: MockAutoFillService(),
+            templateRepository: templateRepository,
+            prDetectionService: prDetectionService
+        )
+        await vm.startWorkout()
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+        vm.completeSet(set)
+        await vm.awaitPendingSave()
+        return FinishableWorkout(container: container, vm: vm, template: template)
+    }
+
+    @Test("a second Finish tap does not save the workout again")
+    func repeatedFinishSavesOnce() async throws {
+        let repo = MockWorkoutRepository()
+        let fixture = try await makeFinishableWorkout(workoutRepository: repo)
+        let vm = fixture.vm
+
+        await vm.finishWorkout()
+        let savesAfterFirstFinish = repo.saveCallCount
+
+        await vm.finishWorkout()
+        await vm.finishWorkout()
+
+        #expect(
+            repo.saveCallCount == savesAfterFirstFinish,
+            "Finishing an already-finished workout must not save it again"
+        )
+    }
+
+    @Test("a second Finish tap does not re-stamp completedAt")
+    func repeatedFinishKeepsOriginalCompletedAt() async throws {
+        let fixture = try await makeFinishableWorkout()
+        let vm = fixture.vm
+
+        await vm.finishWorkout()
+        let firstCompletedAt = try #require(vm.workout?.completedAt)
+
+        // A real user tapping again is separated from the first tap in time;
+        // without a guard the second tap silently moves the recorded finish
+        // time to "whenever they last jabbed the button".
+        try await Task.sleep(for: .milliseconds(20))
+        await vm.finishWorkout()
+
+        #expect(
+            vm.workout?.completedAt == firstCompletedAt,
+            "completedAt is the moment the workout ended, not the moment of the last tap"
+        )
+    }
+
+    @Test("a second Finish tap does not re-run PR detection")
+    func repeatedFinishDetectsPRsOnce() async throws {
+        let prService = MockPRDetectionService()
+        let fixture = try await makeFinishableWorkout(prDetectionService: prService)
+        let vm = fixture.vm
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        #expect(
+            prService.detectCallCount == 1,
+            "Re-running detection on the same workout can announce duplicate PRs"
+        )
+    }
+
+    @Test("a second Finish tap does not inflate template timesPerformed")
+    func repeatedFinishCountsTemplateUseOnce() async throws {
+        let templateRepo = MockTemplateRepository()
+        let fixture = try await makeFinishableWorkout(
+            templateRepository: templateRepo
+        )
+        let vm = fixture.vm
+        let template = fixture.template
+        let before = template.timesPerformed
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        #expect(template.timesPerformed == before + 1)
+    }
+
+    // MARK: - #125: post-commit work cannot trap a saved workout
+
+    @Test("a failing PR service still leaves the workout finished")
+    func failingPRDetectionStillFinishes() async throws {
+        let prService = MockPRDetectionService()
+        prService.errorToThrow = NSError(domain: "PR", code: 1)
+        let repo = MockWorkoutRepository()
+        let fixture = try await makeFinishableWorkout(
+            workoutRepository: repo,
+            prDetectionService: prService
+        )
+        let vm = fixture.vm
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        #expect(vm.isFinished, "PR detection is post-commit — it cannot reopen the workout")
+        #expect(vm.workout?.completedAt != nil)
+        #expect(repo.deletedWorkouts.isEmpty)
+    }
+
+    @Test("a failing template save still leaves the workout finished")
+    func failingTemplateSaveStillFinishes() async throws {
+        let templateRepo = MockTemplateRepository()
+        templateRepo.errorToThrow = NSError(domain: "Template", code: 1)
+        let fixture = try await makeFinishableWorkout(
+            templateRepository: templateRepo
+        )
+        let vm = fixture.vm
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        #expect(vm.isFinished, "Template bookkeeping is post-commit — it cannot reopen the workout")
+        #expect(vm.workout?.completedAt != nil)
+    }
+
+    @Test("post-commit failures are reported rather than swallowed")
+    func postCommitFailuresAreSurfaced() async throws {
+        let prService = MockPRDetectionService()
+        prService.errorToThrow = NSError(domain: "PR", code: 1)
+        let fixture = try await makeFinishableWorkout(prDetectionService: prService)
+        let vm = fixture.vm
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        // The old code used `try?` here, so a broken PR service was invisible.
+        #expect(!vm.postCommitWarnings.isEmpty)
+    }
+
+    // MARK: - #123 / #125: a failed critical save is recoverable
+
+    @Test("a failed critical save keeps the workout intact and retryable")
+    func failedCriticalSaveIsRetryable() async throws {
+        let repo = MockWorkoutRepository()
+        let fixture = try await makeFinishableWorkout(workoutRepository: repo)
+        let vm = fixture.vm
+
+        repo.errorToThrow = NSError(domain: "Save", code: 1)
+        await vm.finishWorkout()
+
+        #expect(!vm.isFinished, "A workout that failed to save must not be reported as finished")
+        #expect(vm.workout != nil, "The user's logged sets must survive a failed save")
+        #expect(vm.errorMessage != nil)
+
+        // Retry succeeds once the underlying failure clears.
+        repo.errorToThrow = nil
+        await vm.finishWorkout()
+
+        #expect(vm.isFinished)
+        #expect(vm.workout?.completedAt != nil)
+    }
+
+    // MARK: - #69 regression: a discarded session has no summary to show
+
+    @Test("a discarded empty workout finishes without a summary payload")
+    func discardedWorkoutHasNoSummary() async throws {
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        await vm.finishWorkout()
+
+        // Previously this set a one-way flag that presented a summary sheet
+        // built from a now-nil workout — an empty sheet with no Done button,
+        // and therefore no way back out.
+        #expect(vm.isFinished, "The UI must still leave the workout")
+        #expect(vm.completionSummary == nil, "There is nothing to show a receipt for")
+    }
+
+    // MARK: - #121: a debounced draft save must not outlive completion
+
+    @Test("an in-flight draft save cannot overwrite the finished workout")
+    func pendingDraftSaveCannotClobberCompletion() async throws {
+        let repo = MockWorkoutRepository()
+        let fixture = try await makeFinishableWorkout(workoutRepository: repo)
+        let vm = fixture.vm
+        let set = try #require(vm.workout?.exercises.first?.sets.first)
+
+        // Edit and immediately finish, without awaiting the debounced save —
+        // exactly what "type 45, tap Finish" does.
+        vm.updateSetReps(set, reps: 12)
+        await vm.finishWorkout()
+        await vm.awaitPendingSave()
+
+        #expect(vm.isFinished)
+        #expect(vm.workout?.completedAt != nil, "A late draft save must not clear completion")
+        #expect(set.reps == 12, "The last edit must survive into the saved workout")
+    }
 }
 
 extension ActiveWorkoutViewModelTests {

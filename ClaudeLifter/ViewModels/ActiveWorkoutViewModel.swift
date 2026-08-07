@@ -2,12 +2,44 @@ import Foundation
 import Observation
 import UIKit
 
+/// Where an active workout is in the process of ending.
+///
+/// This replaces a stored one-way `isFinished` Bool. That Bool was set to true
+/// and never reset, and the summary sheet was presented solely by an
+/// `onChange` on it — so the presentation could only ever fire once per app
+/// run. Combined with `endWorkout()` living behind the summary's Done button,
+/// dismissing that sheet any other way left the user inside a workout that was
+/// already saved, with a Finish button that could no longer show anything
+/// (#123).
+enum WorkoutCompletionState {
+    case active
+    case finishing
+    /// Terminal. `summary` is nil when the session was discarded rather than
+    /// saved (#69) — there is no receipt, but the UI must still leave.
+    case finished(summary: WorkoutCompletionSummary?)
+    case failed(message: String)
+}
+
 @Observable
 @MainActor
 final class ActiveWorkoutViewModel {
     var workout: Workout? = nil
-    var isFinished = false
+    private(set) var completionState: WorkoutCompletionState = .active
     var errorMessage: String? = nil
+
+    /// Derived, not stored. The hazard was never the name — it was that this
+    /// was a stored one-way flag doubling as the sole presentation trigger.
+    var isFinished: Bool {
+        if case .finished = completionState { return true }
+        return false
+    }
+
+    /// True while the critical save is in flight, so the UI can disable Finish
+    /// and show progress instead of accepting taps it will discard.
+    var isFinishing: Bool {
+        if case .finishing = completionState { return true }
+        return false
+    }
     var lastCompletedSet: WorkoutSet? = nil
     var detectedPRs: [PersonalRecord] = []
     private(set) var previousValues: [UUID: AutoFillResult] = [:]
@@ -38,6 +70,12 @@ final class ActiveWorkoutViewModel {
     private(set) var pendingPreviousValuesLoad: Task<Void, Never>?
     private var didLoadInitialPreviousValues = false
 
+    /// The in-flight finish attempt, so duplicate taps join it rather than
+    /// racing it (#124).
+    private var finishTask: Task<Void, Never>?
+    /// Follow-up work that runs after the critical save has committed.
+    private var postCommitTask: Task<Void, Never>?
+
     /// Awaits any in-flight save triggered by the last mutation. Useful in
     /// tests and wherever deterministic persistence is required before the
     /// next action.
@@ -48,6 +86,26 @@ final class ActiveWorkoutViewModel {
     func awaitPreviousValuesLoad() async {
         await pendingPreviousValuesLoad?.value
     }
+
+    /// Awaits template bookkeeping and PR detection. These run *after* the
+    /// workout is durably saved and are deliberately not awaited by
+    /// `finishWorkout()`, so tests need an explicit join point — the same
+    /// pattern as `awaitPendingSave()`.
+    func awaitPostCommitWork() async {
+        await postCommitTask?.value
+    }
+
+    /// The receipt for the finished workout, or nil when the session was
+    /// discarded rather than saved.
+    var completionSummary: WorkoutCompletionSummary? {
+        if case .finished(let summary) = completionState { return summary }
+        return nil
+    }
+
+    /// Non-fatal problems from post-commit work. The workout is already saved,
+    /// so these are reported rather than thrown — but not silently dropped the
+    /// way the previous `try?` calls dropped them (#125).
+    private(set) var postCommitWarnings: [String] = []
 
     func previous(for set: WorkoutSet) -> AutoFillResult? {
         previousValues[set.id]
@@ -239,6 +297,10 @@ final class ActiveWorkoutViewModel {
     /// `recordChange()` runs synchronously so sync state is correct even if
     /// the app dies before the async save lands.
     private func persistMutation() {
+        // Once the workout is finished its record is authoritative. A late
+        // mutation — from a Coach tool, say — must not re-open it for a draft
+        // save that would re-stamp `lastModified` behind the user's back.
+        if case .finished = completionState { return }
         workout?.recordChange()
         pendingSave?.cancel()
         // [weak self] so the Task is a no-op if the VM has been released
@@ -453,32 +515,114 @@ final class ActiveWorkoutViewModel {
         }
     }
 
+    /// Ends the workout. Idempotent: repeated taps join the in-flight attempt
+    /// or return immediately once it has succeeded (#124). Returns as soon as
+    /// the critical save has committed — post-commit work continues in the
+    /// background so slow PR detection cannot hold the user in the workout.
     func finishWorkout() async {
-        guard let workout else { return }
+        // Already done. Re-entering used to re-stamp `completedAt`, save again,
+        // bump `timesPerformed` again and re-run PR detection — all invisibly,
+        // because the presentation trigger could not fire twice.
+        if case .finished = completionState { return }
 
-        // Delete empty/unused workouts instead of saving them (#69)
-        if workout.exercises.isEmpty || !hasCompletedSets {
-            await cancelWorkout()
-            isFinished = true
+        // A second tap while the first is still saving waits for that attempt
+        // rather than starting a competing one.
+        if let finishTask {
+            await finishTask.value
             return
         }
 
-        workout.completedAt = .now
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performFinish()
+        }
+        finishTask = task
+        await task.value
+        finishTask = nil
+    }
+
+    private func performFinish() async {
+        guard let workout else { return }
+        completionState = .finishing
+
+        // #69: a session with nothing logged is discarded, not saved. It has no
+        // receipt to show. The old code still routed it through the summary
+        // sheet, which then rendered an empty view with no Done button.
+        if workout.exercises.isEmpty || !hasCompletedSets {
+            await cancelWorkout()
+            completionState = .finished(summary: nil)
+            return
+        }
+
+        // #121: `persistMutation` leaves a draft save in flight. It must not
+        // land after completion — `saveDraft` re-stamps `lastModified` and
+        // deletes sessions it considers empty. Cancel it and let the
+        // authoritative save below be the one that counts.
+        pendingSave?.cancel()
+        pendingSave = nil
+
+        // Stamped once per successful attempt. A retry after a failed save
+        // re-stamps deliberately; a duplicate tap never reaches here.
+        if workout.completedAt == nil {
+            workout.completedAt = .now
+        }
         workout.recordChange()
+
         do {
             try await saveWorkout(workout)
-            if let template, let templateRepository {
-                template.timesPerformed += 1
-                template.lastPerformedAt = .now
-                template.recordChange()
-                try? await templateRepository.save(template)
-            }
-            if let prService = prDetectionService {
-                detectedPRs = (try? await prService.detectPRs(for: workout)) ?? []
-            }
-            isFinished = true
         } catch {
+            // The workout stays intact and active so the user can retry
+            // without losing logged sets.
+            workout.completedAt = nil
             errorMessage = error.localizedDescription
+            completionState = .failed(message: error.localizedDescription)
+            return
+        }
+
+        // The critical transaction has committed. Publishing the receipt here
+        // — before any of the follow-up work — is what lets the UI leave the
+        // workout immediately.
+        let summary = WorkoutCompletionSummary(workout: workout)
+        completionState = .finished(summary: summary)
+
+        postCommitTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runPostCommitWork(for: workout, summary: summary)
+        }
+    }
+
+    /// Template bookkeeping and PR detection. Everything here happens after the
+    /// workout is durably saved, so failures are recorded and surfaced but can
+    /// never reopen, delay or discard a completed workout (#125).
+    private func runPostCommitWork(
+        for workout: Workout,
+        summary: WorkoutCompletionSummary
+    ) async {
+        if let template, let templateRepository {
+            template.timesPerformed += 1
+            template.lastPerformedAt = .now
+            template.recordChange()
+            do {
+                try await templateRepository.save(template)
+            } catch {
+                // Previously `try?`, so a broken template save was invisible.
+                template.timesPerformed -= 1
+                postCommitWarnings.append(
+                    "Template usage wasn't updated: \(error.localizedDescription)"
+                )
+            }
+        }
+
+        if let prService = prDetectionService {
+            do {
+                let prs = try await prService.detectPRs(for: workout)
+                detectedPRs = prs
+                summary.personalRecords = prs
+            } catch {
+                postCommitWarnings.append(
+                    "Couldn't check for personal records: \(error.localizedDescription)"
+                )
+            }
         }
     }
 

@@ -7,6 +7,8 @@ struct HomeView: View {
     @State private var bodyWeightVM: BodyWeightViewModel?
     @State private var approvalVM: InboxApprovalViewModel?
     @State private var showTemplateEditor = false
+    @State private var reportListVM: ReportListViewModel?
+    @State private var showReports = false
     @State private var unreadInsights: [ProactiveInsight] = []
     @State private var path = NavigationPath()
 
@@ -59,6 +61,12 @@ struct HomeView: View {
                     settings: deps.settings
                 )
             }
+            if reportListVM == nil {
+                reportListVM = ReportListViewModel(
+                    repository: deps.exerciseReportRepository
+                )
+            }
+            await reportListVM?.load()
             if approvalVM == nil {
                 approvalVM = InboxApprovalViewModel(
                     manager: deps.syncManager
@@ -103,6 +111,16 @@ struct HomeView: View {
         } message: {
             Text(approvalVM?.errorMessage ?? "")
         }
+        .sheet(isPresented: $showReports) {
+            if let reportListVM {
+                NavigationStack {
+                    ReportListView(vm: reportListVM)
+                }
+                // Reports are also closed out by the AI over MCP, so the
+                // count can be stale by the time this closes.
+                .onDisappear { Task { await reportListVM.load() } }
+            }
+        }
         .sheet(isPresented: $showTemplateEditor) {
             if let deps {
                 TemplateEditorView(
@@ -143,6 +161,11 @@ struct HomeView: View {
                             Task { await approvalVM.decline(operation) }
                         }
                     )
+                }
+            }
+            if let reportListVM {
+                OpenReportsCard(count: reportListVM.openCount) {
+                    showReports = true
                 }
             }
             if let bodyWeightVM {

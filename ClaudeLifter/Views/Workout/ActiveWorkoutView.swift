@@ -61,6 +61,8 @@ struct ActiveWorkoutView: View {
     @State private var restSession: RestTimerSession?
     @State private var showExercisePicker = false
     @State private var showCancelDialog = false
+    /// Non-nil while the report sheet is up; carries the captured context.
+    @State private var reportContext: ReportContext?
     @FocusState private var focusedField: SetEntryFieldID?
     @Environment(AppState.self) private var appState
     @Environment(\.dependencies) private var dependencies
@@ -79,6 +81,9 @@ struct ActiveWorkoutView: View {
                 .toolbar { toolbarContent(scrollProxy: scrollProxy) }
                 .task { await vm.startWorkout() }
                 .sheet(isPresented: $showExercisePicker) { exercisePicker }
+                .sheet(item: $reportContext) { context in
+                    reportSheet(for: context)
+                }
                 .confirmationDialog(
                     "Exit workout?",
                     isPresented: $showCancelDialog
@@ -201,8 +206,24 @@ struct ActiveWorkoutView: View {
             onRemoveSet: { set in
                 focusedField = nil
                 vm.removeSet(set, from: workoutExercise)
+            },
+            onReport: {
+                focusedField = nil
+                reportContext = .forExercise(workoutExercise, in: vm.workout)
             }
         )
+    }
+
+    @ViewBuilder
+    private func reportSheet(for context: ReportContext) -> some View {
+        if let dependencies {
+            ReportSheetView(
+                vm: ReportSheetViewModel(
+                    context: context,
+                    repository: dependencies.exerciseReportRepository
+                )
+            )
+        }
     }
 
     @ViewBuilder
@@ -251,6 +272,15 @@ struct ActiveWorkoutView: View {
                 }
             }
             .accessibilityIdentifier("cancelWorkout")
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                focusedField = nil
+                reportContext = .forWorkout(vm.workout)
+            } label: {
+                Label("Report a problem…", systemImage: "flag")
+            }
+            .accessibilityIdentifier("reportWorkout")
         }
         ToolbarItem(placement: .primaryAction) {
             Button {

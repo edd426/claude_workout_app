@@ -39,6 +39,7 @@ struct RestoreSummary: Sendable, Equatable {
     var templates = 0
     var customExercises = 0
     var bodyWeightEntries = 0
+    var exerciseReports = 0
     /// Placeholder custom exercises created for exerciseIds that resolved
     /// neither by id nor by name (issue #79 fold-in). Zero on a healthy restore.
     var placeholderExercises = 0
@@ -80,6 +81,7 @@ final class SyncManager: InboxApprovalManaging {
     /// restore resolves exercise references (and creates placeholders).
     private let exerciseRepository: any ExerciseRepository
     private let bodyWeightRepository: any BodyWeightRepository
+    private let exerciseReportRepository: any ExerciseReportRepository
     private let networkService: any NetworkServiceProtocol
     private let settings: SettingsManager
     private let inboxApplier: InboxApplier
@@ -92,6 +94,7 @@ final class SyncManager: InboxApprovalManaging {
         templateRepository: any TemplateRepository,
         exerciseRepository: any ExerciseRepository,
         bodyWeightRepository: any BodyWeightRepository,
+        exerciseReportRepository: any ExerciseReportRepository,
         networkService: any NetworkServiceProtocol,
         settings: SettingsManager,
         inboxApplier: InboxApplier
@@ -100,6 +103,7 @@ final class SyncManager: InboxApprovalManaging {
         self.templateRepository = templateRepository
         self.exerciseRepository = exerciseRepository
         self.bodyWeightRepository = bodyWeightRepository
+        self.exerciseReportRepository = exerciseReportRepository
         self.networkService = networkService
         self.settings = settings
         self.inboxApplier = inboxApplier
@@ -179,6 +183,7 @@ final class SyncManager: InboxApprovalManaging {
         if try await !workoutRepository.fetchPending().isEmpty { return true }
         if try await !templateRepository.fetchPending().isEmpty { return true }
         if try await !bodyWeightRepository.fetchPending().isEmpty { return true }
+        if try await !exerciseReportRepository.fetchPending().isEmpty { return true }
         return false
     }
 
@@ -313,7 +318,7 @@ final class SyncManager: InboxApprovalManaging {
 
     // MARK: - Push
 
-    /// Serialize the complete local state of the four mirrored types and POST
+    /// Serialize the complete local state of the five mirrored types and POST
     /// it as one snapshot. On 200, mark records `.synced` and persist the
     /// server revision. On any failure, everything stays `.pending` and the
     /// next trigger retries — the operation is idempotent by design.
@@ -322,6 +327,7 @@ final class SyncManager: InboxApprovalManaging {
         let templates = try await templateRepository.fetchAll()
         let customExercises = try await exerciseRepository.fetchAll().filter(\.isCustom)
         let bodyWeightEntries = try await bodyWeightRepository.fetchAll()
+        let exerciseReports = try await exerciseReportRepository.fetchAll()
 
         // Snapshot lastModified at serialization time: a record edited while
         // the POST is in flight must stay .pending — the server received the
@@ -329,15 +335,17 @@ final class SyncManager: InboxApprovalManaging {
         let workoutModified = Dictionary(uniqueKeysWithValues: workouts.map { ($0.id, $0.lastModified) })
         let templateModified = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0.lastModified) })
         let entryModified = Dictionary(uniqueKeysWithValues: bodyWeightEntries.map { ($0.id, $0.lastModified) })
+        let reportModified = Dictionary(uniqueKeysWithValues: exerciseReports.map { ($0.id, $0.lastModified) })
 
-        // ALWAYS all four collections, even when empty — the server rejects a
+        // ALWAYS all five collections, even when empty — the server rejects a
         // missing key, and an empty array legitimately means "wipe that type".
         let request = SnapshotPushRequest(
             snapshot: SyncSnapshot(
                 workouts: workouts.map { SyncMapper.toDTO($0) },
                 templates: templates.map { SyncMapper.toDTO($0) },
                 customExercises: customExercises.map { SyncMapper.toDTO($0) },
-                bodyWeightEntries: bodyWeightEntries.map { SyncMapper.toDTO($0) }
+                bodyWeightEntries: bodyWeightEntries.map { SyncMapper.toDTO($0) },
+                exerciseReports: exerciseReports.map { SyncMapper.toDTO($0) }
             )
         )
 
@@ -352,6 +360,9 @@ final class SyncManager: InboxApprovalManaging {
         for entry in bodyWeightEntries where entry.lastModified == entryModified[entry.id] {
             entry.syncStatus = .synced
         }
+        for report in exerciseReports where report.lastModified == reportModified[report.id] {
+            report.syncStatus = .synced
+        }
 
         recordSuccess(revision: response.revision, serverTime: response.serverTime)
         settings.isSnapshotDirty = false
@@ -360,7 +371,7 @@ final class SyncManager: InboxApprovalManaging {
     // MARK: - Restore
 
     /// Disaster recovery: fetch the cloud mirror and REPLACE local data for the
-    /// four mirrored types. Never touches chat history, insights, preferences,
+    /// five mirrored types. Never touches chat history, insights, preferences,
     /// or the bundled exercise library. Destructive — callers must confirm with
     /// the user first (Settings does).
     func restoreFromSnapshot() async throws -> RestoreSummary {
@@ -372,7 +383,7 @@ final class SyncManager: InboxApprovalManaging {
         do {
             let response = try await networkService.fetchSnapshot()
 
-            // A fresh mirror (never pushed to) reads as revision 0 with four
+            // A fresh mirror (never pushed to) reads as revision 0 with
             // empty arrays. Wiping local data with that would be data loss
             // dressed up as a restore — refuse.
             guard response.revision > 0 else { throw SyncError.emptyMirror }
@@ -381,7 +392,7 @@ final class SyncManager: InboxApprovalManaging {
             var summary = RestoreSummary()
             summary.revision = response.revision
 
-            // 1. Wipe the four mirrored types.
+            // 1. Wipe the five mirrored types.
             for workout in try await workoutRepository.fetchAll() {
                 try await workoutRepository.delete(workout)
             }
@@ -393,6 +404,9 @@ final class SyncManager: InboxApprovalManaging {
             }
             for entry in try await bodyWeightRepository.fetchAll() {
                 try await bodyWeightRepository.delete(entry)
+            }
+            for report in try await exerciseReportRepository.fetchAll() {
+                try await exerciseReportRepository.delete(report)
             }
 
             // 2. Custom exercises FIRST so template/workout references resolve.
@@ -435,6 +449,13 @@ final class SyncManager: InboxApprovalManaging {
             for dto in snapshot.bodyWeightEntries {
                 try await bodyWeightRepository.save(SyncMapper.createBodyWeightEntry(from: dto))
                 summary.bodyWeightEntries += 1
+            }
+
+            for dto in snapshot.exerciseReports {
+                try await exerciseReportRepository.save(
+                    SyncMapper.createExerciseReport(from: dto)
+                )
+                summary.exerciseReports += 1
             }
 
             recordSuccess(revision: response.revision, serverTime: response.serverTime)

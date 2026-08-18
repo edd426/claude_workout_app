@@ -51,6 +51,7 @@ const OPERATION_TYPES: readonly InboxOperationType[] = [
   "updateTemplate",
   "deleteTemplate",
   "createCustomExercise",
+  "resolveExerciseReport",
 ];
 
 const OPERATION_STATUSES: readonly InboxOperationStatus[] = [
@@ -264,6 +265,28 @@ function validateCreateCustomExercise(
   return null;
 }
 
+const REPORT_RESOLVE_STATUSES = ["resolved", "acknowledged"];
+
+function validateResolveExerciseReport(
+  payload: Record<string, unknown>
+): HttpResponseInit | null {
+  if (!isNonEmptyString(payload["id"])) {
+    return badRequest("Malformed payload: id must be a non-empty string");
+  }
+  const status = payload["status"];
+  if (status !== undefined && !REPORT_RESOLVE_STATUSES.includes(status as string)) {
+    // "open" is rejected along with everything else: an inbox operation
+    // exists to close a report out, never to reopen one behind the user.
+    return badRequest(
+      `Malformed payload: status must be one of ${REPORT_RESOLVE_STATUSES.join(", ")}`
+    );
+  }
+  if (!isOptionalString(payload["resolution"])) {
+    return badRequest("Malformed payload: resolution must be a string");
+  }
+  return null;
+}
+
 /**
  * Validates the complete enqueue body before Cosmos is accessed. Top-level
  * id/requiresApproval fields are deliberately not read; the Function owns
@@ -308,6 +331,9 @@ function validateEnqueueBody(
       break;
     case "createCustomExercise":
       validationError = validateCreateCustomExercise(payload);
+      break;
+    case "resolveExerciseReport":
+      validationError = validateResolveExerciseReport(payload);
       break;
   }
   if (validationError) return { ok: false, error: validationError };

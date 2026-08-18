@@ -19,6 +19,7 @@ final class DependencyContainer {
     let insightGenerationService: any InsightGenerationServiceProtocol
     let backupService: any BackupServiceProtocol
     let bodyWeightRepository: any BodyWeightRepository
+    let exerciseReportRepository: any ExerciseReportRepository
     let inboxApplier: InboxApplier
     let healthKitService: any HealthKitServiceProtocol
     /// Shared rest-timer tick source — one instance for the app instead of
@@ -68,9 +69,12 @@ final class DependencyContainer {
         self.imageUploadService = ImageUploadService(networkService: network)
         let bodyWeightRepo = SwiftDataBodyWeightRepository(context: modelContext)
         self.bodyWeightRepository = bodyWeightRepo
+        let reportRepo = SwiftDataExerciseReportRepository(context: modelContext)
+        self.exerciseReportRepository = reportRepo
         let inboxApplier = InboxApplier(
             templateRepository: templateRepo,
-            exerciseRepository: exerciseRepo
+            exerciseRepository: exerciseRepo,
+            reportRepository: reportRepo
         )
         self.inboxApplier = inboxApplier
         self.healthKitService = HealthKitService()
@@ -97,6 +101,7 @@ final class DependencyContainer {
             templateRepository: templateRepo,
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
+            exerciseReportRepository: reportRepo,
             networkService: network,
             settings: settings,
             inboxApplier: inboxApplier

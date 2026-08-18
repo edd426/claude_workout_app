@@ -39,7 +39,7 @@ import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
 import { readItemOrNull } from "../shared/readHelpers";
 import {
-  SNAPSHOT_SCHEMA_VERSION,
+  SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS,
   SnapshotCollections,
   SnapshotContainerCounts,
   SnapshotCounts,
@@ -50,15 +50,38 @@ import {
 } from "../shared/types";
 
 /** Snapshot collection → Cosmos container mapping. */
-const SNAPSHOT_COLLECTIONS: {
+interface SnapshotCollectionMapping {
   field: keyof SnapshotCollections;
   container: string;
-}[] = [
+}
+
+const V2_COLLECTIONS: SnapshotCollectionMapping[] = [
   { field: "workouts", container: "workouts" },
   { field: "templates", container: "templates" },
   { field: "customExercises", container: "exercises" },
   { field: "bodyWeightEntries", container: "bodyWeightEntries" },
 ];
+
+const V3_COLLECTIONS: SnapshotCollectionMapping[] = [
+  ...V2_COLLECTIONS,
+  { field: "exerciseReports", container: "exerciseReports" },
+];
+
+/**
+ * Which collections a push of a given schemaVersion reconciles.
+ *
+ * A v2 client does not know reports exist, so its push must NOT be read as
+ * "there are no reports" — that would delete the whole container on the next
+ * sync from a phone still on the old build. Absent from the contract means
+ * untouched, not empty. Only a v3 push reconciles `exerciseReports`.
+ */
+const SNAPSHOT_COLLECTIONS_BY_VERSION: Record<number, SnapshotCollectionMapping[]> = {
+  2: V2_COLLECTIONS,
+  3: V3_COLLECTIONS,
+};
+
+/** Every container a read/restore should return, regardless of push version. */
+const SNAPSHOT_COLLECTIONS = V3_COLLECTIONS;
 
 const SYNC_META_CONTAINER = "syncMeta";
 const SYNC_META_ID = "snapshot";
@@ -93,17 +116,18 @@ function validateBody(body: SnapshotPushRequest): HttpResponseInit | null {
   if (body === null || typeof body !== "object") {
     return badRequest("Malformed body: expected a JSON object");
   }
-  if (body.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+  const collections = SNAPSHOT_COLLECTIONS_BY_VERSION[body.schemaVersion];
+  if (!collections) {
     return badRequest(
       `Unsupported schemaVersion: ${JSON.stringify(body.schemaVersion)}. ` +
-        `Expected ${SNAPSHOT_SCHEMA_VERSION}.`
+        `Expected one of ${SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS.join(", ")}.`
     );
   }
   const snapshot = body.snapshot;
   if (snapshot === null || typeof snapshot !== "object") {
     return badRequest("Malformed body: missing snapshot object");
   }
-  for (const { field } of SNAPSHOT_COLLECTIONS) {
+  for (const { field } of collections) {
     const docs = snapshot[field];
     if (!Array.isArray(docs)) {
       // A missing array is NOT treated as "empty" — an empty array is an
@@ -252,10 +276,12 @@ app.http("syncSnapshotPush", {
     const counts = {} as SnapshotCounts;
 
     try {
-      for (const { field, container } of SNAPSHOT_COLLECTIONS) {
+      for (const { field, container } of SNAPSHOT_COLLECTIONS_BY_VERSION[
+        body.schemaVersion
+      ]) {
         counts[field] = await reconcileContainer(
           container,
-          body.snapshot[field],
+          body.snapshot[field] ?? [],
           failures
         );
       }

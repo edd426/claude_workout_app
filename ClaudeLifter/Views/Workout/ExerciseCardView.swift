@@ -9,6 +9,9 @@ struct ExerciseCardView: View {
     let onEditReps: (WorkoutSet, Int?) -> Void
     let onAddSet: () -> Void
     var onRemoveSet: ((WorkoutSet) -> Void)? = nil
+    /// Files a report against this exercise (issue #135). The gym is where
+    /// the problem is noticed, so this is the entry point that matters.
+    var onReport: (() -> Void)? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -109,18 +112,28 @@ struct ExerciseCardView: View {
                 }
             }
             Spacer()
-            removeSetMenu
+            actionsMenu
         }
     }
 
     @ViewBuilder
-    private var removeSetMenu: some View {
-        if sortedSets.count > 1, let onRemoveSet {
+    private var actionsMenu: some View {
+        if onRemoveSet != nil || onReport != nil {
             Menu {
-                Section("Remove Set…") {
-                    ForEach(sortedSets, id: \.id) { set in
-                        Button("Set \(set.order + 1)", role: .destructive) {
-                            onRemoveSet(set)
+                if let onReport {
+                    Button {
+                        onReport()
+                    } label: {
+                        Label("Report a problem…", systemImage: "flag")
+                    }
+                    .accessibilityIdentifier("reportExercise")
+                }
+                if sortedSets.count > 1, let onRemoveSet {
+                    Section("Remove Set…") {
+                        ForEach(sortedSets, id: \.id) { set in
+                            Button("Set \(set.order + 1)", role: .destructive) {
+                                onRemoveSet(set)
+                            }
                         }
                     }
                 }

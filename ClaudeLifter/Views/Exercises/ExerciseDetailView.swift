@@ -6,6 +6,9 @@ struct ExerciseDetailView: View {
 
     @State private var photoVM = ExercisePhotoViewModel()
     @State private var selectedItem: PhotosPickerItem? = nil
+    /// Considered reports, filed away from the gym (issue #135).
+    @State private var reportContext: ReportContext?
+    @Environment(\.dependencies) private var dependencies
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +25,26 @@ struct ExerciseDetailView: View {
         }
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    reportContext = .forLibraryExercise(exercise)
+                } label: {
+                    Label("Report a problem…", systemImage: "flag")
+                }
+                .accessibilityIdentifier("reportExerciseFromLibrary")
+            }
+        }
+        .sheet(item: $reportContext) { context in
+            if let dependencies {
+                ReportSheetView(
+                    vm: ReportSheetViewModel(
+                        context: context,
+                        repository: dependencies.exerciseReportRepository
+                    )
+                )
+            }
+        }
         // Use .task instead of .onAppear — .onAppear re-fires on every view
         // redraw (e.g. navigation push/pop, orientation change), which would
         // overwrite any local photo state the user has just chosen.

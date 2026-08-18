@@ -141,6 +141,30 @@ struct BodyWeightEntryDTO: Codable, Sendable {
     let lastModified: Date
 }
 
+/// A user-filed complaint (issue #135). Mirrored so the MCP server can read
+/// the backlog; `category`/`status` stay raw strings on the wire so an
+/// unrecognised value from a newer app build round-trips instead of failing
+/// the whole snapshot.
+struct ExerciseReportDTO: Codable, Sendable {
+    let id: UUID
+    let createdAt: Date
+    let category: String
+    let detail: String
+    let exerciseExternalId: String?
+    let exerciseName: String?
+    let suggestedReplacement: String?
+    let workoutId: UUID?
+    let workoutExerciseId: UUID?
+    let templateId: UUID?
+    let contextSummary: String?
+    let status: String
+    let resolution: String?
+    let appVersion: String?
+    let iosVersion: String?
+    let photoURL: String?
+    let lastModified: Date
+}
+
 /// Still on the wire for local backup files only (BackupService). Preferences
 /// are NOT part of cloud sync — that path caused the pull ping-pong (#78).
 struct PreferenceDTO: Codable, Sendable {
@@ -153,22 +177,54 @@ struct PreferenceDTO: Codable, Sendable {
 
 // MARK: - Snapshot request/response (POST/GET /api/sync/snapshot)
 
-/// The complete mirrored state. ALWAYS carries all four collections — the
+/// The complete mirrored state. ALWAYS carries all five collections — the
 /// server rejects a missing key (400), and an empty array means "wipe that
 /// type on the server". That is how deletions propagate: no tombstones, the
 /// server deletes any doc absent from the snapshot.
+///
+/// `exerciseReports` arrived with schemaVersion 3 (issue #135). It decodes as
+/// empty when absent so a v2 payload — an old backup file, or the GET of a
+/// mirror last written by a v2 client — still restores.
 struct SyncSnapshot: Codable, Sendable {
     let workouts: [WorkoutDTO]
     let templates: [TemplateDTO]
     let customExercises: [ExerciseDTO]
     let bodyWeightEntries: [BodyWeightEntryDTO]
+    let exerciseReports: [ExerciseReportDTO]
+
+    init(
+        workouts: [WorkoutDTO],
+        templates: [TemplateDTO],
+        customExercises: [ExerciseDTO],
+        bodyWeightEntries: [BodyWeightEntryDTO],
+        exerciseReports: [ExerciseReportDTO] = []
+    ) {
+        self.workouts = workouts
+        self.templates = templates
+        self.customExercises = customExercises
+        self.bodyWeightEntries = bodyWeightEntries
+        self.exerciseReports = exerciseReports
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        workouts = try container.decode([WorkoutDTO].self, forKey: .workouts)
+        templates = try container.decode([TemplateDTO].self, forKey: .templates)
+        customExercises = try container.decode([ExerciseDTO].self, forKey: .customExercises)
+        bodyWeightEntries = try container.decode(
+            [BodyWeightEntryDTO].self, forKey: .bodyWeightEntries
+        )
+        exerciseReports = try container.decodeIfPresent(
+            [ExerciseReportDTO].self, forKey: .exerciseReports
+        ) ?? []
+    }
 }
 
 struct SnapshotPushRequest: Codable, Sendable {
     let schemaVersion: Int
     let snapshot: SyncSnapshot
 
-    init(schemaVersion: Int = 2, snapshot: SyncSnapshot) {
+    init(schemaVersion: Int = 3, snapshot: SyncSnapshot) {
         self.schemaVersion = schemaVersion
         self.snapshot = snapshot
     }

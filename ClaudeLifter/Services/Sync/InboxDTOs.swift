@@ -94,6 +94,15 @@ struct CreateCustomExercisePayload: Codable, Sendable, Equatable {
     let notes: String?
 }
 
+/// Closes out a user-filed report (issue #135). `status` is the terminal
+/// state the AI is asserting — "resolved" for done, "acknowledged" for seen
+/// but still outstanding (a GitHub issue exists, say).
+struct ResolveExerciseReportPayload: Codable, Sendable, Equatable {
+    let id: String
+    let status: String?
+    let resolution: String?
+}
+
 /// GET /api/inbox operation envelope. `op` and `status` remain raw strings so
 /// an unknown value is isolated to this operation by the applier.
 struct InboxOperationDTO: Codable, Sendable, Equatable {

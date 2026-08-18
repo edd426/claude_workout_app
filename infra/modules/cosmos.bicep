@@ -93,6 +93,12 @@ var containers = [
     name: 'syncMeta'
     partitionKeyPath: '/id'
   }
+  // Snapshot sync (issue #135): user-filed exercise/app reports, mirrored
+  // from the phone so the MCP server can read the complaint backlog.
+  {
+    name: 'exerciseReports'
+    partitionKeyPath: '/id'
+  }
   // MCP write path (issue #88): durable operations drained by the phone.
   // Deliberately separate from the snapshot-reconciled containers.
   {

@@ -1,31 +1,117 @@
-# HANDOFF — Finish reliability (Phase 1)
+# HANDOFF — Exercise reports (#135), ready to install
 
-Updated 2026-08-07. The usability sprint's 6 commits are **pushed**. Phase 1 of
-`WORKOUT_RELIABILITY_AND_TEMPLATE_PLAN.md` is on `fix/finish-reliability`.
+Updated 2026-08-18, end of evening session. Branch **`feat/exercise-reports`**,
+two commits, **not pushed**, branched off `docs/fix-stale-build-recipes`.
 
-## The test baseline — read this before judging any run
+## Do this first in the morning
 
-**`xcodebuild test` exits 0 on `fix/finish-reliability`:** 681 Swift Testing
-(671 + 10 new), zero XCUITest failures, on iPhone 13 Pro Max / iOS 26.5.
+1. **Decide the version number** (see "The version bump is unresolved" below) —
+   this is the one thing I could not settle without you.
+2. Install to the phone. The interesting part is not the feature, it is the
+   **V2→V3 schema migration against your real data**. A new `@Model` is exactly
+   the change that has crashed on-device before. The migration is additive and
+   lightweight, and the simulator's empty store proves nothing about it.
+3. If the migration is fine, file a report from a real exercise mid-workout and
+   check it survives a sync. Full end-to-end needs the Azure deploy below.
 
-The previous note that "a non-zero exit is now a real regression" was **wrong
-for the first ~10 days of any month**, and cost a full investigation on
-2026-08-07. `calendarHeatmap` seeded workouts at `today - 10 days` while
-`CalendarViewModel.loadMonth()` fetches only the *current* month, so the light
-workout fell into the previous month and vanished. The 2026-07-29 green run
-happened on the 29th, which is why nobody saw it. Fixed in #131; the fixture is
-now anchored to fixed days of the current month.
+## What landed
 
-With that fixed the claim finally holds: **a non-zero exit is a real
-regression.** The other traps still apply: never pipe `xcodebuild` through
-`tail` without `set -o pipefail` (a background wrapper reported "exit code 0"
-while xcodebuild had returned 65), and XCUITest failures print
-`Test Case '-[...]' failed`, not Swift Testing's `✘`.
+**#135 — in-workout exercise reports.** A flag in the exercise card's overflow
+menu, in the active-workout toolbar, and in exercise detail. Pick a category
+chip, type a sentence, Send. Everything else — `exerciseExternalId`, workout,
+template, the set state at that moment, app and iOS version — is captured, not
+asked for. Reports mirror to Cosmos with the rest of the snapshot and are
+readable over MCP as `list_exercise_reports`, closed out with
+`resolve_exercise_report`.
 
-**Device runs need the phone unlocked.** A locked screen produces
-`Waiting for the destination to become ready` and `** BUILD INTERRUPTED **`
-before the build even starts — it looks like a toolchain problem and isn't.
-The full device UI suite takes over 10 minutes; run it in the background.
+The design decision worth remembering: **there is no target picker.** Context is
+something the app knows, not something you choose in a gym. The category chip is
+the only input, and it tells the reader which captured context matters.
+
+**#104 — custom exercises were never pushed.** `Exercise` is the one mirrored
+type with no per-record `syncStatus`, so `hasPendingChanges` could not see it; a
+custom exercise sat unpushed until some unrelated change triggered a snapshot.
+Now signalled from the repository. The durable marker also became a pair of
+generation counters, because the old boolean was cleared unconditionally after
+the network await — a create landing mid-request was absent from the payload
+*and* had its only signal wiped.
+
+**#94** constant-time API key compare. **#93** the three force-unwrapped
+`Calendar.date` calls.
+
+## The version bump is unresolved — your call
+
+Memory says the convention is 3-part semver from 1.1.0, bumped in six pbxproj
+spots before every device install. **The repo does not match that.**
+`generate_project.py` hardcodes `MARKETING_VERSION = '1.0'` and
+`CURRENT_PROJECT_VERSION = '1'`, and it *regenerates* `project.pbxproj` — so any
+bump made directly in the pbxproj is wiped the next time a file is added and the
+generator runs (which happened several times tonight). Either the convention
+lapsed, or bumps were being made in a file that does not survive.
+
+I did not guess a number: I cannot see what is installed on the phone, and
+picking 1.1.0 could be a *downgrade*. Decide the number, then change it in
+**`generate_project.py`** (not the pbxproj) so it survives regeneration.
+
+## Azure deploy is required for the MCP half
+
+The app half works offline. The MCP half does not, until:
+
+- **Bicep** — new Cosmos container `exerciseReports` (`infra/modules/cosmos.bicep`)
+- **Functions** — new `GET /api/reports`, plus snapshot v3 and the new inbox op
+- **MCP server** — `npm run build` in `infra/mcp` for the two new tools
+
+Until the container exists, a v3 push will report a failure for that collection
+and the client will keep retrying — it will not corrupt anything.
+
+Wire contract v3 **accepts v2 pushes on purpose**: the server deploys
+independently of the app, and a phone still on the old build knows nothing about
+reports. Reading its push as "there are no reports" would delete the whole
+backlog. Absent from the contract means untouched, not empty. So deploy order
+does not matter.
+
+## Test state — and a correction to the previous baseline claim
+
+| Suite | Result |
+|---|---|
+| Swift unit (`-only-testing:ClaudeLifterTests`) | **717 tests, 94 suites, exit 0** |
+| Azure Functions (jest) | **172 pass** |
+| MCP server (vitest) | **60 pass** |
+| XCUITest | **flaky — see below** |
+
+**The previous handoff's claim that "a non-zero exit is a real regression" does
+not hold for the UI suite tonight.** Three runs on this machine:
+
+- Full suite, my tree: 8 UI failures
+- 15-test subset, **unmodified HEAD**: 1 failure (`testLongExerciseNameDoesNotBreakLayout`)
+- Same subset, my tree: 2 failures — and `testLongExerciseNameDoesNotBreakLayout` **passed**
+
+The failing sets do not overlap across runs on either tree, and most failures are
+`Failed to synthesize event: Neither element nor any descendant has keyboard
+focus`. That is flakiness in this environment, not a regression from these
+commits. **Do not treat a UI-suite failure as a regression without running the
+same subset against a clean worktree** — that comparison is what settled it, and
+it takes about five minutes.
+
+The unit suite remains a hard gate: it is deterministic and green.
+
+## Notes for whoever picks this up
+
+- **Schema V3 is taken.** #110 (nutrition) planned to use V3 and now needs V4
+  plus its own `MigrationStage`. I commented on the issue.
+- The wire/model field is `detail`, not `body` as issue #135 wrote it — `body`
+  reads badly next to SwiftUI's `View.body`.
+- `ReportStatus.acknowledged` deliberately counts as **open**. Acknowledged work
+  is still outstanding; only `.resolved` leaves the backlog, in the repository,
+  the Home count, and the server's default query.
+- Reports can be resolved from the app (swipe on the Reports list) as well as
+  over MCP. A backlog you can only clear from another device is one you stop
+  trusting.
+- **#127 is not superseded by this.** That is the heavy evidence path — sealed
+  local diagnostic bundles, depends on #126. This is the lightweight synced
+  channel. They meet at `.bug`: a report could later carry a #127 bundle ID.
+
+## Older material, still true
 
 **`app.keyboards` is empty on Evan's iPhone even with the keyboard onscreen.**
 Resolved 2026-08-07; four `KeyboardDismissalTests` had been failing on device
@@ -128,22 +214,22 @@ weight. Revisiting this needs an explicit touched/cleared state or a bodyweight
 control — and must be checked against the ChatTools write paths, which bypass
 the ViewModel.
 
-## Open follow-ups from this sprint
+## Open follow-ups
 
 - **#117** — `WorkoutDetailView.swift:135-144` writes `set.weight` directly to
   the model, bypassing the mutation API, so **history edits never sync**; also
   can't clear a value, and parses with non-locale `Double(String)`. Fix this
   before or with #122, which restyles the same row.
-- **#122** — extend the new set-row visual language to History and Home (the
-  Phase 3 that was cut).
+- **#122** — extend the set-row visual language to History and Home.
 - **#120** — Coach `end_workout` can't reach the screen-owned `RestTimerSession`,
   so a Coach-ended workout still chimes and stays onscreen.
 - **#121** — `persistMutation()` is documented as debounced but has no delay or
-  cancellation check.
+  cancellation check. (Untouched tonight — the ordering half was done in Phase 1.)
+- **#132** — `HistoryListView` loads behind `if vm == nil`; the History tab
+  serves a stale list until pull-to-refresh.
 - **#118** Live Activities · **#119** app-wide accessibility.
-- **#86** stays open: only three silent-failure items were taken (insight
-  dismissal, photo attach, exercise save). Keychain, auth comparison, Bicep
-  outputs and stale docs are untouched.
+- **#86** stays open: only three silent-failure items were taken. #94's auth
+  comparison is now done; keychain, Bicep outputs and stale docs are untouched.
 
 ## Gotchas worth keeping
 
@@ -157,3 +243,5 @@ the ViewModel.
   over the device name — CLAUDE.md's string contains a typographic apostrophe
   that a straight quote will not match.
 - Static typechecks are not a test run.
+- The UI suite is flaky on this machine (2026-08-18). Compare against a clean
+  `git worktree` before calling a UI failure a regression.

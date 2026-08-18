@@ -389,3 +389,64 @@ struct ExerciseRepositoryTests {
         }
     }
 }
+
+@Suite("ExerciseRepository — custom-exercise sync trigger (#104)")
+@MainActor
+struct ExerciseRepositoryCustomSyncTriggerTests {
+
+    /// Box because the callback is `@escaping` and the assertion needs to see
+    /// mutations made from inside it.
+    private final class CallCounter {
+        var count = 0
+    }
+
+    private func makeRepository(
+        _ counter: CallCounter
+    ) throws -> (ModelContainer, SwiftDataExerciseRepository) {
+        let container = try makeTestContainer()
+        let repository = SwiftDataExerciseRepository(
+            context: container.mainContext,
+            onCustomExerciseChanged: { counter.count += 1 }
+        )
+        return (container, repository)
+    }
+
+    @Test("Saving a custom exercise signals that a snapshot push is due")
+    func savingCustomExerciseSignals() async throws {
+        let counter = CallCounter()
+        let (container, repository) = try makeRepository(counter)
+
+        try await repository.save(
+            Exercise(name: "Cable Katana Extension", isCustom: true)
+        )
+
+        #expect(counter.count == 1)
+        _ = container
+    }
+
+    @Test("Saving a bundled exercise does not")
+    func savingBundledExerciseDoesNotSignal() async throws {
+        // Bundled exercises are never mirrored, and signalling here would
+        // dirty the phone 800 times during the first-launch import.
+        let counter = CallCounter()
+        let (container, repository) = try makeRepository(counter)
+
+        try await repository.save(Exercise(name: "Bench Press", isCustom: false))
+
+        #expect(counter.count == 0)
+        _ = container
+    }
+
+    @Test("Deleting a custom exercise signals too")
+    func deletingCustomExerciseSignals() async throws {
+        let counter = CallCounter()
+        let (container, repository) = try makeRepository(counter)
+        let exercise = Exercise(name: "Doomed Custom", isCustom: true)
+        try await repository.save(exercise)
+
+        try await repository.delete(exercise)
+
+        #expect(counter.count == 2)
+        _ = container
+    }
+}

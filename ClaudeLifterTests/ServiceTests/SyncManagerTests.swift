@@ -1022,3 +1022,65 @@ struct SyncManagerReportTests {
         #expect(restored.first?.syncStatus == .synced)
     }
 }
+
+@Suite("SyncManager — custom exercises trigger a push (#104)")
+@MainActor
+struct SyncManagerCustomExerciseTriggerTests {
+
+    @Test("A custom exercise created through the UI is enough to trigger a push")
+    func customExerciseTriggersPush() async throws {
+        // Arrange — nothing else is pending, which is exactly the case that
+        // used to leave a custom exercise stranded indefinitely.
+        let env = try SyncTestEnv()
+        let repository = SwiftDataExerciseRepository(
+            context: env.context,
+            onCustomExerciseChanged: { env.settings.markSnapshotDirty() }
+        )
+        try await repository.save(
+            Exercise(name: "Cable Katana Extension", isCustom: true)
+        )
+        env.network.fetchInboxResult = InboxListResponse(operations: [])
+        env.network.pushSnapshotResult = SnapshotPushResponse(
+            revision: 1,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            counts: [:]
+        )
+
+        // Act
+        await env.manager.syncIfNeeded()
+
+        // Assert
+        #expect(env.network.pushSnapshotCallCount == 1)
+        let sent = try #require(env.network.lastSnapshotRequest)
+        #expect(sent.snapshot.customExercises.count == 1)
+        #expect(env.settings.isSnapshotDirty == false)
+    }
+
+    @Test("A custom exercise created mid-push is not silently marked clean")
+    func customExerciseCreatedDuringPushSurvives() async throws {
+        // The main actor is reentrant: pushSnapshot serializes, awaits, then
+        // clears. A create landing inside that await was never in the payload
+        // and used to have its only signal wiped by the clear.
+        let env = try SyncTestEnv()
+        let repository = SwiftDataExerciseRepository(
+            context: env.context,
+            onCustomExerciseChanged: { env.settings.markSnapshotDirty() }
+        )
+        env.settings.markSnapshotDirty()
+        env.network.pushSnapshotResult = SnapshotPushResponse(
+            revision: 1,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            counts: [:]
+        )
+        env.network.onPushSnapshot = {
+            env.settings.markSnapshotDirty()
+        }
+
+        // Act
+        try await env.manager.pushSnapshot()
+
+        // Assert — still dirty, so the next trigger picks the new exercise up.
+        #expect(env.settings.isSnapshotDirty == true)
+        _ = repository
+    }
+}

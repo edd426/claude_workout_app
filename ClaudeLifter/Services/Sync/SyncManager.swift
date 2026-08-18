@@ -149,7 +149,7 @@ final class SyncManager: InboxApprovalManaging {
             if !inbox.operations.isEmpty {
                 let results = await inboxApplier.process(inbox.operations)
                 if results.contains(where: { $0.status == .applied }) {
-                    settings.isSnapshotDirty = true
+                    settings.markSnapshotDirty()
                 }
                 let request = InboxAckRequest(results: results)
                 let response = try await networkService.ackInbox(
@@ -283,7 +283,7 @@ final class SyncManager: InboxApprovalManaging {
                 ? await inboxApplier.approve(operation)
                 : inboxApplier.decline(operation)
             if result.status == .applied {
-                settings.isSnapshotDirty = true
+                settings.markSnapshotDirty()
             }
             let request = InboxAckRequest(results: [result])
             let response = try await networkService.ackInbox(
@@ -323,6 +323,9 @@ final class SyncManager: InboxApprovalManaging {
     /// server revision. On any failure, everything stays `.pending` and the
     /// next trigger retries — the operation is idempotent by design.
     func pushSnapshot() async throws {
+        // Read BEFORE serializing: anything marked dirty from here on did not
+        // make it into this payload and must survive the clear below (#104).
+        let generation = settings.currentSnapshotGeneration()
         let workouts = try await workoutRepository.fetchAll()
         let templates = try await templateRepository.fetchAll()
         let customExercises = try await exerciseRepository.fetchAll().filter(\.isCustom)
@@ -365,7 +368,7 @@ final class SyncManager: InboxApprovalManaging {
         }
 
         recordSuccess(revision: response.revision, serverTime: response.serverTime)
-        settings.isSnapshotDirty = false
+        settings.markSnapshotClean(upTo: generation)
     }
 
     // MARK: - Restore

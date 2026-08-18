@@ -23,8 +23,22 @@ protocol ExerciseRepository {
 final class SwiftDataExerciseRepository: ExerciseRepository {
     private let context: ModelContext
 
-    init(context: ModelContext) {
+    /// Invoked when a CUSTOM exercise is created, updated, or deleted.
+    ///
+    /// `Exercise` is the one mirrored type with no per-record `syncStatus`,
+    /// so `hasPendingChanges` cannot see it and a custom exercise created
+    /// through the UI would sit unpushed until some unrelated workout change
+    /// happened to trigger a snapshot (#104). This callback is that missing
+    /// signal. Bundled exercises are excluded — they are never mirrored, and
+    /// marking on import would dirty the phone 800 times on first launch.
+    private let onCustomExerciseChanged: () -> Void
+
+    init(
+        context: ModelContext,
+        onCustomExerciseChanged: @escaping () -> Void = {}
+    ) {
         self.context = context
+        self.onCustomExerciseChanged = onCustomExerciseChanged
     }
 
     func fetchAll() async throws -> [Exercise] {
@@ -139,12 +153,17 @@ final class SwiftDataExerciseRepository: ExerciseRepository {
     }
 
     func save(_ exercise: Exercise) async throws {
+        let isCustom = exercise.isCustom
         context.insert(exercise)
         try context.save()
+        if isCustom { onCustomExerciseChanged() }
     }
 
     func delete(_ exercise: Exercise) async throws {
+        // Read before the delete — touching a deleted model is undefined.
+        let isCustom = exercise.isCustom
         context.delete(exercise)
         try context.save()
+        if isCustom { onCustomExerciseChanged() }
     }
 }

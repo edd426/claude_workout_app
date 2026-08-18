@@ -47,8 +47,13 @@ final class InsightGenerationService: InsightGenerationServiceProtocol {
     }
 
     func generateInsights() async throws -> [ProactiveInsight] {
-        let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date())!
-        let workouts = try await workoutRepository.fetchByDateRange(from: twoWeeksAgo, to: Date())
+        // Force-unwrap removed (#93): a nil here would crash insight
+        // generation on app open. Two weeks of seconds is an exact fallback —
+        // no DST or calendar subtlety matters for a lookback window.
+        let now = Date()
+        let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: now)
+            ?? now.addingTimeInterval(-14 * 24 * 60 * 60)
+        let workouts = try await workoutRepository.fetchByDateRange(from: twoWeeksAgo, to: now)
 
         let summary = buildWorkoutSummary(workouts)
 

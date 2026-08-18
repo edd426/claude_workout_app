@@ -45,7 +45,12 @@ final class DependencyContainer {
         let chatRepo = SwiftDataChatMessageRepository(context: modelContext)
         let prefRepo = SwiftDataTrainingPreferenceRepository(context: modelContext)
         let insightRepo = SwiftDataInsightRepository(context: modelContext)
-        let exerciseRepo = SwiftDataExerciseRepository(context: modelContext)
+        // Custom exercises have no per-record syncStatus, so their only
+        // "a push is due" signal is this callback (#104).
+        let exerciseRepo = SwiftDataExerciseRepository(
+            context: modelContext,
+            onCustomExerciseChanged: { settings.markSnapshotDirty() }
+        )
         let network = NetworkService(settings: settings)
 
         self.workoutRepository = workoutRepo

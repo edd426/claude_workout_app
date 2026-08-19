@@ -1,60 +1,77 @@
-# HANDOFF — First field feedback triaged (#136–#139)
+# HANDOFF — #136 fixed and ready to install; #137 is next
 
-Updated 2026-08-19 evening. Branch **`feat/exercise-reports`**.
-The #135 report channel is installed, working, and **has already paid for
-itself**: six reports came back from one gym session and four defects are now
-filed. No app code has been changed yet — this handoff is the triage, not a fix.
+Updated 2026-08-19 late evening. Branch **`feat/exercise-reports`**.
+**1.3.0 (build 3) is committed and unreleased — it is not on the phone yet.**
 
 ## Do this first
 
-1. **Restart Claude Code.** `infra/mcp/dist/` was rebuilt this session; the
-   report tools are not in the running server until it re-spawns. Probe:
-   `list_exercise_reports` returns six reports without a manual build first.
-2. Start on **#136** (notes) — it is the only P1 and the only data-integrity
-   item, and the user hit it twice in one session.
+1. **Install 1.3.0 to the phone and do a Lower B.** The Settings footer showing
+   `1.3.0 (3)` is the proof it landed. Nothing about #136 is verified on real
+   hardware yet — it is verified by 722 unit tests and a simulator build only.
+2. On the first Lower B, **add the Seated Leg Curl note by hand**: tap ⋯ →
+   *Add a note…* → `Ankle 4; Seat 4; Pivot 1` (recovered from the 2026-08-12
+   session). It should then appear on every future workout containing that
+   exercise. That is the acceptance probe for #136.
+3. Then **#137** — and read "The trap waiting in #137" below before touching it.
 
-## What happened
+## What #136 turned out to be
 
-The first real workout on 1.2.0 (build 2) — Lower B, 2026-08-19 — produced six
-reports through the #135 channel. All six are still `open` in the backlog.
+The issue's own proposed fix would not have worked, and the data is what
+settled it. Copying `TemplateExercise.notes` into the session is correct but
+inert here: **the Lower B template has no notes on any exercise.** The
+`"Ankle 4; Seat 4; Pivot 1"` note lived on the *2026-08-12 session*, and
+nothing in the app writes `WorkoutExercise.notes` — only `SyncMapper` and the
+MCP inbox do. It arrived from outside and died with that session. 08-05 had
+none; 08-19 had none.
 
-| Time | Category | Report | Outcome |
+So a session-scoped note typed at the machine would have vanished again the
+following week and produced the same report.
+
+**The note now lives on the library `Exercise`.** It describes the machine, so
+it follows the exercise into every workout whichever template that workout came
+from. Evan's words: *"if I make a new workout with the same exercise, I want the
+same note to appear with it."*
+
+- inline on `ExerciseCardView` — a note behind a tap is not read mid-set
+- edited from a **sheet**, deliberately not inline: the workout screen owns one
+  `@FocusState` keyed on `SetEntryFieldID` with a weight/reps accessory bar, and
+  a free-text field in that hierarchy would have to join or fight it
+- read-only section on `ExerciseDetailView`
+- the template→session copy is **kept** — a template note is a per-plan cue, a
+  different thing, and renders as its own line
+- `ActiveWorkoutViewModel` gained an optional `exerciseRepository`; all three
+  inits and all four construction sites pass it. **If it is nil the note is
+  written to the model and never saved** — that is the failure mode to look for
+  if a note does not stick.
+
+### The hole this leaves — #140
+
+The note is *also* stamped onto `WorkoutExercise.notes`, on purpose. Bundled
+exercises are excluded from sync (`SyncManager:331`, `:405`) **and** from backup
+(`BackupService:7-8`), so the library note is **device-local**: lost on
+reinstall, not restored by a backup restore, invisible to the Coach and MCP.
+The workout record is the copy that travels. #140 covers carrying user data on
+bundled exercises properly, and it is a `schemaVersion` 4 change — so
+**deploy the Functions app before installing that client** (see below).
+
+## Report backlog state
+
+Reports `CD42B832` (04:16) and `5B380FF1` (Seated Leg Curl) are now
+**acknowledged**, not resolved — the fix exists but is not on the phone.
+Acknowledged still counts as open. Resolve them after the install confirms it.
+
+The other four remain untouched and open:
+
+| Time | Category | Report | Where it goes |
 |---|---|---|---|
-| 04:16 | bug | "What happened to the notes section on the exercises?" | **#136** |
-| 04:46 | bug | Seated Leg Curl notes gone — "3 settings for this machine" | **#136** |
 | 04:49 | formOrSetup | Split squat 10→8 reps | preference, not a defect |
-| 04:54 | swapRequest | Ab Rollout → Machine Ab Crunch; "added it to the template and it didn't stick" | evidence on **#129/#130** |
-| 04:56 | other | Want photo upload on reports | **not filed** — see below |
-| 04:59 | other | Reps should auto-fill, not need ghost-text confirmation | **#137** |
+| 04:54 | swapRequest | Ab Rollout → Machine Ab Crunch | evidence on **#129/#130** |
+| 04:56 | other | Photo upload on reports | **not filed** — ask first |
+| 04:59 | other | Reps should auto-fill | **#137** |
 
-## The finding that matters most — #136
-
-Two independent defects produce one symptom, and the machine settings vanish
-exactly where they are needed: standing at the machine, mid-set.
-
-1. **`startFromTemplate` never copies `TemplateExercise.notes`.**
-   `ActiveWorkoutViewModel.swift:247` passes `order` / `exercise` /
-   `restSeconds` and nothing else.
-2. **No UI renders or edits per-exercise notes during a workout.**
-   `ExerciseCardView.swift` has zero references to notes.
-
-**Both are older than 1.2.0** — `git log -S"notes: templateExercise.notes"` and
-`git log -S"notes" -- …/ExerciseCardView.swift` are each empty, so neither line
-ever existed. Do not go looking for the commit that broke it; there isn't one.
-What changed is that the notes were previously arriving by another path (sync
-inbound / MCP inbox — `InboxApplier.swift:339` is the only writer of template
-notes) and no longer reach the session.
-
-The data settles that the user's memory is right, not nostalgic:
-
-- Lower B **2026-08-12** (`DCC20C31-…`): Trap Bar Deadlift `"Grip bar is down."`,
-  Seated Leg Curl `"Ankle 4; Seat 4; Pivot 1"` ← literally the "3 settings"
-- Lower B **2026-08-19** (`5743E0DD-…`): no notes on any exercise
-- **Upper A** template carries per-exercise notes on 7 of 9; **Lower B**
-  template has none — which is exactly why "other workouts have a notes section"
-
-`SyncMapper` maps the field faithfully in both directions
-(`:33` out, `:176` in), so this is a start-path and UI gap, never a sync bug.
+The 04:54 report is now corroborated: both the 08-05 and 08-12 Lower B sessions
+contain **Ab Crunch Machine at order 4**, and the template still does not. He
+has added it twice and it has never stuck. That is #129/#130's whole case.
 
 ## The trap waiting in #137
 
@@ -69,13 +86,10 @@ distinct states, and the red test must cover the bodyweight case first.
 
 `list_exercise_reports` shipped in `infra/mcp/src/` with commit `4d41c20`, but
 the MCP client runs `dist/src/server.js`, and `dist/` was a **stale build from
-before that commit** — no `reports.js`, tools absent from the advertised list.
-The feature looked shipped in the repo and did not exist in practice.
-
-Fixed with `npm run build` (exit 0). The general hazard is unfixed: nothing
-ties the running server to the committed source. This is the MCP-side analogue
-of the `generate_project.py` versioning trap already in CLAUDE.md — a build
-artifact whose staleness is invisible.
+before that commit**. The feature looked shipped in the repo and did not exist
+in practice. Fixed with `npm run build`; **verified this session** — a restarted
+client returned all six reports with no manual build. The general hazard is
+unfixed: nothing ties the running server to the committed source.
 
 ## Open question, not a conclusion — #139
 
@@ -87,13 +101,12 @@ would silently no-op if `completionState` could be `.finished` on a workout
 whose `completedAt` was never persisted.
 
 Same session, unexplained: set timestamps are not monotonic with exercise order,
-and two pairs are 0.68s and 5.9s apart — not real rest periods. Either the user
-caught up at the end, or completing one set stamps its siblings. **Unresolved.**
+and two pairs are 0.68s and 5.9s apart — not real rest periods. **Unresolved.**
 
 ## Deliberately not filed
 
-The two feature requests from the same session are real but are not regressions,
-and filing them was not what was asked:
+Both are real, both are feature requests rather than regressions, and filing
+them was not what was asked. **Ask before filing.**
 
 - **Photo upload on reports** (04:56) — would let the coach judge whether a
   machine matches the exercise description. Note it argues for *creating* a
@@ -101,14 +114,11 @@ and filing them was not what was asked:
 - **Search the exercise library from the report sheet** (inside the 04:54
   report) — the user could not name the replacement he wanted.
 
-Both are worth issues. Ask before filing.
-
 ## State of the tree
 
-No app code modified this session. The only change is
-`infra/mcp/dist/` (rebuilt, and `dist/` is generated — check whether it is
-tracked before committing). Branch `feat/exercise-reports` is otherwise as the
-previous handoff left it.
+Branch `feat/exercise-reports`, three commits ahead of where the triage left it:
+`14a3a6d` (triage recorded), `2b729e4` (#136 fix + version bump to 1.3.0/3).
+Unpushed. `infra/mcp/dist/` is rebuilt and untracked.
 
 ---
 
@@ -135,7 +145,7 @@ wire version.** The same trap is waiting for whoever bumps it to v4.
 
 | Suite | Result |
 |---|---|
-| Swift unit (`-only-testing:ClaudeLifterTests`) | **717 tests, 94 suites, exit 0** |
+| Swift unit (`-only-testing:ClaudeLifterTests`) | **722 tests, 94 suites, exit 0** (2026-08-19, with #136) |
 | Azure Functions (jest) | **172 pass** |
 | MCP server (vitest) | **60 pass** |
 | XCUITest | **flaky — see below** |

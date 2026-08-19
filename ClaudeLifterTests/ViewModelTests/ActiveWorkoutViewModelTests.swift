@@ -1421,4 +1421,152 @@ extension ActiveWorkoutViewModelTests {
         await vm.awaitPendingSave()
         withExtendedLifetime(container) {}
     }
+
+    // MARK: - Per-exercise notes (#136)
+    //
+    // The machine settings ("Ankle 4; Seat 4; Pivot 1") live on
+    // TemplateExercise.notes and were never copied into the session, so they
+    // vanished exactly where they are needed — standing at the machine.
+
+    @Test("startFromTemplate copies per-exercise notes into the session")
+    func startFromTemplateCopiesNotes() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 1,
+            defaultReps: 8,
+            defaultWeight: 60,
+            notes: "Ankle 4; Seat 4; Pivot 1"
+        )
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        let we = try #require(vm.workout?.exercises.first)
+        #expect(we.notes == "Ankle 4; Seat 4; Pivot 1")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("startFromTemplate leaves notes nil when the template has none")
+    func startFromTemplateLeavesNotesNilWhenAbsent() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        #expect(vm.workout?.exercises.first?.notes == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("updateExerciseNotes writes the note onto the exercise, not the session")
+    func updateExerciseNotesWritesToExercise() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let exerciseRepo = MockExerciseRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            exerciseRepository: exerciseRepo
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+
+        await vm.updateExerciseNotes(we, notes: "Ankle 4; Seat 4; Pivot 1")
+
+        // The note belongs to the machine, so it lands on the library
+        // exercise and every future workout using it inherits it.
+        #expect(exercise.notes == "Ankle 4; Seat 4; Pivot 1")
+        #expect(exerciseRepo.savedExercises.contains { $0.id == exercise.id })
+        // Bundled exercises never sync, so the session copy is the one that
+        // reaches the server and the Coach.
+        #expect(we.notes == "Ankle 4; Seat 4; Pivot 1")
+        #expect(vm.workout?.syncStatus == .pending)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("updateExerciseNotes stores an emptied note as nil, not as empty text")
+    func updateExerciseNotesClearsToNil() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        exercise.notes = "Ankle 4"
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            exerciseRepository: MockExerciseRepository()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+
+        await vm.updateExerciseNotes(we, notes: "   ")
+
+        #expect(exercise.notes == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("updateExerciseNotes after finish still saves — the note is not workout data")
+    func updateExerciseNotesAfterFinishStillSaves() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            exerciseRepository: MockExerciseRepository()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+        vm.completeSet(try #require(we.sets.first))
+        let workout = try #require(vm.workout)
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+        workout.syncStatus = .synced
+
+        await vm.updateExerciseNotes(we, notes: "late note")
+
+        #expect(exercise.notes == "late note")
+        // The finished workout record stays authoritative — the note write
+        // must not re-open it for a draft save (#124).
+        #expect(workout.syncStatus == .synced)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
 }

@@ -50,6 +50,10 @@ final class ActiveWorkoutViewModel {
     private let autoFillService: any AutoFillServiceProtocol
     private let prDetectionService: (any PRDetectionServiceProtocol)?
     private let templateRepository: (any TemplateRepository)?
+    /// Needed to persist per-exercise notes (#136). Optional so existing
+    /// construction sites keep compiling; when nil the note is written to the
+    /// in-memory model but not saved.
+    private let exerciseRepository: (any ExerciseRepository)?
     /// Global user preferences. Optional so existing construction sites keep
     /// compiling; when nil, newly created sets fall back to kg (#83).
     private let settings: SettingsManager?
@@ -127,6 +131,7 @@ final class ActiveWorkoutViewModel {
         template: WorkoutTemplate,
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
+        exerciseRepository: (any ExerciseRepository)? = nil,
         templateRepository: (any TemplateRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
@@ -135,6 +140,7 @@ final class ActiveWorkoutViewModel {
         self.adHocName = nil
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.exerciseRepository = exerciseRepository
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -144,6 +150,7 @@ final class ActiveWorkoutViewModel {
         adHocName: String,
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
+        exerciseRepository: (any ExerciseRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
     ) {
@@ -151,6 +158,7 @@ final class ActiveWorkoutViewModel {
         self.adHocName = adHocName
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.exerciseRepository = exerciseRepository
         self.templateRepository = nil
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -163,6 +171,7 @@ final class ActiveWorkoutViewModel {
         resuming workout: Workout,
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
+        exerciseRepository: (any ExerciseRepository)? = nil,
         templateRepository: (any TemplateRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
@@ -171,6 +180,7 @@ final class ActiveWorkoutViewModel {
         self.adHocName = nil
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.exerciseRepository = exerciseRepository
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -247,6 +257,9 @@ final class ActiveWorkoutViewModel {
             let we = WorkoutExercise(
                 order: templateExercise.order,
                 exercise: exercise,
+                // Machine settings live here — seat/pin/pivot numbers the user
+                // needs standing at the machine. Never copied until #136.
+                notes: templateExercise.notes,
                 restSeconds: templateExercise.defaultRestSeconds
             )
             // Per-set-index auto-fill from the previous session (#82):
@@ -322,6 +335,50 @@ final class ActiveWorkoutViewModel {
         }
         set.weight = weight
         persistMutation()
+    }
+
+    /// Per-exercise notes — machine settings, cues (#136).
+    ///
+    /// The note is written to the **library `Exercise`**, not to the session
+    /// or the template: "Ankle 4; Seat 4; Pivot 1" describes the machine, so
+    /// it must appear in every future workout that uses Seated Leg Curl,
+    /// whichever template that workout came from.
+    ///
+    /// Whitespace-only input clears the note, so an emptied field does not
+    /// leave a blank note rendering as an empty row.
+    ///
+    /// Note this deliberately does not go through `persistMutation()` — the
+    /// workout record is unchanged, so a note edit must not re-stamp its
+    /// `lastModified` or re-open a finished session (#124).
+    func updateExerciseNotes(
+        _ workoutExercise: WorkoutExercise,
+        notes: String?
+    ) async {
+        guard let exercise = workoutExercise.exercise else { return }
+        let trimmed = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        guard exercise.notes != normalized
+            || workoutExercise.notes != normalized else { return }
+
+        exercise.notes = normalized
+
+        // Also stamp the session copy. Two reasons, both real: bundled
+        // exercises are excluded from sync *and* from backup (BackupService
+        // carries only `isCustom`), so the library note is device-local and
+        // invisible to the Coach and MCP — the workout is the copy that
+        // travels. And what settings were used on a given day is genuinely
+        // session data. `persistMutation` handles the sync bookkeeping and
+        // already declines to re-open a finished workout (#124).
+        if workoutExercise.notes != normalized {
+            workoutExercise.notes = normalized
+            persistMutation()
+        }
+
+        do {
+            try await exerciseRepository?.save(exercise)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func updateSetReps(_ set: WorkoutSet, reps: Int?) {

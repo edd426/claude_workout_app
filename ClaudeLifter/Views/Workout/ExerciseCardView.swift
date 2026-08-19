@@ -12,6 +12,10 @@ struct ExerciseCardView: View {
     /// Files a report against this exercise (issue #135). The gym is where
     /// the problem is noticed, so this is the entry point that matters.
     var onReport: (() -> Void)? = nil
+    /// Opens the per-exercise note editor (issue #136). The machine settings
+    /// are needed standing at the machine, so the note is shown inline and the
+    /// editor is one tap from it.
+    var onEditNotes: (() -> Void)? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -22,6 +26,7 @@ struct ExerciseCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             exerciseHeader
+            notesRow
             Divider()
             setEntryRows
             addSetButton
@@ -29,6 +34,82 @@ struct ExerciseCardView: View {
         .padding()
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// The durable note lives on the library `Exercise` — it describes the
+    /// machine, so it follows the exercise into every workout (#136). The
+    /// session note is a separate, rarer thing (template cues, synced data)
+    /// and is shown beneath it rather than hidden.
+    private var exerciseNotes: String? {
+        Self.cleaned(workoutExercise.exercise?.notes)
+    }
+
+    private var sessionNotes: String? {
+        let session = Self.cleaned(workoutExercise.notes)
+        return session == exerciseNotes ? nil : session
+    }
+
+    private static func cleaned(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !value.isEmpty else { return nil }
+        return value
+    }
+
+    /// Shown inline, unconditionally when present — a note behind a tap is a
+    /// note you do not read mid-set, which is the whole of #136.
+    @ViewBuilder
+    private var notesRow: some View {
+        if exerciseNotes != nil || sessionNotes != nil {
+            VStack(alignment: .leading, spacing: 4) {
+                if let exerciseNotes {
+                    noteLine(
+                        exerciseNotes,
+                        systemImage: "note.text",
+                        identifier: "exerciseNotes",
+                        label: "Note"
+                    )
+                }
+                if let sessionNotes {
+                    noteLine(
+                        sessionNotes,
+                        systemImage: "text.bubble",
+                        identifier: "sessionNotes",
+                        label: "Session note"
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func noteLine(
+        _ text: String,
+        systemImage: String,
+        identifier: String,
+        label: String
+    ) -> some View {
+        let content = Label {
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(text)")
+        .accessibilityIdentifier(identifier)
+
+        if let onEditNotes, identifier == "exerciseNotes" {
+            Button(action: onEditNotes) { content }
+                .buttonStyle(.plain)
+                .accessibilityHint("Edit this note")
+        } else {
+            content
+        }
     }
 
     @ViewBuilder
@@ -118,8 +199,19 @@ struct ExerciseCardView: View {
 
     @ViewBuilder
     private var actionsMenu: some View {
-        if onRemoveSet != nil || onReport != nil {
+        if onRemoveSet != nil || onReport != nil || onEditNotes != nil {
             Menu {
+                if let onEditNotes {
+                    Button {
+                        onEditNotes()
+                    } label: {
+                        Label(
+                            exerciseNotes == nil ? "Add a note…" : "Edit note…",
+                            systemImage: "note.text"
+                        )
+                    }
+                    .accessibilityIdentifier("editExerciseNotes")
+                }
                 if let onReport {
                     Button {
                         onReport()

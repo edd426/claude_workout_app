@@ -16,6 +16,7 @@ struct ExerciseDetailView: View {
             List {
                 imageSection
                 photoSection
+                notesSection
                 musclesSection
                 if !exercise.instructions.isEmpty {
                     instructionsSection
@@ -157,6 +158,21 @@ struct ExerciseDetailView: View {
     }
 
     // MARK: - Muscles / instructions / metadata
+
+    /// The note attached to the exercise (#136) — machine settings written at
+    /// the machine during a workout. Read-only here; it is edited where it is
+    /// used, on the workout screen.
+    @ViewBuilder
+    private var notesSection: some View {
+        if let notes = exercise.notes?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !notes.isEmpty {
+            Section("Notes") {
+                Text(notes)
+                    .accessibilityIdentifier("exerciseDetailNotes")
+            }
+        }
+    }
 
     private var musclesSection: some View {
         Section("Muscles") {

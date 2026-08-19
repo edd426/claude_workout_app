@@ -26,8 +26,8 @@ def pbxproj_path(name):
 # features, major for reshapes. The Settings footer shows it, and a bump is the
 # visible confirmation that the new build actually landed on the phone — so
 # bump BOTH before every device install.
-APP_VERSION = '1.2.0'      # was 1.1.0 on device; #135 exercise reports is a feature
-BUILD_NUMBER = '2'
+APP_VERSION = '1.3.0'      # #136 exercise notes: visible and editable at the machine
+BUILD_NUMBER = '3'
 
 # Collect all Swift source files
 def collect_swift_files(root_dir):

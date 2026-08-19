@@ -269,6 +269,7 @@ struct HomeView: View {
             template: template,
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
+            exerciseRepository: deps.exerciseRepository,
             templateRepository: deps.templateRepository,
             prDetectionService: deps.prDetectionService,
             settings: deps.settings
@@ -289,6 +290,7 @@ struct HomeView: View {
             resuming: workout,
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
+            exerciseRepository: deps.exerciseRepository,
             templateRepository: deps.templateRepository,
             prDetectionService: deps.prDetectionService,
             settings: deps.settings
@@ -304,6 +306,7 @@ struct HomeView: View {
             adHocName: "Quick Workout",
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
+            exerciseRepository: deps.exerciseRepository,
             prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )

@@ -326,6 +326,7 @@ final class ChatViewModel {
                     template: template,
                     workoutRepository: self.workoutRepository,
                     autoFillService: autoFillService,
+                    exerciseRepository: self.exerciseRepository,
                     templateRepository: self.templateRepository,
                     prDetectionService: self.prDetectionService,
                     settings: self.settings

@@ -855,6 +855,48 @@ final class ActiveWorkoutViewModel {
                 )
             }
         }
+
+        await detectTemplateChanges(for: workout, summary: summary)
+    }
+
+    /// Compares the finished workout to the plan it started from (#129).
+    ///
+    /// Runs here, after the durable save, for the same reason PR detection
+    /// does: the workout is already safe, so nothing this finds — or fails to
+    /// find — can delay or endanger it. The result lands on the summary, which
+    /// is a reference type precisely so it can be filled in after the sheet is
+    /// already on screen.
+    private func detectTemplateChanges(
+        for workout: Workout,
+        summary: WorkoutCompletionSummary
+    ) async {
+        guard let baselineRepository, let templateRepository else { return }
+        do {
+            guard
+                let baseline = try await baselineRepository.fetchBaseline(
+                    workoutId: workout.id
+                ),
+                let currentTemplate = try await templateRepository.fetch(
+                    id: baseline.templateId
+                )
+            else { return }
+            let entries = try await baselineRepository.fetchEntries(
+                workoutId: workout.id
+            )
+            let changeSet = TemplateChangeDetector().detect(
+                workout: workout,
+                baseline: baseline,
+                entries: entries,
+                template: currentTemplate
+            )
+            // Nil rather than an empty set, so the review card has one simple
+            // condition to test and cannot appear with nothing in it.
+            summary.templateChangeSet = changeSet.isEmpty ? nil : changeSet
+        } catch {
+            postCommitWarnings.append(
+                "Couldn't check for template changes: \(error.localizedDescription)"
+            )
+        }
     }
 
     private func saveWorkout(_ w: Workout) async throws {

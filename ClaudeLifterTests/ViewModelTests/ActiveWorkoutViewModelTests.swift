@@ -1569,4 +1569,153 @@ extension ActiveWorkoutViewModelTests {
         await vm.awaitPendingSave()
         withExtendedLifetime(container) {}
     }
+
+    // MARK: - Reps adoption (#137)
+    //
+    // "It should auto-fill with the previous reps automatically if not
+    // specified." An exercise added mid-workout got three empty sets and the
+    // ghosts were display-only, so sets reached Cosmos with no reps at all.
+    //
+    // Reps only, never weight: `WorkoutSet.weight == nil` already means
+    // bodyweight, so adopting a previous weight logs 80kg for a bodyweight
+    // set. That bug was found and cut once already — see
+    // "Ghost adoption was built and deliberately cut" in HANDOFF.md. A nil
+    // rep count carries no such meaning.
+
+    @Test("Adopting reps never adopts weight — an untouched bodyweight set stays bodyweight")
+    func adoptingRepsLeavesWeightNil() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let workoutRepo = MockWorkoutRepository()
+        let autoFill = MockAutoFillService()
+        // Last time this exercise was loaded: 80kg × 8.
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 80.0, weightUnit: .kg, reps: 8, date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: workoutRepo,
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+
+        vm.addExercise(exercise)
+        await vm.awaitPreviousValuesLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        for set in we.sets {
+            #expect(set.reps == 8, "reps should adopt the previous session")
+            #expect(set.weight == nil, "weight must stay nil — nil means bodyweight")
+        }
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    @Test("An exercise added mid-workout fills its reps from the previous session")
+    func addExerciseAdoptsPreviousReps() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let autoFill = MockAutoFillService()
+        autoFill.valuesByExerciseId[exercise.id] = [
+            AutoFillResult(weight: 30, weightUnit: .kg, reps: 10, date: .now),
+            AutoFillResult(weight: 40, weightUnit: .kg, reps: 9, date: .now),
+            AutoFillResult(weight: 45, weightUnit: .kg, reps: 8, date: .now),
+        ]
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+
+        vm.addExercise(exercise)
+        await vm.awaitPreviousValuesLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        let sorted = we.sets.sorted(by: { $0.order < $1.order })
+        // Per-set-index, the same shape as the template start path (#82).
+        #expect(sorted.map(\.reps) == [10, 9, 8])
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    @Test("Reps the user cleared are not silently re-filled")
+    func clearedRepsAreNotReadopted() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 30, weightUnit: .kg, reps: 10, date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        let we = try #require(vm.workout?.exercises.first)
+        let first = try #require(we.sets.sorted(by: { $0.order < $1.order }).first)
+
+        // Explicitly cleared, before the ghost load lands.
+        vm.updateSetReps(first, reps: nil)
+        await vm.awaitPreviousValuesLoad()
+
+        #expect(first.reps == nil, "an explicit clear is a decision, not an absence")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    @Test("Reps the user entered are never overwritten by adoption")
+    func enteredRepsAreNotOverwritten() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 30, weightUnit: .kg, reps: 10, date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        let we = try #require(vm.workout?.exercises.first)
+        let first = try #require(we.sets.sorted(by: { $0.order < $1.order }).first)
+
+        vm.updateSetReps(first, reps: 3)
+        await vm.awaitPreviousValuesLoad()
+
+        #expect(first.reps == 3)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    @Test("A completed set is never re-filled by adoption")
+    func completedSetIsNotReadopted() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 30, weightUnit: .kg, reps: 10, date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        let we = try #require(vm.workout?.exercises.first)
+        let first = try #require(we.sets.sorted(by: { $0.order < $1.order }).first)
+
+        // Logged as a bodyweight set with no reps recorded — deliberate.
+        vm.completeSet(first)
+        await vm.awaitPreviousValuesLoad()
+
+        #expect(first.reps == nil, "a logged set is a record, not a draft")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
 }

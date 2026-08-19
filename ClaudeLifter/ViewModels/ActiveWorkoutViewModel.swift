@@ -44,6 +44,19 @@ final class ActiveWorkoutViewModel {
     var detectedPRs: [PersonalRecord] = []
     private(set) var previousValues: [UUID: AutoFillResult] = [:]
 
+    /// Set IDs whose reps field the user has decided about — typed a value or
+    /// deliberately cleared it (#137). This is the third state that makes
+    /// adoption safe: *unset* (adopt the previous session), *decided-empty*
+    /// (persist nil), *entered* (leave alone). Without it, "not filled in yet"
+    /// and "I mean blank" are the same nil and adoption overwrites intent.
+    ///
+    /// Transient by design. It is lost across a crash/resume, where the
+    /// conservative outcome is that an untouched empty set gets its previous
+    /// reps back — harmless, because nil reps on an unlogged set carry no
+    /// meaning. The same reasoning does NOT hold for weight, which is why
+    /// weight is never adopted.
+    private var repsDecidedByUser: Set<UUID> = []
+
     private let template: WorkoutTemplate?
     private let adHocName: String?
     private let workoutRepository: any WorkoutRepository
@@ -382,6 +395,9 @@ final class ActiveWorkoutViewModel {
     }
 
     func updateSetReps(_ set: WorkoutSet, reps: Int?) {
+        // Recorded even when the value is unchanged: clearing a field that is
+        // already nil is still the user saying "blank is what I meant" (#137).
+        repsDecidedByUser.insert(set.id)
         guard set.reps != reps else { return }
         set.reps = reps
         persistMutation()
@@ -521,6 +537,7 @@ final class ActiveWorkoutViewModel {
             excludingWorkoutId: workout?.id
         )) ?? []
 
+        var didAdopt = false
         for (index, set) in sortedSets.enumerated() {
             guard let previous = previousValue(
                 at: index,
@@ -530,7 +547,33 @@ final class ActiveWorkoutViewModel {
                 continue
             }
             previousValues[set.id] = previous
+            if adoptPreviousReps(into: set, from: previous) {
+                didAdopt = true
+            }
         }
+        if didAdopt {
+            persistMutation()
+        }
+    }
+
+    /// Writes the previous session's reps into a set the user has not decided
+    /// about yet (#137). Returns whether anything changed.
+    ///
+    /// Reps only. `WorkoutSet.weight == nil` already means bodyweight, so
+    /// adopting a previous weight would log 80kg for a bodyweight set — the
+    /// exact data-corruption bug that got ghost adoption cut the first time.
+    /// A nil rep count has no such second meaning.
+    @discardableResult
+    private func adoptPreviousReps(
+        into set: WorkoutSet,
+        from previous: AutoFillResult
+    ) -> Bool {
+        // A logged set is a record, not a draft.
+        guard !set.isCompleted else { return false }
+        guard !repsDecidedByUser.contains(set.id) else { return false }
+        guard set.reps == nil, let reps = previous.reps else { return false }
+        set.reps = reps
+        return true
     }
 
     private func queuePreviousValuesLoad(for workoutExercise: WorkoutExercise) {

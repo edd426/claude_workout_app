@@ -1,17 +1,16 @@
 # HANDOFF — Exercise reports (#135), ready to install
 
-Updated 2026-08-18, end of evening session. Branch **`feat/exercise-reports`**,
-two commits, **not pushed**, branched off `docs/fix-stale-build-recipes`.
+Updated 2026-08-19. Branch **`feat/exercise-reports`**, four commits,
+**not pushed**, branched off `docs/fix-stale-build-recipes`.
 
 ## Do this first in the morning
 
-1. **Decide the version number** (see "The version bump is unresolved" below) —
-   this is the one thing I could not settle without you.
-2. Install to the phone. The interesting part is not the feature, it is the
+1. Install to the phone — version is set to **1.2.0 (build 2)**. The interesting
+   part is not the feature, it is the
    **V2→V3 schema migration against your real data**. A new `@Model` is exactly
    the change that has crashed on-device before. The migration is additive and
    lightweight, and the simulator's empty store proves nothing about it.
-3. If the migration is fine, file a report from a real exercise mid-workout and
+2. If the migration is fine, file a report from a real exercise mid-workout and
    check it survives a sync. Full end-to-end needs the Azure deploy below.
 
 ## What landed
@@ -39,19 +38,15 @@ the network await — a create landing mid-request was absent from the payload
 **#94** constant-time API key compare. **#93** the three force-unwrapped
 `Calendar.date` calls.
 
-## The version bump is unresolved — your call
+## Version: 1.2.0 (build 2)
 
-Memory says the convention is 3-part semver from 1.1.0, bumped in six pbxproj
-spots before every device install. **The repo does not match that.**
-`generate_project.py` hardcodes `MARKETING_VERSION = '1.0'` and
-`CURRENT_PROJECT_VERSION = '1'`, and it *regenerates* `project.pbxproj` — so any
-bump made directly in the pbxproj is wiped the next time a file is added and the
-generator runs (which happened several times tonight). Either the convention
-lapsed, or bumps were being made in a file that does not survive.
+Settled 2026-08-19 — the phone was on 1.1.0, and #135 is a feature, so minor.
 
-I did not guess a number: I cannot see what is installed on the phone, and
-picking 1.1.0 could be a *downgrade*. Decide the number, then change it in
-**`generate_project.py`** (not the pbxproj) so it survives regeneration.
+`generate_project.py` now owns it: `APP_VERSION` and `BUILD_NUMBER` at the top,
+referenced by all three targets. **Never bump `project.pbxproj` directly** — the
+generator rewrites that file whenever a Swift file is added, silently discarding
+the bump. That is why the repo had drifted back to `1.0` despite the convention.
+Now recorded in CLAUDE.md's Key Conventions, which is always read.
 
 ## Azure deploy is required for the MCP half
 

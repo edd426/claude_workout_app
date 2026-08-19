@@ -271,6 +271,7 @@ struct HomeView: View {
             autoFillService: deps.autoFillService,
             exerciseRepository: deps.exerciseRepository,
             templateRepository: deps.templateRepository,
+            baselineRepository: deps.baselineRepository,
             prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )
@@ -292,6 +293,7 @@ struct HomeView: View {
             autoFillService: deps.autoFillService,
             exerciseRepository: deps.exerciseRepository,
             templateRepository: deps.templateRepository,
+            baselineRepository: deps.baselineRepository,
             prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )

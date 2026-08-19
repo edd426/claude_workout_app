@@ -6,6 +6,7 @@ import SwiftUI
 final class DependencyContainer {
     let workoutRepository: any WorkoutRepository
     let templateRepository: any TemplateRepository
+    let baselineRepository: any TemplateBaselineRepository
     let exerciseRepository: any ExerciseRepository
     let chatRepository: any ChatMessageRepository
     let preferenceRepository: any TrainingPreferenceRepository
@@ -42,6 +43,7 @@ final class DependencyContainer {
 
         let workoutRepo = SwiftDataWorkoutRepository(context: modelContext)
         let templateRepo = SwiftDataTemplateRepository(context: modelContext)
+        let baselineRepo = SwiftDataTemplateBaselineRepository(context: modelContext)
         let chatRepo = SwiftDataChatMessageRepository(context: modelContext)
         let prefRepo = SwiftDataTrainingPreferenceRepository(context: modelContext)
         let insightRepo = SwiftDataInsightRepository(context: modelContext)
@@ -55,6 +57,7 @@ final class DependencyContainer {
 
         self.workoutRepository = workoutRepo
         self.templateRepository = templateRepo
+        self.baselineRepository = baselineRepo
         self.exerciseRepository = exerciseRepo
         self.chatRepository = chatRepo
         self.preferenceRepository = prefRepo

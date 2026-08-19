@@ -1784,4 +1784,136 @@ extension ActiveWorkoutViewModelTests {
         await vm.awaitPendingSave()
         withExtendedLifetime(container) {}
     }
+
+    // MARK: - Template provenance (#128)
+    //
+    // The plan the workout started from, frozen before the user touches
+    // anything. Without it a finished workout cannot be compared to what was
+    // intended: mutations erase the evidence, and the logged values say nothing
+    // about intent because auto-fill pre-populates them from history.
+
+    @Test("Starting from a template captures the plan as a baseline")
+    func startFromTemplateCapturesBaseline() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        exercise.externalId = "Split_Squat_with_Dumbbells"
+        let te = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 2,
+            defaultReps: 8,
+            defaultWeight: 12,
+            defaultRestSeconds: 120,
+            notes: "Rear foot on the bench"
+        )
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let baselineRepo = MockTemplateBaselineRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: baselineRepo
+        )
+        await vm.startWorkout()
+
+        let workout = try #require(vm.workout)
+        let baseline = try #require(baselineRepo.baselines.first)
+        #expect(baseline.workoutId == workout.id)
+        #expect(baseline.templateId == template.id)
+        #expect(baseline.templateRevision == template.lastModified)
+        #expect(baseline.templateName == "Push Day")
+
+        let entries = try await baselineRepo.fetchEntries(workoutId: workout.id)
+        #expect(entries.count == 1)
+        let entry = try #require(entries.first)
+        #expect(entry.sourceTemplateExerciseId == te.id)
+        #expect(entry.plannedOrder == 0)
+        #expect(entry.plannedSets == 2)
+        #expect(entry.plannedReps == 8)
+        #expect(entry.plannedRestSeconds == 120)
+        #expect(entry.plannedNotes == "Rear foot on the bench")
+        #expect(entry.exerciseExternalId == "Split_Squat_with_Dumbbells")
+        #expect(entry.workoutExerciseId == workout.exercises.first?.id)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An ad-hoc workout captures no baseline — there was no plan")
+    func adHocWorkoutCapturesNoBaseline() async throws {
+        let container = try makeTestContainer()
+        let baselineRepo = MockTemplateBaselineRepository()
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: baselineRepo
+        )
+        await vm.startWorkout()
+
+        #expect(baselineRepo.baselines.isEmpty)
+        #expect(baselineRepo.saveCallCount == 0)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An exercise added mid-workout gets no baseline entry — that absence is the signal")
+    func midWorkoutAdditionHasNoBaselineEntry() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        let added = TestFixtures.makeExercise(name: "Ab Crunch Machine")
+        context.insert(added)
+        try context.save()
+
+        let baselineRepo = MockTemplateBaselineRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: baselineRepo
+        )
+        await vm.startWorkout()
+        let workout = try #require(vm.workout)
+
+        vm.addExercise(added)
+
+        let entries = try await baselineRepo.fetchEntries(workoutId: workout.id)
+        #expect(entries.count == 1, "the baseline is frozen at start and never grows")
+        #expect(entries.first?.exerciseId == exercise.id)
+        #expect(workout.exercises.count == 2)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("A failing baseline write does not stop the workout starting")
+    func baselineFailureDoesNotBlockStart() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let baselineRepo = MockTemplateBaselineRepository()
+        baselineRepo.errorToThrow = NSError(domain: "test", code: 128)
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: baselineRepo
+        )
+        await vm.startWorkout()
+
+        // Provenance is a nicety; being able to train is not. Losing the
+        // baseline costs a post-workout suggestion, nothing more.
+        #expect(vm.workout != nil)
+        #expect(vm.workout?.exercises.count == 1)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
 }

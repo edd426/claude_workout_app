@@ -67,6 +67,11 @@ final class ActiveWorkoutViewModel {
     /// construction sites keep compiling; when nil the note is written to the
     /// in-memory model but not saved.
     private let exerciseRepository: (any ExerciseRepository)?
+    /// Records the template plan a workout started from (#128). Optional so
+    /// existing construction sites keep compiling; when nil, provenance is
+    /// simply not captured and post-workout reconciliation has nothing to
+    /// offer — the workout itself is unaffected.
+    private let baselineRepository: (any TemplateBaselineRepository)?
     /// Global user preferences. Optional so existing construction sites keep
     /// compiling; when nil, newly created sets fall back to kg (#83).
     private let settings: SettingsManager?
@@ -146,6 +151,7 @@ final class ActiveWorkoutViewModel {
         autoFillService: any AutoFillServiceProtocol,
         exerciseRepository: (any ExerciseRepository)? = nil,
         templateRepository: (any TemplateRepository)? = nil,
+        baselineRepository: (any TemplateBaselineRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
     ) {
@@ -154,6 +160,7 @@ final class ActiveWorkoutViewModel {
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
         self.exerciseRepository = exerciseRepository
+        self.baselineRepository = baselineRepository
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -164,6 +171,7 @@ final class ActiveWorkoutViewModel {
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
         exerciseRepository: (any ExerciseRepository)? = nil,
+        baselineRepository: (any TemplateBaselineRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
     ) {
@@ -172,6 +180,7 @@ final class ActiveWorkoutViewModel {
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
         self.exerciseRepository = exerciseRepository
+        self.baselineRepository = baselineRepository
         self.templateRepository = nil
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -186,6 +195,7 @@ final class ActiveWorkoutViewModel {
         autoFillService: any AutoFillServiceProtocol,
         exerciseRepository: (any ExerciseRepository)? = nil,
         templateRepository: (any TemplateRepository)? = nil,
+        baselineRepository: (any TemplateBaselineRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
     ) {
@@ -194,6 +204,7 @@ final class ActiveWorkoutViewModel {
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
         self.exerciseRepository = exerciseRepository
+        self.baselineRepository = baselineRepository
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -265,6 +276,11 @@ final class ActiveWorkoutViewModel {
             startedAt: .now,
             templateId: template.id
         )
+        // Pairs each planned exercise with the session exercise created from
+        // it, so the baseline can be linked without a stored property on
+        // WorkoutExercise — which would change every VersionedSchema's
+        // checksum. See the note on ClaudeLifterSchemaV4.
+        var workoutExerciseIdByTemplateExerciseId: [UUID: UUID] = [:]
         for templateExercise in template.exercises.sorted(by: { $0.order < $1.order }) {
             guard let exercise = templateExercise.exercise else { continue }
             let we = WorkoutExercise(
@@ -300,13 +316,64 @@ final class ActiveWorkoutViewModel {
                 }
             }
             newWorkout.exercises.append(we)
+            workoutExerciseIdByTemplateExerciseId[templateExercise.id] = we.id
         }
         do {
             try await saveWorkout(newWorkout)
             workout = newWorkout
             didLoadInitialPreviousValues = true
+            await captureBaseline(
+                for: newWorkout,
+                from: template,
+                workoutExerciseIds: workoutExerciseIdByTemplateExerciseId
+            )
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Freezes the template plan this workout started from (#128).
+    ///
+    /// Written once, after the workout is saved, and never updated — an
+    /// exercise added later deliberately has no entry, and that absence is how
+    /// #129 tells a genuine addition from a planned one.
+    ///
+    /// A failure here is swallowed on purpose. Provenance buys a post-workout
+    /// suggestion; being able to train is not worth risking for it.
+    private func captureBaseline(
+        for workout: Workout,
+        from template: WorkoutTemplate,
+        workoutExerciseIds: [UUID: UUID]
+    ) async {
+        guard let baselineRepository else { return }
+        let baseline = WorkoutTemplateBaseline(
+            workoutId: workout.id,
+            templateId: template.id,
+            templateRevision: template.lastModified,
+            templateName: template.name
+        )
+        let entries = template.exercises
+            .sorted(by: { $0.order < $1.order })
+            .compactMap { te -> WorkoutExerciseBaseline? in
+                guard let exercise = te.exercise else { return nil }
+                return WorkoutExerciseBaseline(
+                    workoutId: workout.id,
+                    workoutExerciseId: workoutExerciseIds[te.id],
+                    sourceTemplateExerciseId: te.id,
+                    exerciseId: exercise.id,
+                    exerciseExternalId: exercise.externalId,
+                    exerciseName: exercise.name,
+                    plannedOrder: te.order,
+                    plannedSets: te.defaultSets,
+                    plannedReps: te.defaultReps,
+                    plannedRestSeconds: te.defaultRestSeconds,
+                    plannedNotes: te.notes
+                )
+            }
+        do {
+            try await baselineRepository.save(baseline, entries: entries)
+        } catch {
+            print("⚠️ captureBaseline failed: \(error)")
         }
     }
 

@@ -1,18 +1,24 @@
-# HANDOFF — #136 fixed and ready to install; #137 is next
+# HANDOFF — #136 and #137 fixed, unreleased; install is the next step
 
 Updated 2026-08-19 late evening. Branch **`feat/exercise-reports`**.
-**1.3.0 (build 3) is committed and unreleased — it is not on the phone yet.**
+**1.3.0 (build 4) is committed and unreleased — it is not on the phone yet.**
+Both gym-feedback fixes are in this one build; build 3 was never installed.
 
 ## Do this first
 
-1. **Install 1.3.0 to the phone and do a Lower B.** The Settings footer showing
-   `1.3.0 (3)` is the proof it landed. Nothing about #136 is verified on real
-   hardware yet — it is verified by 722 unit tests and a simulator build only.
-2. On the first Lower B, **add the Seated Leg Curl note by hand**: tap ⋯ →
-   *Add a note…* → `Ankle 4; Seat 4; Pivot 1` (recovered from the 2026-08-12
-   session). It should then appear on every future workout containing that
-   exercise. That is the acceptance probe for #136.
-3. Then **#137** — and read "The trap waiting in #137" below before touching it.
+1. **Install 1.3.0 (4) and do a Lower B.** The Settings footer showing
+   `1.3.0 (4)` is the proof it landed. Neither fix is verified on real hardware
+   — only by 727 unit tests and a simulator build.
+2. **#136 probe** — on Seated Leg Curl, tap ⋯ → *Add a note…* →
+   `Ankle 4; Seat 4; Pivot 1` (recovered from the 2026-08-12 session). It
+   should then appear on every future workout containing that exercise,
+   including a Lower A or an ad-hoc one.
+3. **#137 probe** — add Ab Crunch Machine mid-workout (it is still not in the
+   template — see #129/#130). Its three sets should arrive with reps already
+   filled from last session and **weight empty**. Weight staying empty is the
+   fix working, not a bug.
+4. Then resolve the three acknowledged reports, and pick from
+   "What to look at next" below.
 
 ## What #136 turned out to be
 
@@ -56,31 +62,48 @@ bundled exercises properly, and it is a `schemaVersion` 4 change — so
 
 ## Report backlog state
 
-Reports `CD42B832` (04:16) and `5B380FF1` (Seated Leg Curl) are now
-**acknowledged**, not resolved — the fix exists but is not on the phone.
-Acknowledged still counts as open. Resolve them after the install confirms it.
+Three reports are now **acknowledged**, not resolved — `CD42B832` (04:16) and
+`5B380FF1` (Seated Leg Curl) for #136, and `79EEC980` (04:59) for #137. The
+fixes exist but are not on the phone. Acknowledged still counts as open;
+resolve them once the install confirms them.
 
-The other four remain untouched and open:
+The remaining three:
 
 | Time | Category | Report | Where it goes |
 |---|---|---|---|
 | 04:49 | formOrSetup | Split squat 10→8 reps | preference, not a defect |
 | 04:54 | swapRequest | Ab Rollout → Machine Ab Crunch | evidence on **#129/#130** |
-| 04:56 | other | Photo upload on reports | **not filed** — ask first |
-| 04:59 | other | Reps should auto-fill | **#137** |
+| 04:56 | other | Photo upload on reports | **#141** |
+| 04:59 | other | Reps should auto-fill | **#137 — fixed, acknowledged** |
 
 The 04:54 report is now corroborated: both the 08-05 and 08-12 Lower B sessions
 contain **Ab Crunch Machine at order 4**, and the template still does not. He
 has added it twice and it has never stuck. That is #129/#130's whole case.
 
-## The trap waiting in #137
+## What #137 turned out to be
 
-The reps request looks like a one-line revert of `9e2213c`. It is not.
-**Adopt-on-empty was deliberately cut** because `nil` weight already means
-bodyweight, so adopting the previous value logged 80kg for a bodyweight set.
-Reinstating naive adoption reintroduces a data-corruption bug that was already
-paid for once. The fix needs unset / explicitly-empty / entered as three
-distinct states, and the red test must cover the bodyweight case first.
+Not a revert of `9e2213c`, and not really about ghost text. The hole was
+**`addExercise`**: an exercise added mid-workout gets three sets with no values
+and a ghost map that is display-only, so nothing was ever written. The other
+two creation paths already pre-wrote values (`startFromTemplate` per set index,
+`addSet` from the last previous), which is why only mid-workout additions were
+affected — and Ab Crunch Machine is added mid-workout every single session.
+
+The second example in the issue is **not a bug**: Barbell Ab Rollout set 2 with
+`reps: 10` and no weight is correct. It is a bodyweight exercise.
+
+`repsDecidedByUser: Set<UUID>` is the third state — *unset* (adopt) vs
+*decided-empty* (persist nil) vs *entered* (leave alone). It is recorded in
+`updateSetReps` even when the value is unchanged, because clearing an
+already-nil field is still a decision. Completed sets are never touched.
+
+**Reps only. Weight is never adopted**, because `weight == nil` already means
+bodyweight — that is the cut-once bug, and it stays cut. The bodyweight case is
+the first test in the file.
+
+Known and deliberate: `repsDecidedByUser` is transient, so a crash/resume
+re-adopts reps on untouched empty sets. Conservative for reps; it would not be
+for weight. Making it durable costs a `schemaVersion` bump and is not worth it.
 
 ## Why #135's own tooling nearly hid all of this — #138
 
@@ -103,22 +126,53 @@ whose `completedAt` was never persisted.
 Same session, unexplained: set timestamps are not monotonic with exercise order,
 and two pairs are 0.68s and 5.9s apart — not real rest periods. **Unresolved.**
 
-## Deliberately not filed
+## The two feature requests — now filed
 
-Both are real, both are feature requests rather than regressions, and filing
-them was not what was asked. **Ask before filing.**
+- **#141 photo upload on reports** (04:56) — lets the coach judge whether a
+  machine matches the exercise description. The second half of that report is
+  the real point: it argues for *creating* a custom exercise rather than
+  reusing an ill-fitting one. Offline capture is not optional; the gym is where
+  connectivity is worst, and a report that fails because an upload failed is
+  worse than one with no photo.
+- **#142 search the library from the report sheet** (inside the 04:54 report).
+  He wrote `"Machine Ab Crunch"`; the library exercise is **"Ab Crunch
+  Machine"**. A resolved `externalId` would make a swap request actionable by
+  #129/#130 instead of a name someone has to guess at.
 
-- **Photo upload on reports** (04:56) — would let the coach judge whether a
-  machine matches the exercise description. Note it argues for *creating* a
-  custom exercise rather than reusing an ill-fitting one.
-- **Search the exercise library from the report sheet** (inside the 04:54
-  report) — the user could not name the replacement he wanted.
+## What to look at next
+
+Ranked by what the field data actually supports:
+
+1. **#129/#130 — the template never learns.** Double-corroborated now: Ab
+   Crunch Machine appears at order 4 in **both** the 08-05 and 08-12 Lower B
+   sessions and is still not in the template. He has added it at least twice
+   and it has never stuck, which is also why #137 bit him at all. This is the
+   highest-value gap in the backlog.
+2. **#117 — history edits never sync.** `WorkoutDetailView.swift:135-144`
+   writes `set.weight` straight to the model, bypassing the mutation API, so
+   the record never re-queues as `.pending`. Data integrity, and it pairs with
+   #122 which restyles the same row.
+3. **#139 — the missing `completedAt`.** Still an open question, not a
+   conclusion. See below.
+4. **#140 — bundled-exercise user data never leaves the phone.** New this
+   session, and it now has real data behind it: every note he writes on a
+   bundled exercise is device-local.
+5. **#138 — nothing ties `infra/mcp/dist/` to the committed source.** A
+   `prepare`/`postinstall` build, or a CI check that rebuilds and diffs, closes
+   it cheaply. The staleness is invisible until a tool silently does not exist.
+6. **#132 — the History tab serves a stale list** until pull-to-refresh. Small,
+   known, and annoying immediately after finishing a workout.
+
+Not a defect, but he asked for it: the 04:49 report says he moved **Split Squat
+10 → 8 reps** for strength. That is a template edit (`4DE7A259-…`,
+`defaultReps: 10`) nobody has made. **Ask before writing to his template.**
 
 ## State of the tree
 
-Branch `feat/exercise-reports`, three commits ahead of where the triage left it:
-`14a3a6d` (triage recorded), `2b729e4` (#136 fix + version bump to 1.3.0/3).
-Unpushed. `infra/mcp/dist/` is rebuilt and untracked.
+Branch `feat/exercise-reports`, four commits ahead of where the triage left it:
+`14a3a6d` (triage recorded), `2b729e4` (#136), `fc1c37e` (handoff),
+`9a9b56b` (#137 + build 4). Unpushed. `infra/mcp/dist/` is rebuilt and
+untracked.
 
 ---
 
@@ -145,7 +199,7 @@ wire version.** The same trap is waiting for whoever bumps it to v4.
 
 | Suite | Result |
 |---|---|
-| Swift unit (`-only-testing:ClaudeLifterTests`) | **722 tests, 94 suites, exit 0** (2026-08-19, with #136) |
+| Swift unit (`-only-testing:ClaudeLifterTests`) | **727 tests, 94 suites, exit 0** (2026-08-19, with #136 + #137) |
 | Azure Functions (jest) | **172 pass** |
 | MCP server (vitest) | **60 pass** |
 | XCUITest | **flaky — see below** |

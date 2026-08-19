@@ -2067,4 +2067,112 @@ extension ActiveWorkoutViewModelTests {
         await vm.awaitPendingSave()
         withExtendedLifetime(container) {}
     }
+
+    // MARK: - Post-workout template review, end to end (#129/#130)
+
+    @Test("Finishing a workout with a mid-workout addition offers it for the template")
+    func finishingSurfacesTemplateChanges() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        let added = TestFixtures.makeExercise(name: "Ab Crunch Machine")
+        added.externalId = "Ab_Crunch_Machine"
+        context.insert(added)
+        try context.save()
+
+        let templateRepo = MockTemplateRepository()
+        templateRepo.templates = [template]
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            templateRepository: templateRepo,
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        vm.completeSet(try #require(vm.workout?.exercises.first?.sets.first))
+
+        vm.addExercise(added)
+        let addedWE = try #require(vm.workout?.exercises.first { $0.exercise?.id == added.id })
+        for set in addedWE.sets { vm.completeSet(set) }
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        guard case .finished(let summary) = vm.completionState else {
+            Issue.record("expected a finished workout, got \(vm.completionState)")
+            return
+        }
+        let changeSet = try #require(summary?.templateChangeSet)
+        #expect(changeSet.changes.count == 1)
+        #expect(changeSet.templateId == template.id)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("A workout performed as planned offers nothing — the card must not appear")
+    func finishingAsPlannedOffersNothing() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let templateRepo = MockTemplateRepository()
+        templateRepo.templates = [template]
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            templateRepository: templateRepo,
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        vm.completeSet(try #require(vm.workout?.exercises.first?.sets.first))
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        guard case .finished(let summary) = vm.completionState else {
+            Issue.record("expected a finished workout")
+            return
+        }
+        #expect(summary?.templateChangeSet == nil, "nil, not empty — the card has one condition")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An ad-hoc workout never offers a template update")
+    func adHocWorkoutOffersNoTemplateUpdate() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        let we = try #require(vm.workout?.exercises.first)
+        for set in we.sets { vm.completeSet(set) }
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        guard case .finished(let summary) = vm.completionState else {
+            Issue.record("expected a finished workout")
+            return
+        }
+        #expect(summary?.templateChangeSet == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
 }

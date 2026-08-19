@@ -64,6 +64,10 @@ struct TemplateChangeSet: Equatable, Sendable {
     let templateId: UUID
     let templateName: String
     let changes: [TemplateChange]
+    /// The template's `lastModified` when the workout started. Carried here so
+    /// apply can re-check for a conflict at the moment the user taps Apply,
+    /// which may be minutes after detection ran.
+    let capturedRevision: Date?
     /// The template moved on since this workout started, so applying these
     /// changes would overwrite an edit made elsewhere — from the Coach, the MCP
     /// inbox, or the template editor. Surfaced instead of silently winning.
@@ -200,6 +204,7 @@ struct TemplateChangeDetector {
             templateId: baseline.templateId,
             templateName: template.name,
             changes: changes,
+            capturedRevision: baseline.templateRevision,
             hasConflict: hasConflict(baseline: baseline, template: template)
         )
     }

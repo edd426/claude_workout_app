@@ -33,12 +33,7 @@ struct HomeView: View {
         // Presenting it over Home means the workout is already safely closed by
         // the time this appears, so any way of dismissing it is harmless (#123).
         .sheet(item: $appState.completedWorkoutSummary) { summary in
-            WorkoutSummaryView(
-                workout: summary.workout,
-                personalRecords: summary.personalRecords
-            ) {
-                appState.completedWorkoutSummary = nil
-            }
+            summarySheet(for: summary)
         }
         .task {
             guard let deps else { return }
@@ -261,6 +256,48 @@ struct HomeView: View {
         }
         .listStyle(.plain)
         .refreshable { await vm.loadTemplates() }
+    }
+
+    /// `summary` is @Observable, so both personalRecords and templateChangeSet
+    /// appear when their post-commit work lands, even though the sheet is
+    /// already on screen (#125, #130). Extracted from `body` because inlining
+    /// it pushed the expression past the type-checker's budget.
+    private func summarySheet(for summary: WorkoutCompletionSummary) -> some View {
+        WorkoutSummaryView(
+            workout: summary.workout,
+            personalRecords: summary.personalRecords,
+            onDismiss: { appState.completedWorkoutSummary = nil },
+            templateChangeSet: summary.templateChangeSet,
+            onApplyTemplateChanges: { changes in
+                await applyTemplateChanges(changes, from: summary)
+            }
+        )
+    }
+
+    /// Applies the reviewed template changes (#130). Returns an error message
+    /// to display, or nil on success — the workout is already saved, so a
+    /// failure here costs a template update and nothing more.
+    private func applyTemplateChanges(
+        _ changes: [TemplateChange],
+        from summary: WorkoutCompletionSummary
+    ) async -> String? {
+        guard let deps, let changeSet = summary.templateChangeSet else {
+            return "Couldn't update the template. Your workout is saved."
+        }
+        do {
+            try await TemplateChangeApplier(
+                templateRepository: deps.templateRepository,
+                exerciseRepository: deps.exerciseRepository
+            ).apply(
+                changes,
+                from: changeSet,
+                capturedRevision: changeSet.capturedRevision
+            )
+            await vm?.loadTemplates()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     private func startWorkout(from template: WorkoutTemplate) {

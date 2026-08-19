@@ -4,6 +4,12 @@ struct WorkoutSummaryView: View {
     let workout: Workout
     let personalRecords: [PersonalRecord]
     let onDismiss: () -> Void
+    /// Proposed template changes (#130). Nil when the workout was ad-hoc, or
+    /// matched its plan, or detection has not finished yet — the card must
+    /// never appear with nothing in it.
+    var templateChangeSet: TemplateChangeSet? = nil
+    /// Returns an error message to show, or nil on success.
+    var onApplyTemplateChanges: (([TemplateChange]) async -> String?)? = nil
 
     var totalSets: Int {
         workout.exercises.flatMap(\.sets).filter(\.isCompleted).count
@@ -48,6 +54,13 @@ struct WorkoutSummaryView: View {
 
                 if !personalRecords.isEmpty {
                     prSection
+                }
+
+                if let templateChangeSet, let onApplyTemplateChanges {
+                    TemplateReviewSection(
+                        changeSet: templateChangeSet,
+                        onApply: onApplyTemplateChanges
+                    )
                 }
 
                 Button("Done") { onDismiss() }

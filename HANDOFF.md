@@ -48,22 +48,36 @@ generator rewrites that file whenever a Swift file is added, silently discarding
 the bump. That is why the repo had drifted back to `1.0` despite the convention.
 Now recorded in CLAUDE.md's Key Conventions, which is always read.
 
-## Azure deploy is required for the MCP half
+## Deployed and verified 2026-08-19
 
-The app half works offline. The MCP half does not, until:
+Installed 1.2.0 (build 2) to the phone; **the V2→V3 migration opened the real
+store cleanly** — that was the one genuinely risky part and it is now settled.
 
-- **Bicep** — new Cosmos container `exerciseReports` (`infra/modules/cosmos.bicep`)
-- **Functions** — new `GET /api/reports`, plus snapshot v3 and the new inbox op
-- **MCP server** — `npm run build` in `infra/mcp` for the two new tools
+Azure is deployed: Cosmos container `exerciseReports` (created with
+`az cosmosdb sql container create`, `throughput: null` so it shares the
+database autoscale and costs nothing), and the Functions app republished with
+`GET /api/reports`, snapshot v3, and the `resolveExerciseReport` inbox op.
 
-Until the container exists, a v3 push will report a failure for that collection
-and the client will keep retrying — it will not corrupt anything.
+Verified after deploy: mirror revision advanced **352 → 353** twenty-five
+seconds after relaunch, with all 16 workouts, 5 templates and 2,319 body-weight
+entries intact.
 
-Wire contract v3 **accepts v2 pushes on purpose**: the server deploys
-independently of the app, and a phone still on the old build knows nothing about
-reports. Reading its push as "there are no reports" would delete the whole
-backlog. Absent from the contract means untouched, not empty. So deploy order
-does not matter.
+### The deploy-order claim in the last handoff was WRONG — and it bit
+
+I wrote "deploy order does not matter." It does. The v2/v3 compatibility is
+**one-directional**:
+
+- **New server, old phone** — fine. A v2 push is accepted and simply does not
+  reconcile `exerciseReports`, so an old client cannot wipe the backlog.
+- **New phone, old server** — **400 on every push.** The phone sends
+  `schemaVersion: 3`; a server pinned to 2 rejects it outright.
+
+Installing the app before deploying the server therefore stalls sync with
+`Server error 400`. Non-destructive — records stay `.pending` and retry — but
+it looks alarming in Settings and it is entirely avoidable.
+
+**Always deploy the Functions app before installing a client that bumps the
+wire version.** The same trap is waiting for whoever bumps it to v4.
 
 ## Test state — and a correction to the previous baseline claim
 

@@ -1,66 +1,118 @@
-# HANDOFF — Exercise reports (#135), ready to install
+# HANDOFF — First field feedback triaged (#136–#139)
 
-Updated 2026-08-19. Branch **`feat/exercise-reports`**, four commits,
-**not pushed**, branched off `docs/fix-stale-build-recipes`.
+Updated 2026-08-19 evening. Branch **`feat/exercise-reports`**.
+The #135 report channel is installed, working, and **has already paid for
+itself**: six reports came back from one gym session and four defects are now
+filed. No app code has been changed yet — this handoff is the triage, not a fix.
 
-## Do this first in the morning
+## Do this first
 
-1. Install to the phone — version is set to **1.2.0 (build 2)**. The interesting
-   part is not the feature, it is the
-   **V2→V3 schema migration against your real data**. A new `@Model` is exactly
-   the change that has crashed on-device before. The migration is additive and
-   lightweight, and the simulator's empty store proves nothing about it.
-2. If the migration is fine, file a report from a real exercise mid-workout and
-   check it survives a sync. Full end-to-end needs the Azure deploy below.
+1. **Restart Claude Code.** `infra/mcp/dist/` was rebuilt this session; the
+   report tools are not in the running server until it re-spawns. Probe:
+   `list_exercise_reports` returns six reports without a manual build first.
+2. Start on **#136** (notes) — it is the only P1 and the only data-integrity
+   item, and the user hit it twice in one session.
 
-## What landed
+## What happened
 
-**#135 — in-workout exercise reports.** A flag in the exercise card's overflow
-menu, in the active-workout toolbar, and in exercise detail. Pick a category
-chip, type a sentence, Send. Everything else — `exerciseExternalId`, workout,
-template, the set state at that moment, app and iOS version — is captured, not
-asked for. Reports mirror to Cosmos with the rest of the snapshot and are
-readable over MCP as `list_exercise_reports`, closed out with
-`resolve_exercise_report`.
+The first real workout on 1.2.0 (build 2) — Lower B, 2026-08-19 — produced six
+reports through the #135 channel. All six are still `open` in the backlog.
 
-The design decision worth remembering: **there is no target picker.** Context is
-something the app knows, not something you choose in a gym. The category chip is
-the only input, and it tells the reader which captured context matters.
+| Time | Category | Report | Outcome |
+|---|---|---|---|
+| 04:16 | bug | "What happened to the notes section on the exercises?" | **#136** |
+| 04:46 | bug | Seated Leg Curl notes gone — "3 settings for this machine" | **#136** |
+| 04:49 | formOrSetup | Split squat 10→8 reps | preference, not a defect |
+| 04:54 | swapRequest | Ab Rollout → Machine Ab Crunch; "added it to the template and it didn't stick" | evidence on **#129/#130** |
+| 04:56 | other | Want photo upload on reports | **not filed** — see below |
+| 04:59 | other | Reps should auto-fill, not need ghost-text confirmation | **#137** |
 
-**#104 — custom exercises were never pushed.** `Exercise` is the one mirrored
-type with no per-record `syncStatus`, so `hasPendingChanges` could not see it; a
-custom exercise sat unpushed until some unrelated change triggered a snapshot.
-Now signalled from the repository. The durable marker also became a pair of
-generation counters, because the old boolean was cleared unconditionally after
-the network await — a create landing mid-request was absent from the payload
-*and* had its only signal wiped.
+## The finding that matters most — #136
 
-**#94** constant-time API key compare. **#93** the three force-unwrapped
-`Calendar.date` calls.
+Two independent defects produce one symptom, and the machine settings vanish
+exactly where they are needed: standing at the machine, mid-set.
 
-## Version: 1.2.0 (build 2)
+1. **`startFromTemplate` never copies `TemplateExercise.notes`.**
+   `ActiveWorkoutViewModel.swift:247` passes `order` / `exercise` /
+   `restSeconds` and nothing else.
+2. **No UI renders or edits per-exercise notes during a workout.**
+   `ExerciseCardView.swift` has zero references to notes.
 
-Settled 2026-08-19 — the phone was on 1.1.0, and #135 is a feature, so minor.
+**Both are older than 1.2.0** — `git log -S"notes: templateExercise.notes"` and
+`git log -S"notes" -- …/ExerciseCardView.swift` are each empty, so neither line
+ever existed. Do not go looking for the commit that broke it; there isn't one.
+What changed is that the notes were previously arriving by another path (sync
+inbound / MCP inbox — `InboxApplier.swift:339` is the only writer of template
+notes) and no longer reach the session.
 
-`generate_project.py` now owns it: `APP_VERSION` and `BUILD_NUMBER` at the top,
-referenced by all three targets. **Never bump `project.pbxproj` directly** — the
-generator rewrites that file whenever a Swift file is added, silently discarding
-the bump. That is why the repo had drifted back to `1.0` despite the convention.
-Now recorded in CLAUDE.md's Key Conventions, which is always read.
+The data settles that the user's memory is right, not nostalgic:
 
-## Deployed and verified 2026-08-19
+- Lower B **2026-08-12** (`DCC20C31-…`): Trap Bar Deadlift `"Grip bar is down."`,
+  Seated Leg Curl `"Ankle 4; Seat 4; Pivot 1"` ← literally the "3 settings"
+- Lower B **2026-08-19** (`5743E0DD-…`): no notes on any exercise
+- **Upper A** template carries per-exercise notes on 7 of 9; **Lower B**
+  template has none — which is exactly why "other workouts have a notes section"
 
-Installed 1.2.0 (build 2) to the phone; **the V2→V3 migration opened the real
-store cleanly** — that was the one genuinely risky part and it is now settled.
+`SyncMapper` maps the field faithfully in both directions
+(`:33` out, `:176` in), so this is a start-path and UI gap, never a sync bug.
 
-Azure is deployed: Cosmos container `exerciseReports` (created with
-`az cosmosdb sql container create`, `throughput: null` so it shares the
-database autoscale and costs nothing), and the Functions app republished with
-`GET /api/reports`, snapshot v3, and the `resolveExerciseReport` inbox op.
+## The trap waiting in #137
 
-Verified after deploy: mirror revision advanced **352 → 353** twenty-five
-seconds after relaunch, with all 16 workouts, 5 templates and 2,319 body-weight
-entries intact.
+The reps request looks like a one-line revert of `9e2213c`. It is not.
+**Adopt-on-empty was deliberately cut** because `nil` weight already means
+bodyweight, so adopting the previous value logged 80kg for a bodyweight set.
+Reinstating naive adoption reintroduces a data-corruption bug that was already
+paid for once. The fix needs unset / explicitly-empty / entered as three
+distinct states, and the red test must cover the bodyweight case first.
+
+## Why #135's own tooling nearly hid all of this — #138
+
+`list_exercise_reports` shipped in `infra/mcp/src/` with commit `4d41c20`, but
+the MCP client runs `dist/src/server.js`, and `dist/` was a **stale build from
+before that commit** — no `reports.js`, tools absent from the advertised list.
+The feature looked shipped in the repo and did not exist in practice.
+
+Fixed with `npm run build` (exit 0). The general hazard is unfixed: nothing
+ties the running server to the committed source. This is the MCP-side analogue
+of the `generate_project.py` versioning trap already in CLAUDE.md — a build
+artifact whose staleness is invisible.
+
+## Open question, not a conclusion — #139
+
+The 2026-08-19 session has **no `completedAt`**; all 16 other synced sessions
+have one. It may be nothing — walking away without tapping Finish is ordinary,
+and this is a single occurrence. It is filed because Finish has form (#123,
+#124, #125) and `finishWorkout` gained early-return paths in `0b17105` that
+would silently no-op if `completionState` could be `.finished` on a workout
+whose `completedAt` was never persisted.
+
+Same session, unexplained: set timestamps are not monotonic with exercise order,
+and two pairs are 0.68s and 5.9s apart — not real rest periods. Either the user
+caught up at the end, or completing one set stamps its siblings. **Unresolved.**
+
+## Deliberately not filed
+
+The two feature requests from the same session are real but are not regressions,
+and filing them was not what was asked:
+
+- **Photo upload on reports** (04:56) — would let the coach judge whether a
+  machine matches the exercise description. Note it argues for *creating* a
+  custom exercise rather than reusing an ill-fitting one.
+- **Search the exercise library from the report sheet** (inside the 04:54
+  report) — the user could not name the replacement he wanted.
+
+Both are worth issues. Ask before filing.
+
+## State of the tree
+
+No app code modified this session. The only change is
+`infra/mcp/dist/` (rebuilt, and `dist/` is generated — check whether it is
+tracked before committing). Branch `feat/exercise-reports` is otherwise as the
+previous handoff left it.
+
+---
+
+# Still true from the #135 install
 
 ### The deploy-order claim in the last handoff was WRONG — and it bit
 

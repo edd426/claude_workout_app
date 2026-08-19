@@ -1718,4 +1718,70 @@ extension ActiveWorkoutViewModelTests {
         withExtendedLifetime(container) {}
         _ = template
     }
+
+    // MARK: - Set completion stamps one set only (#139)
+    //
+    // The 2026-08-19 session had set timestamps 0.68s and 5.9s apart, which
+    // read like retroactive bulk completion. There is no batch-complete path
+    // anywhere in the app — `completedAt` is written one set at a time here
+    // and in LogSetTool — and the real explanation was the user working
+    // through the card list out of order. This pins that, so the next person
+    // reading odd timestamps in the mirror does not have to re-derive it.
+
+    @Test("Completing a set stamps that set and no other")
+    func completingSetStampsOnlyThatSet() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 3, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+        let sorted = we.sets.sorted(by: { $0.order < $1.order })
+        #expect(sorted.count == 3)
+
+        vm.completeSet(sorted[1])
+
+        #expect(sorted[0].completedAt == nil)
+        #expect(sorted[1].completedAt != nil)
+        #expect(sorted[2].completedAt == nil)
+        #expect(sorted.filter(\.isCompleted).count == 1)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Un-completing a set clears only that set's stamp")
+    func unCompletingSetClearsOnlyThatSet() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+        let sorted = we.sets.sorted(by: { $0.order < $1.order })
+        vm.completeSet(sorted[0])
+        vm.completeSet(sorted[1])
+
+        vm.completeSet(sorted[0])   // second tap un-completes
+
+        #expect(sorted[0].completedAt == nil)
+        #expect(sorted[1].completedAt != nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
 }

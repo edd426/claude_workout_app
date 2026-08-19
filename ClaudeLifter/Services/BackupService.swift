@@ -3,9 +3,25 @@ import SwiftData
 
 // MARK: - Backup wire format
 
+/// User data attached to a **bundled** exercise (#140).
+///
+/// The exercise itself re-imports from the app bundle, so carrying all 800 of
+/// them would be waste — but the notes and photo the user attached to one are
+/// not in the bundle and are lost forever without this.
+///
+/// Keyed by `externalId`, never by `id`: a reinstall re-imports the catalog
+/// with brand-new random UUIDs, so a UUID-keyed overlay would attach to
+/// nothing. Same identity rule as the MCP write path.
+struct ExerciseOverlayDTO: Codable, Sendable, Equatable {
+    let externalId: String?
+    let notes: String?
+    let photoURL: String?
+}
+
 /// A device-local JSON backup: everything the user would lose if the store were
-/// wiped and cloud sync had never run. Bundled (non-custom) exercises are omitted
-/// — they re-import from the app bundle — so only `isCustom` exercises are carried.
+/// wiped and cloud sync had never run. Bundled (non-custom) exercises are not
+/// carried in full — they re-import from the app bundle — but the user data
+/// attached to them travels as `exerciseOverlays` (#140).
 struct BackupDocument: Codable, Sendable {
     let formatVersion: Int
     let exportedAt: Date
@@ -16,6 +32,42 @@ struct BackupDocument: Codable, Sendable {
     /// written before issue #78 still decode.
     let customExercises: [ExerciseDTO]
     let preferences: [PreferenceDTO]
+    /// Present from formatVersion 2. Decodes as empty for older files, which
+    /// import unchanged — the same tolerance the snapshot wire format uses
+    /// for `exerciseReports`.
+    let exerciseOverlays: [ExerciseOverlayDTO]
+
+    init(
+        formatVersion: Int,
+        exportedAt: Date,
+        workouts: [WorkoutDTO],
+        templates: [TemplateDTO],
+        customExercises: [ExerciseDTO],
+        preferences: [PreferenceDTO],
+        exerciseOverlays: [ExerciseOverlayDTO] = []
+    ) {
+        self.formatVersion = formatVersion
+        self.exportedAt = exportedAt
+        self.workouts = workouts
+        self.templates = templates
+        self.customExercises = customExercises
+        self.preferences = preferences
+        self.exerciseOverlays = exerciseOverlays
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        formatVersion = try c.decode(Int.self, forKey: .formatVersion)
+        exportedAt = try c.decode(Date.self, forKey: .exportedAt)
+        workouts = try c.decode([WorkoutDTO].self, forKey: .workouts)
+        templates = try c.decode([TemplateDTO].self, forKey: .templates)
+        customExercises = try c.decode([ExerciseDTO].self, forKey: .customExercises)
+        preferences = try c.decode([PreferenceDTO].self, forKey: .preferences)
+        exerciseOverlays = try c.decodeIfPresent(
+            [ExerciseOverlayDTO].self,
+            forKey: .exerciseOverlays
+        ) ?? []
+    }
 }
 
 // MARK: - Import errors
@@ -50,6 +102,9 @@ struct BackupImportSummary: Sendable, Equatable {
     var templates = CollectionResult()
     var workouts = CollectionResult()
     var preferences = CollectionResult()
+    /// Bundled-exercise user data (#140). `skipped` means the overlay had no
+    /// matching exercise locally — it is never used to invent one.
+    var exerciseOverlays = CollectionResult()
 }
 
 // MARK: - Service
@@ -116,14 +171,27 @@ final class BackupService: BackupServiceProtocol {
             .filter { $0.isCustom }
             .map { SyncMapper.toDTO($0) }
         let preferences = try await preferenceRepository.fetchAll().map { SyncMapper.toDTO($0) }
+        // Only bundled exercises that actually carry user data (#140) — the
+        // other ~800 are reproduced from the app bundle on import.
+        let overlays = try await exerciseRepository.fetchAll()
+            .filter { !$0.isCustom && $0.externalId != nil }
+            .filter { $0.notes?.isEmpty == false || $0.photoURL?.isEmpty == false }
+            .map {
+                ExerciseOverlayDTO(
+                    externalId: $0.externalId,
+                    notes: $0.notes,
+                    photoURL: $0.photoURL
+                )
+            }
 
         let document = BackupDocument(
-            formatVersion: 1,
+            formatVersion: 2,
             exportedAt: .now,
             workouts: workouts,
             templates: templates,
             customExercises: customExercises,
-            preferences: preferences
+            preferences: preferences,
+            exerciseOverlays: overlays
         )
 
         let data = try encoder.encode(document)
@@ -209,6 +277,33 @@ final class BackupService: BackupServiceProtocol {
             modelContext.insert(preference)
             try modelContext.save()
             summary.preferences.imported += 1
+        }
+
+        // 5. Bundled-exercise user data (#140). Applied LAST, and unlike every
+        // other collection this one overwrites rather than skips: restoring a
+        // backup means "make this device look like the backup", and the
+        // overlay is the only copy of a machine setting that exists. Matched
+        // by externalId because a re-imported catalog has different UUIDs.
+        //
+        // An overlay with no matching exercise is skipped, never used to
+        // invent one — a bundled exercise the app bundle does not contain is
+        // not something a backup should conjure.
+        for overlay in document.exerciseOverlays {
+            guard
+                let externalId = overlay.externalId,
+                let exercise = try await exerciseRepository.fetchByExternalId(externalId)
+            else {
+                summary.exerciseOverlays.skipped += 1
+                continue
+            }
+            if let notes = overlay.notes, !notes.isEmpty {
+                exercise.notes = notes
+            }
+            if let photoURL = overlay.photoURL, !photoURL.isEmpty {
+                exercise.photoURL = photoURL
+            }
+            try modelContext.save()
+            summary.exerciseOverlays.imported += 1
         }
 
         return summary

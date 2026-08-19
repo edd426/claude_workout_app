@@ -1,178 +1,148 @@
-# HANDOFF — #136 and #137 fixed, unreleased; install is the next step
+# HANDOFF — 1.4.0 is built, reviewed, and not installed
 
-Updated 2026-08-19 late evening. Branch **`feat/exercise-reports`**.
-**1.3.0 (build 4) is committed and unreleased — it is not on the phone yet.**
-Both gym-feedback fixes are in this one build; build 3 was never installed.
+Updated 2026-08-19, late. Branch **`feat/exercise-reports`**, pushed, **PR #145**.
+`main` untouched. **Version 1.4.0 (5) — not on the phone.** The device is still
+running 1.2.0 (2), so every user-visible fix below is unverified on hardware.
 
 ## Do this first
 
-1. **Install 1.3.0 (4) and do a Lower B.** The Settings footer showing
-   `1.3.0 (4)` is the proof it landed. Neither fix is verified on real hardware
-   — only by 727 unit tests and a simulator build.
-2. **#136 probe** — on Seated Leg Curl, tap ⋯ → *Add a note…* →
-   `Ankle 4; Seat 4; Pivot 1` (recovered from the 2026-08-12 session). It
-   should then appear on every future workout containing that exercise,
-   including a Lower A or an ad-hoc one.
-3. **#137 probe** — add Ab Crunch Machine mid-workout (it is still not in the
-   template — see #129/#130). Its three sets should arrive with reps already
-   filled from last session and **weight empty**. Weight staying empty is the
-   fix working, not a bug.
-4. Then resolve the three acknowledged reports, and pick from
-   "What to look at next" below.
+1. **Install 1.4.0 (5).** The Settings footer showing `1.4.0 (5)` is the proof.
+   This build carries a **schema V4 migration** — watch the first launch. If the
+   store quarantines instead of opening, that is the one serious risk in this
+   batch (see #128 below), and the fix is to reinstall from a backup.
+2. Run the four gym probes in the table below.
+3. Resolve the three acknowledged reports once the probes pass.
 
-## What #136 turned out to be
+## The probes, in the gym
 
-The issue's own proposed fix would not have worked, and the data is what
-settled it. Copying `TemplateExercise.notes` into the session is correct but
-inert here: **the Lower B template has no notes on any exercise.** The
-`"Ankle 4; Seat 4; Pivot 1"` note lived on the *2026-08-12 session*, and
-nothing in the app writes `WorkoutExercise.notes` — only `SyncMapper` and the
-MCP inbox do. It arrived from outside and died with that session. 08-05 had
-none; 08-19 had none.
+| Probe | Expected |
+|---|---|
+| **#136** Seated Leg Curl → ⋯ → *Add a note…* → `Ankle 4; Seat 4; Pivot 1` | The note appears on the card, and on **every** future workout containing that exercise, whichever template |
+| **#137** Add Ab Crunch Machine mid-workout | Its sets arrive with reps prefilled from last session and **weight empty**. Empty weight is the fix working |
+| **#144** Any Lower B exercise | A `Target 2 × 8 · 90s rest` line under the name, and last session's PREVIOUS marked orange where it missed the target |
+| **#129/#130** Finish a Lower B with Ab Crunch Machine added | The summary offers *Update Lower B?* → Review → Apply. Ab Rollout, if skipped, must **not** be offered for removal |
 
-So a session-scoped note typed at the machine would have vanished again the
-following week and produced the same report.
+## What changed, and the three things worth knowing
 
-**The note now lives on the library `Exercise`.** It describes the machine, so
-it follows the exercise into every workout whichever template that workout came
-from. Evan's words: *"if I make a new workout with the same exercise, I want the
-same note to appear with it."*
+### #136 — the issue's own fix would have done nothing
 
-- inline on `ExerciseCardView` — a note behind a tap is not read mid-set
-- edited from a **sheet**, deliberately not inline: the workout screen owns one
-  `@FocusState` keyed on `SetEntryFieldID` with a weight/reps accessory bar, and
-  a free-text field in that hierarchy would have to join or fight it
-- read-only section on `ExerciseDetailView`
-- the template→session copy is **kept** — a template note is a per-plan cue, a
-  different thing, and renders as its own line
-- `ActiveWorkoutViewModel` gained an optional `exerciseRepository`; all three
-  inits and all four construction sites pass it. **If it is nil the note is
-  written to the model and never saved** — that is the failure mode to look for
-  if a note does not stick.
+Copying `TemplateExercise.notes` into the session is correct and inert: the
+**Lower B template has no notes on any exercise**. The `"Ankle 4; Seat 4;
+Pivot 1"` note lived on the *2026-08-12 session*, and nothing in the app writes
+that field — it arrived via sync and died with the session. A session-scoped
+note typed at the machine would have vanished again a week later and produced
+the same report.
 
-### The hole this leaves — #140
+The note now lives on the library `Exercise`, per Evan: *"if I make a new
+workout with the same exercise, I want the same note to appear with it."*
 
-The note is *also* stamped onto `WorkoutExercise.notes`, on purpose. Bundled
-exercises are excluded from sync (`SyncManager:331`, `:405`) **and** from backup
-(`BackupService:7-8`), so the library note is **device-local**: lost on
-reinstall, not restored by a backup restore, invisible to the Coach and MCP.
-The workout record is the copy that travels. #140 covers carrying user data on
-bundled exercises properly, and it is a `schemaVersion` 4 change — so
-**deploy the Functions app before installing that client** (see below).
+### #128 — this project cannot version a property-only schema change
 
-## Report backlog state
+The first attempt did exactly what the issue asked — provenance fields on
+`Workout` and `WorkoutExercise` — and died with:
 
-Three reports are now **acknowledged**, not resolved — `CD42B832` (04:16) and
-`5B380FF1` (Seated Leg Curl) for #136, and `79EEC980` (04:59) for #137. The
-fixes exist but are not on the phone. Acknowledged still counts as open;
-resolve them once the install confirms them.
+```
+NSInvalidArgumentException: Duplicate version checksums detected
+```
 
-The remaining three:
+The `VersionedSchema` model lists in `AppSchema.swift` name **live Swift
+types**, so they are not frozen history. Adding a property to `Workout` changes
+what V1, V2 and V3 mean as well as V4; all four then hash identically and
+SwiftData refuses to open the store. That is a hard crash on the first launch
+after an update, not a recoverable migration failure.
 
-| Time | Category | Report | Where it goes |
-|---|---|---|---|
-| 04:49 | formOrSetup | Split squat 10→8 reps | preference, not a defect |
-| 04:54 | swapRequest | Ab Rollout → Machine Ab Crunch | evidence on **#129/#130** |
-| 04:56 | other | Photo upload on reports | **#141** |
-| 04:59 | other | Reps should auto-fill | **#137 — fixed, acknowledged** |
+**With live types, a new schema version can only differ by its model LIST.** Any
+future property-only change faces this, and the only alternatives are freezing
+copies of every affected model, or adding a new model instead.
 
-The 04:54 report is now corroborated: both the 08-05 and 08-12 Lower B sessions
-contain **Ab Crunch Machine at order 4**, and the template still does not. He
-has added it twice and it has never stuck. That is #129/#130's whole case.
+Provenance therefore lives in two new models — `WorkoutTemplateBaseline` and
+`WorkoutExerciseBaseline` — referencing the workout by plain UUID rather than a
+`@Relationship`, because a relationship means a stored property on `Workout` and
+brings the crash straight back.
 
-## What #137 turned out to be
+**The on-disk migration test caught this. The in-memory containers the rest of
+the suite uses passed the entire time.** `TemplateProvenanceMigrationTests`
+builds a genuine V3 store and reopens it through `ModelContainerFactory` — copy
+that for any future migration.
 
-Not a revert of `9e2213c`, and not really about ghost text. The hole was
-**`addExercise`**: an exercise added mid-workout gets three sets with no values
-and a ghost map that is display-only, so nothing was ever written. The other
-two creation paths already pre-wrote values (`startFromTemplate` per set index,
-`addSet` from the last previous), which is why only mid-workout additions were
-affected — and Ab Crunch Machine is added mid-workout every single session.
+Consequence for **#110**: nutrition needs **V5**, and if it adds properties
+rather than models it hits the same wall.
 
-The second example in the issue is **not a bug**: Barbell Ab Rollout set 2 with
-`reps: 10` and no weight is correct. It is a bodyweight exercise.
+### #139 — a draft in the mirror, not a broken Finish
 
-`repsDecidedByUser: Set<UUID>` is the third state — *unset* (adopt) vs
-*decided-empty* (persist nil) vs *entered* (leave alone). It is recorded in
-`updateSetReps` even when the value is unchanged, because clearing an
-already-nil field is still a decision. Completed sets are never touched.
+Workout `5743E0DD` carries `completedAt: 2026-08-19T05:02:47.955Z`. The record's
+`_ts` advanced between two reads while the phone caught up on sync, so the state
+the issue was filed from was a **mid-workout draft push**.
 
-**Reps only. Weight is never adopted**, because `weight == nil` already means
-bodyweight — that is the cut-once bug, and it stays cut. The bodyweight case is
-the first test in the file.
+`SyncManager.pushSnapshot` pushes every workout with no `completedAt` filter and
+nothing labels a draft as one, so a draft is indistinguishable from a stranded
+session. That cost an issue, a triage and a handoff entry. Filed as **#143**.
 
-Known and deliberate: `repsDecidedByUser` is transient, so a crash/resume
-re-adopts reps on untouched empty sets. Conservative for reps; it would not be
-for weight. Making it durable costs a `schemaVersion` bump and is not worth it.
+Until it is fixed: **a workout with no `completedAt` in the mirror is more
+likely a draft than a bug.** Re-read the record before filing; a moving `_ts`
+means the phone is still catching up.
 
-## Why #135's own tooling nearly hid all of this — #138
+The timestamp oddity resolved too — Seated Leg Curl (order 2) was performed
+before Split Squat (order 1), and there is no batch-completion path anywhere:
+`completedAt` is written one set at a time, in exactly two places. Pinned with
+tests.
 
-`list_exercise_reports` shipped in `infra/mcp/src/` with commit `4d41c20`, but
-the MCP client runs `dist/src/server.js`, and `dist/` was a **stale build from
-before that commit**. The feature looked shipped in the repo and did not exist
-in practice. Fixed with `npm run build`; **verified this session** — a restarted
-client returned all six reports with no manual build. The general hazard is
-unfixed: nothing ties the running server to the committed source.
+## Blocked — needs you, and I did not route around it
 
-## Open question, not a conclusion — #139
+Two actions were refused by the permission classifier:
 
-The 2026-08-19 session has **no `completedAt`**; all 16 other synced sessions
-have one. It may be nothing — walking away without tapping Finish is ordinary,
-and this is a single occurrence. It is filed because Finish has form (#123,
-#124, #125) and `finishWorkout` gained early-return paths in `0b17105` that
-would silently no-op if `completionState` could be `.finished` on a workout
-whose `completedAt` was never persisted.
+1. **Creating the Cosmos container for #140's sync half.**
+   ```bash
+   az cosmosdb sql container create \
+     --account-name cosmos-workout-prod --database-name workout-db \
+     --resource-group rg-workout-app-prod \
+     --name exerciseOverlays --partition-key-path "/id"
+   ```
+   The **backup half of #140 shipped** — a reinstall-and-restore no longer loses
+   your notes. The sync half is designed and written up on the issue but not
+   built, and **the client wire version is still 3**, so nothing was deployed
+   and the phone is unaffected. It needs its own container because
+   `reconcileContainer` deletes every id absent from the snapshot, so two
+   collections sharing `exercises` would wipe each other.
 
-Same session, unexplained: set timestamps are not monotonic with exercise order,
-and two pairs are 0.68s and 5.9s apart — not real rest periods. **Unresolved.**
+   A full `az deployment group create` is **not** the way to do it unattended:
+   `main.bicep` takes `apiKey` and `anthropicApiKey` as `@secure()` parameters,
+   and deploying without the real values breaks auth for the phone and MCP both.
 
-## The two feature requests — now filed
+2. **The Split Squat 10 → 8 template edit** over MCP (`update_template` on
+   `B83E7341-…`, exercise `4DE7A259-…`). Still unmade. #144 at least makes the
+   disagreement visible while training.
 
-- **#141 photo upload on reports** (04:56) — lets the coach judge whether a
-  machine matches the exercise description. The second half of that report is
-  the real point: it argues for *creating* a custom exercise rather than
-  reusing an ill-fitting one. Offline capture is not optional; the gym is where
-  connectivity is worst, and a report that fails because an upload failed is
-  worse than one with no photo.
-- **#142 search the library from the report sheet** (inside the 04:54 report).
-  He wrote `"Machine Ab Crunch"`; the library exercise is **"Ab Crunch
-  Machine"**. A resolved `externalId` would make a swap request actionable by
-  #129/#130 instead of a name someone has to guess at.
+## Test state
 
-## What to look at next
+| Suite | Result |
+|---|---|
+| Swift unit (`-only-testing:ClaudeLifterTests`) | **772 tests, 97 suites, exit 0** |
+| Azure Functions (jest) | **172 pass** |
+| MCP server (vitest) | **64 pass** (60 + 4 for the staleness guard) |
+| XCUITest | **not run** — flaky here; not a regression without a clean-worktree comparison |
 
-Ranked by what the field data actually supports:
+The unit suite is the hard gate: deterministic and green.
 
-1. **#129/#130 — the template never learns.** Double-corroborated now: Ab
-   Crunch Machine appears at order 4 in **both** the 08-05 and 08-12 Lower B
-   sessions and is still not in the template. He has added it at least twice
-   and it has never stuck, which is also why #137 bit him at all. This is the
-   highest-value gap in the backlog.
-2. **#117 — history edits never sync.** `WorkoutDetailView.swift:135-144`
-   writes `set.weight` straight to the model, bypassing the mutation API, so
-   the record never re-queues as `.pending`. Data integrity, and it pairs with
-   #122 which restyles the same row.
-3. **#139 — the missing `completedAt`.** Still an open question, not a
-   conclusion. See below.
-4. **#140 — bundled-exercise user data never leaves the phone.** New this
-   session, and it now has real data behind it: every note he writes on a
-   bundled exercise is device-local.
-5. **#138 — nothing ties `infra/mcp/dist/` to the committed source.** A
-   `prepare`/`postinstall` build, or a CI check that rebuilds and diffs, closes
-   it cheaply. The staleness is invisible until a tool silently does not exist.
-6. **#132 — the History tab serves a stale list** until pull-to-refresh. Small,
-   known, and annoying immediately after finishing a workout.
+## Deferred deliberately
 
-Not a defect, but he asked for it: the 04:49 report says he moved **Split Squat
-10 → 8 reps** for strength. That is a template edit (`4DE7A259-…`,
-`defaultReps: 10`) nobody has made. **Ask before writing to his template.**
+- **#130's remembered policies** (Ask/Always/Never per category) and the
+  Settings → Workout & Templates screen. They configure a behaviour nobody has
+  lived with yet; use the review flow first, then decide what to remember.
+- **"Save as new template"** for ad-hoc workouts — they have no baseline, so
+  they never reach the review card at all.
+- **Target reps and rest in #129's detection.** No UI changes either
+  mid-workout — `WorkoutExercise.restSeconds` is written once at construction
+  and never mutated — so any difference would be noise rather than intent. When
+  such a control exists, `TemplateChangeDetector` is where it plugs in.
 
-## State of the tree
+## New issues filed this session
 
-Branch `feat/exercise-reports`, four commits ahead of where the triage left it:
-`14a3a6d` (triage recorded), `2b729e4` (#136), `fc1c37e` (handoff),
-`9a9b56b` (#137 + build 4). Unpushed. `infra/mcp/dist/` is rebuilt and
-untracked.
+- **#140** bundled-exercise user data excluded from sync and backup (backup half done)
+- **#141** photo upload on exercise reports
+- **#142** search the library from the report sheet
+- **#143** the mirror cannot distinguish a draft from a finished workout
+- **#144** target reps on the workout screen + drift marker
 
 ---
 
@@ -199,7 +169,7 @@ wire version.** The same trap is waiting for whoever bumps it to v4.
 
 | Suite | Result |
 |---|---|
-| Swift unit (`-only-testing:ClaudeLifterTests`) | **727 tests, 94 suites, exit 0** (2026-08-19, with #136 + #137) |
+| Swift unit | superseded — see the current table above |
 | Azure Functions (jest) | **172 pass** |
 | MCP server (vitest) | **60 pass** |
 | XCUITest | **flaky — see below** |

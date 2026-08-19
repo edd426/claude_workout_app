@@ -17,6 +17,11 @@ struct SetRowView: View {
     let workoutExerciseID: UUID
     let set: WorkoutSet
     let previous: AutoFillResult?
+    /// True when last session's reps missed the template target (#144). Marked
+    /// here, on PREVIOUS, and never on what the user is typing now — this is
+    /// next to the field they are about to fill in, while the choice is still
+    /// theirs to make.
+    var previousDrifted: Bool = false
     let layout: SetRowLayout
     let focusedField: FocusState<SetEntryFieldID?>.Binding
     let onComplete: (WorkoutSet) -> Void
@@ -129,9 +134,22 @@ struct SetRowView: View {
             let reps = previous.reps.map {
                 Text($0, format: repsFormat)
             } ?? Text("—")
-            Text("\(weight) × \(reps)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+            HStack(spacing: 2) {
+                Text("\(weight) × \(reps)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(previousDrifted ? .orange : .secondary)
+                if previousDrifted {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                previousDrifted
+                    ? "Previous session, off target"
+                    : "Previous session"
+            )
         } else {
             Text("—")
                 .foregroundStyle(.tertiary)

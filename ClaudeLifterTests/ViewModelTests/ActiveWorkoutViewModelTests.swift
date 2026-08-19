@@ -1916,4 +1916,155 @@ extension ActiveWorkoutViewModelTests {
         await vm.awaitPendingSave()
         withExtendedLifetime(container) {}
     }
+
+    // MARK: - Target reps on screen (#144)
+    //
+    // PREVIOUS shows what you did last time, and since #137 the reps field is
+    // prefilled from last time too — so nothing on screen was the plan, and
+    // drift compounded silently: template 8, last session 12, this session
+    // prefills 12, next session's "previous" is 12.
+
+    @Test("A template-started workout exposes the planned target per exercise")
+    func exposesPlannedTarget() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 2,
+            defaultReps: 8,
+            defaultWeight: 12,
+            defaultRestSeconds: 120
+        )
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        await vm.awaitPlannedTargetsLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        let target = try #require(vm.plannedTarget(for: we))
+        #expect(target.sets == 2)
+        #expect(target.reps == 8)
+        #expect(target.restSeconds == 120)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An exercise added mid-workout has no target — none is invented")
+    func addedExerciseHasNoTarget() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        let added = TestFixtures.makeExercise(name: "Ab Crunch Machine")
+        context.insert(added)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        await vm.awaitPlannedTargetsLoad()
+        vm.addExercise(added)
+
+        let addedWE = try #require(vm.workout?.exercises.first { $0.exercise?.id == added.id })
+        #expect(vm.plannedTarget(for: addedWE) == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An ad-hoc workout has no targets at all")
+    func adHocWorkoutHasNoTargets() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        await vm.awaitPlannedTargetsLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        #expect(vm.plannedTarget(for: we) == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Last session's reps are flagged as drifted when they miss the target")
+    func lastSessionDriftIsFlagged() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let autoFill = MockAutoFillService()
+        // Last session drifted: 12 reps against a target of 8.
+        autoFill.valuesByExerciseId[exercise.id] = [
+            AutoFillResult(weight: 12, weightUnit: .kg, reps: 12, date: .now),
+            AutoFillResult(weight: 14, weightUnit: .kg, reps: 8, date: .now),
+        ]
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill,
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        await vm.awaitPlannedTargetsLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        let sets = we.sets.sorted(by: { $0.order < $1.order })
+        // Flagged on the PREVIOUS value — the thing you can still act on
+        // while choosing what to do this session.
+        #expect(vm.previousDriftedFromTarget(sets[0], in: we) == true)
+        #expect(vm.previousDriftedFromTarget(sets[1], in: we) == false)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("No previous session means no drift flag — absence is not disagreement")
+    func noPreviousMeansNoDrift() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        await vm.awaitPlannedTargetsLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        let set = try #require(we.sets.first)
+        #expect(vm.previousDriftedFromTarget(set, in: we) == false)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
 }

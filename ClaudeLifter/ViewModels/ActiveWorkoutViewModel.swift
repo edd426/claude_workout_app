@@ -44,6 +44,12 @@ final class ActiveWorkoutViewModel {
     var detectedPRs: [PersonalRecord] = []
     private(set) var previousValues: [UUID: AutoFillResult] = [:]
 
+    /// The planned target per workout exercise (#144), from the provenance
+    /// baseline captured at start. Keyed by `WorkoutExercise.id`; an exercise
+    /// added mid-workout is simply absent, because it has no plan.
+    private(set) var plannedTargets: [UUID: PlannedTarget] = [:]
+    private(set) var pendingPlannedTargetsLoad: Task<Void, Never>?
+
     /// Set IDs whose reps field the user has decided about — typed a value or
     /// deliberately cleared it (#137). This is the third state that makes
     /// adoption safe: *unset* (adopt the previous session), *decided-empty*
@@ -105,6 +111,10 @@ final class ActiveWorkoutViewModel {
         await pendingSave?.value
     }
 
+    func awaitPlannedTargetsLoad() async {
+        await pendingPlannedTargetsLoad?.value
+    }
+
     func awaitPreviousValuesLoad() async {
         await pendingPreviousValuesLoad?.value
     }
@@ -128,6 +138,56 @@ final class ActiveWorkoutViewModel {
     /// so these are reported rather than thrown — but not silently dropped the
     /// way the previous `try?` calls dropped them (#125).
     private(set) var postCommitWarnings: [String] = []
+
+    /// The plan for this exercise, or nil when there is none — an ad-hoc
+    /// workout, or an exercise added mid-session. Nil means "show nothing";
+    /// inventing a target would be worse than an empty line.
+    func plannedTarget(for workoutExercise: WorkoutExercise) -> PlannedTarget? {
+        plannedTargets[workoutExercise.id]
+    }
+
+    /// Whether **last session's** reps for this set missed the template target
+    /// (#144).
+    ///
+    /// Deliberately about the previous session, not the current one: this sits
+    /// next to the field the user is about to fill in, while there is still
+    /// time to correct course. Flagging what they just typed would be a
+    /// reprimand after the fact — "in the current session it's too late to do
+    /// anything about the drift once you enter the weight."
+    func previousDriftedFromTarget(
+        _ set: WorkoutSet,
+        in workoutExercise: WorkoutExercise
+    ) -> Bool {
+        guard
+            let target = plannedTargets[workoutExercise.id],
+            let previousReps = previous(for: set)?.reps
+        else {
+            // No plan, or no previous session — absence is not disagreement.
+            return false
+        }
+        return previousReps != target.reps
+    }
+
+    private func loadPlannedTargets(for workout: Workout) {
+        guard let baselineRepository else { return }
+        pendingPlannedTargetsLoad = Task { [weak self] in
+            guard let self else { return }
+            guard let entries = try? await baselineRepository.fetchEntries(
+                workoutId: workout.id
+            ) else { return }
+            var targets: [UUID: PlannedTarget] = [:]
+            for entry in entries {
+                guard let workoutExerciseId = entry.workoutExerciseId else { continue }
+                targets[workoutExerciseId] = PlannedTarget(
+                    sets: entry.plannedSets,
+                    reps: entry.plannedReps,
+                    restSeconds: entry.plannedRestSeconds,
+                    notes: entry.plannedNotes
+                )
+            }
+            self.plannedTargets = targets
+        }
+    }
 
     func previous(for set: WorkoutSet) -> AutoFillResult? {
         previousValues[set.id]
@@ -222,6 +282,9 @@ final class ActiveWorkoutViewModel {
                 in: workout,
                 sourceTemplate: sourceTemplate
             )
+            // A resumed session keeps its targets: the baseline is stored, so
+            // crash recovery reads back the same plan it started with (#144).
+            loadPlannedTargets(for: workout)
             didLoadInitialPreviousValues = true
             return
         }
@@ -322,6 +385,7 @@ final class ActiveWorkoutViewModel {
             try await saveWorkout(newWorkout)
             workout = newWorkout
             didLoadInitialPreviousValues = true
+            loadPlannedTargets(for: newWorkout)
             await captureBaseline(
                 for: newWorkout,
                 from: template,

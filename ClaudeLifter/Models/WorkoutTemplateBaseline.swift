@@ -102,3 +102,21 @@ final class WorkoutExerciseBaseline {
         self.plannedNotes = plannedNotes
     }
 }
+
+/// The plan for one exercise, as shown on the workout screen (#144).
+///
+/// A plain value projected from `WorkoutExerciseBaseline` so views never touch
+/// a SwiftData model, and so "there is no plan" is expressible as nil rather
+/// than as a row of zeroes.
+struct PlannedTarget: Equatable, Sendable {
+    let sets: Int
+    let reps: Int
+    let restSeconds: Int
+    let notes: String?
+
+    /// e.g. "3 × 12 · 90s rest" — the whole plan in one glanceable line.
+    var summary: String {
+        let rest = restSeconds > 0 ? " · \(restSeconds)s rest" : ""
+        return "\(sets) × \(reps)\(rest)"
+    }
+}

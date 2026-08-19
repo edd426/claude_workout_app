@@ -239,6 +239,10 @@ struct ActiveWorkoutView: View {
             onEditNotes: {
                 focusedField = nil
                 noteTarget = ExerciseNoteTarget(workoutExercise: workoutExercise)
+            },
+            plannedTarget: vm.plannedTarget(for: workoutExercise),
+            previousDrifted: { set in
+                vm.previousDriftedFromTarget(set, in: workoutExercise)
             }
         )
     }

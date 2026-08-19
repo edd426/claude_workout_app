@@ -16,6 +16,12 @@ struct ExerciseCardView: View {
     /// are needed standing at the machine, so the note is shown inline and the
     /// editor is one tap from it.
     var onEditNotes: (() -> Void)? = nil
+    /// The template plan for this exercise (#144). Nil for ad-hoc workouts and
+    /// exercises added mid-session — both genuinely have no target, and an
+    /// invented one would be worse than none.
+    var plannedTarget: PlannedTarget? = nil
+    /// Whether last session's reps for a given set missed that target.
+    var previousDrifted: (WorkoutSet) -> Bool = { _ in false }
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -26,6 +32,7 @@ struct ExerciseCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             exerciseHeader
+            targetRow
             notesRow
             Divider()
             setEntryRows
@@ -34,6 +41,21 @@ struct ExerciseCardView: View {
         .padding()
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// The plan, so drift is visible while training rather than only in
+    /// hindsight (#144). Without it the screen showed what you did last time
+    /// and nothing about what was intended, so 8 → 12 → 12 → 12 each looked
+    /// locally reasonable.
+    @ViewBuilder
+    private var targetRow: some View {
+        if let plannedTarget {
+            Text("Target \(plannedTarget.summary)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Target \(plannedTarget.sets) sets of \(plannedTarget.reps) reps")
+                .accessibilityIdentifier("exerciseTarget")
+        }
     }
 
     /// The durable note lives on the library `Exercise` — it describes the
@@ -140,6 +162,7 @@ struct ExerciseCardView: View {
             workoutExerciseID: workoutExercise.id,
             set: set,
             previous: previousValue(set),
+            previousDrifted: previousDrifted(set),
             layout: layout,
             focusedField: focusedField,
             onComplete: onCompleteSet,

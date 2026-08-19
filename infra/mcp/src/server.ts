@@ -17,6 +17,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { TOOLS, handleToolCall } from "./registry.js";
+import { buildFreshness } from "./shared/build-info.js";
 
 const server = new Server(
   { name: "workout", version: "2.0.0" },
@@ -36,6 +37,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
+  // #138: warn on stderr before serving a single request. This is the only
+  // check that runs on the real launch path — `node dist/src/server.js` runs
+  // no npm lifecycle script, and dist/ is gitignored so CI has nothing to
+  // diff. Warn rather than exit: a stale server that still answers is far
+  // better than an MCP client that cannot start at all, and the warning is
+  // visible in the client's server log.
+  const freshness = await buildFreshness();
+  if (freshness.stale) {
+    console.error(`workout-mcp: STALE BUILD — ${freshness.staleReason}`);
+  }
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

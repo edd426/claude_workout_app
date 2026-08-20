@@ -1,25 +1,32 @@
-# HANDOFF — 1.4.1 is built, reviewed, and not installed
+# HANDOFF — 1.4.1 is installed and the migration held
 
 Updated 2026-08-20. Branch **`feat/exercise-reports`**, **PR #145**. `main`
-untouched. **Version 1.4.1 (6) — not on the phone.** The device is still
-running 1.2.0 (2), so every user-visible fix below is unverified on hardware.
+untouched. **Version 1.4.1 (6) is on the phone** — Release build, installed
+2026-08-20 06:00 local and launched.
 
-1.4.1 adds #140's sync half to the 1.4.0 batch: bundled-exercise notes and
-photos now travel to the mirror as overlays, keyed by `externalId`. The Cosmos
-container was created through Bicep. The Functions app is **deployed
-and verified at v4**; the Cosmos container was created through Bicep.
+**The schema V4 migration succeeded on real data.** Proof is not that the app
+opened — a quarantined store opens fine, empty. It is that the phone synced
+after launch and the mirror went revision **378 → 380 with counts intact**: 17
+workouts, 5 templates, 6 reports, 2320 body-weight entries. A quarantine would
+have pushed an empty snapshot and wiped the mirror instead.
+
+Also settled on launch: the Functions app is deployed and verified at wire v4,
+the Cosmos `exerciseOverlays` container exists (created through Bicep), and the
+**Lower B Split Squat edit applied** — the template now reads 2 × 8.
+
+What is left is the gym: the probes below all need a human at a machine.
 
 ## Do this first
 
-1. **Install 1.4.1 (6).** The Settings footer showing `1.4.1 (6)` is the proof.
-   This build carries a **schema V4 migration** — watch the first launch. If the
-   store quarantines instead of opening, that is the one serious risk in this
-   batch (see #128 below), and the fix is to reinstall from a backup.
-2. Run the four gym probes in the table below.
+1. ~~Install 1.4.1 (6)~~ — **done**, and the V4 migration held (see above).
+   Sanity-check the Settings footer reads `1.4.1 (6)` anyway.
+2. Run the gym probes in the table below.
 3. Resolve the three acknowledged reports once the probes pass.
-4. **Approve the pending Lower B edit.** Split Squat 10 → 8 is enqueued in the
-   inbox (op `43593a49-…`) and the phone will ask on next sync. Report
-   `990C04B4` stays open until you confirm it on the device.
+4. ~~Approve the pending Lower B edit~~ — **applied** at 04:01 UTC, op
+   `43593a49-…`; Lower B now reads Split Squat 2 × 8. One thing to confirm:
+   that operation was `requiresApproval: true` and went straight to `applied`.
+   If you did **not** see an approval prompt, the guardrail has a hole and is
+   worth an issue. Report `990C04B4` stays open until you train it.
 
 ## The probes, in the gym
 

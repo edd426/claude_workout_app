@@ -5,15 +5,33 @@ import SwiftUI
 /// clears. Renders nothing when there is nothing outstanding.
 struct OpenReportsCard: View {
     let count: Int
+    /// Reports that have an answer written but are waiting on an install.
+    /// Shown apart from `count` because folding them together made the card
+    /// say "6 open reports" while three of the six displayed a resolution
+    /// (#146) — the number disagreed with what was on screen right below it.
+    var acknowledgedCount: Int = 0
     let onOpen: () -> Void
 
+    private var total: Int { count + acknowledgedCount }
+
+    private var title: String {
+        switch (count, acknowledgedCount) {
+        case (0, let waiting):
+            return waiting == 1 ? "1 report awaiting install" : "\(waiting) reports awaiting install"
+        case (let open, 0):
+            return open == 1 ? "1 open report" : "\(open) open reports"
+        case (let open, let waiting):
+            return "\(open) open · \(waiting) awaiting install"
+        }
+    }
+
     var body: some View {
-        if count > 0 {
+        if total > 0 {
             Button(action: onOpen) {
                 HStack(spacing: 10) {
                     Image(systemName: "flag.fill")
                         .foregroundStyle(BrandTheme.terracotta)
-                    Text(count == 1 ? "1 open report" : "\(count) open reports")
+                    Text(title)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.primary)
                     Spacer()

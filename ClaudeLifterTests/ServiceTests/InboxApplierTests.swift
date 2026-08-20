@@ -1112,15 +1112,43 @@ struct InboxApplierReportTests {
         #expect(try await env.reportRepository.fetchOpen().count == 1)
     }
 
-    @Test("A report cannot be reopened from the inbox")
-    func cannotReopenAReport() async throws {
+    /// Inverted by #146. This asserted the opposite — the inbox existed to
+    /// close reports, never to reopen one behind the user. What changed it:
+    /// #136 was acknowledged, its fix shipped, and the fix turned out to be
+    /// inert. A real complaint had left the backlog with no route back, and
+    /// the guardrail was protecting the wrong thing — reopening SURFACES a
+    /// complaint, which is the safe direction.
+    @Test("A report closed too early can be reopened from the inbox")
+    func canReopenAReport() async throws {
         let env = try InboxTestEnv()
         let report = ExerciseReport(category: .bug, detail: "x", status: .resolved)
         try await env.reportRepository.save(report)
         let operation = try makeOperation(
             op: "resolveExerciseReport",
             payload: ResolveExerciseReportPayload(
-                id: report.id.uuidString, status: "open", resolution: nil
+                id: report.id.uuidString,
+                status: "open",
+                resolution: "The fix did not touch this case"
+            )
+        )
+
+        let results = await env.applier.process([operation])
+
+        #expect(results.map(\.status) == [.applied])
+        let stored = try #require(try await env.reportRepository.fetch(id: report.id))
+        #expect(stored.status == .open)
+        #expect(stored.resolution == "The fix did not touch this case")
+    }
+
+    @Test("A status outside the lifecycle still fails that operation")
+    func unknownReportStatusStillFails() async throws {
+        let env = try InboxTestEnv()
+        let report = ExerciseReport(category: .bug, detail: "x", status: .resolved)
+        try await env.reportRepository.save(report)
+        let operation = try makeOperation(
+            op: "resolveExerciseReport",
+            payload: ResolveExerciseReportPayload(
+                id: report.id.uuidString, status: "wontfix", resolution: nil
             )
         )
 

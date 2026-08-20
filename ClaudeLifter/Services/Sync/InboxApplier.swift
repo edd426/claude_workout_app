@@ -259,9 +259,13 @@ final class InboxApplier {
             status = .resolved
         case ReportStatus.acknowledged.rawValue:
             status = .acknowledged
+        case ReportStatus.open.rawValue:
+            // Reopening, allowed since #146. It was refused on the grounds
+            // that the inbox exists to close reports out — but a fix that
+            // turns out to be inert (#136) needs a route back, and reopening
+            // surfaces a complaint rather than hiding one.
+            status = .open
         case let other?:
-            // `.open` is rejected too: an inbox operation exists to close a
-            // report, never to reopen one behind the user's back.
             throw InboxApplyError.invalidReportStatus(other)
         }
 

@@ -62,6 +62,54 @@ enum ReportStatus: String, Codable, CaseIterable, Sendable {
     case resolved
 }
 
+/// What the reports list is showing (#146).
+///
+/// Separate from `ReportStatus` because one of the useful views is not a single
+/// status: `backlog` is open + acknowledged, which is what "still outstanding"
+/// actually means and what `list_exercise_reports` returns by default over MCP.
+/// Keeping the two vocabularies aligned matters — the phone and the AI should
+/// not disagree about what is left to do.
+enum ReportStatusFilter: String, CaseIterable, Sendable, Identifiable {
+    /// Open + acknowledged. The default, and the honest answer to "what is left".
+    case backlog
+    case open
+    case acknowledged
+    case resolved
+    case all
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .backlog: return "Outstanding"
+        case .open: return "Open"
+        case .acknowledged: return "Acknowledged"
+        case .resolved: return "Resolved"
+        case .all: return "All"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .backlog: return "tray.full"
+        case .open: return "flag"
+        case .acknowledged: return "checkmark.bubble"
+        case .resolved: return "checkmark.circle"
+        case .all: return "list.bullet"
+        }
+    }
+
+    func includes(_ status: ReportStatus) -> Bool {
+        switch self {
+        case .all: return true
+        case .backlog: return status != .resolved
+        case .open: return status == .open
+        case .acknowledged: return status == .acknowledged
+        case .resolved: return status == .resolved
+        }
+    }
+}
+
 /// A complaint filed from the app — usually mid-workout, in one or two taps —
 /// about an exercise, a logged value, or the app itself (issue #135).
 ///

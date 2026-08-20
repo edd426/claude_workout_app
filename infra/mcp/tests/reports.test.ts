@@ -114,10 +114,88 @@ describe("resolveExerciseReport", () => {
     });
   });
 
-  it("refuses to reopen a report", async () => {
+  // Reopening was refused outright until #146. The case that changed it:
+  // #136's prescribed fix was acknowledged, shipped, and turned out to be
+  // inert. With no way back, a real complaint had left the backlog for good.
+  it("reopens a report that was closed too early", async () => {
+    mockApiPost.mockResolvedValue({ id: "op-1" });
+
+    await resolveExerciseReport({
+      id: "r-1",
+      status: "open",
+      resolution: "Reopened — the fix did not touch this case",
+    });
+
+    expect(mockApiPost).toHaveBeenCalledWith("inbox", {
+      op: "resolveExerciseReport",
+      payload: {
+        id: "r-1",
+        status: "open",
+        resolution: "Reopened — the fix did not touch this case",
+      },
+    });
+  });
+
+  it("rejects a status that is not part of the lifecycle", async () => {
     await expect(
-      resolveExerciseReport({ id: "r-1", status: "open" })
-    ).rejects.toThrow(/cannot be reopened/);
+      resolveExerciseReport({ id: "r-1", status: "wontfix" })
+    ).rejects.toThrow(/status must be one of/);
+    expect(mockApiPost).not.toHaveBeenCalled();
+  });
+
+  // Closing out a gym session means answering several reports at once, and
+  // one call per report is three round trips plus three chances to lose track.
+  it("closes several reports in one call", async () => {
+    mockApiPost.mockResolvedValue({ id: "op-n" });
+
+    const operations = await resolveExerciseReport({
+      ids: ["r-1", "r-2", "r-3"],
+      status: "acknowledged",
+      resolution: "All three fixed in 1.4.1",
+    });
+
+    expect(Array.isArray(operations)).toBe(true);
+    expect(operations).toHaveLength(3);
+    expect(mockApiPost).toHaveBeenCalledTimes(3);
+    expect(mockApiPost).toHaveBeenNthCalledWith(2, "inbox", {
+      op: "resolveExerciseReport",
+      payload: {
+        id: "r-2",
+        status: "acknowledged",
+        resolution: "All three fixed in 1.4.1",
+      },
+    });
+  });
+
+  it("a single id still returns one operation, not an array", async () => {
+    mockApiPost.mockResolvedValue({ id: "op-1" });
+
+    const result = await resolveExerciseReport({ id: "r-1" });
+
+    expect(Array.isArray(result)).toBe(false);
+  });
+
+  it("rejects ids and id given together rather than guessing", async () => {
+    await expect(
+      resolveExerciseReport({ id: "r-1", ids: ["r-2"] })
+    ).rejects.toThrow(/either id or ids/);
+    expect(mockApiPost).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty ids array", async () => {
+    await expect(resolveExerciseReport({ ids: [] })).rejects.toThrow(
+      /at least one/
+    );
+    expect(mockApiPost).not.toHaveBeenCalled();
+  });
+
+  it("validates every id before enqueuing any of them", async () => {
+    mockApiPost.mockResolvedValue({ id: "op-1" });
+
+    await expect(
+      resolveExerciseReport({ ids: ["r-1", ""] })
+    ).rejects.toThrow(/non-empty string/);
+    // Nothing enqueued: a half-applied batch is worse than a refused one.
     expect(mockApiPost).not.toHaveBeenCalled();
   });
 

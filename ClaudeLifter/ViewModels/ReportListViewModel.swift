@@ -10,7 +10,7 @@ import Foundation
 final class ReportListViewModel {
     private(set) var reports: [ExerciseReport] = []
     var errorMessage: String?
-    var showsResolved = false
+    var statusFilter: ReportStatusFilter = .backlog
 
     private let repository: any ExerciseReportRepository
 
@@ -18,12 +18,22 @@ final class ReportListViewModel {
         self.repository = repository
     }
 
+    /// Reports nobody has answered yet. Deliberately **not** everything that
+    /// is un-resolved: `acknowledged` means a fix is written and waiting on an
+    /// install, and counting those as open made the home card read "6 open
+    /// reports" while three of the six showed a written resolution (#146).
     var openCount: Int {
-        reports.filter { $0.status != .resolved }.count
+        reports.filter { $0.status == .open }.count
+    }
+
+    /// Answered, not yet finished. Surfaced separately so the two halves of
+    /// the backlog stop being conflated.
+    var acknowledgedCount: Int {
+        reports.filter { $0.status == .acknowledged }.count
     }
 
     var visibleReports: [ExerciseReport] {
-        showsResolved ? reports : reports.filter { $0.status != .resolved }
+        reports.filter { statusFilter.includes($0.status) }
     }
 
     func load() async {

@@ -159,7 +159,10 @@ struct HomeView: View {
                 }
             }
             if let reportListVM {
-                OpenReportsCard(count: reportListVM.openCount) {
+                OpenReportsCard(
+                    count: reportListVM.openCount,
+                    acknowledgedCount: reportListVM.acknowledgedCount
+                ) {
                     showReports = true
                 }
             }

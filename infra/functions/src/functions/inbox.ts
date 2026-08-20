@@ -265,7 +265,11 @@ function validateCreateCustomExercise(
   return null;
 }
 
-const REPORT_RESOLVE_STATUSES = ["resolved", "acknowledged"];
+// `open` is accepted since #146: a report closed on the strength of a fix
+// that turns out to be inert has to be able to come back, or the backlog
+// quietly loses a real complaint. Reopening surfaces a complaint rather than
+// hiding one, so it stays outside the approval gate like the other two.
+const REPORT_RESOLVE_STATUSES = ["resolved", "acknowledged", "open"];
 
 function validateResolveExerciseReport(
   payload: Record<string, unknown>
@@ -275,8 +279,6 @@ function validateResolveExerciseReport(
   }
   const status = payload["status"];
   if (status !== undefined && !REPORT_RESOLVE_STATUSES.includes(status as string)) {
-    // "open" is rejected along with everything else: an inbox operation
-    // exists to close a report out, never to reopen one behind the user.
     return badRequest(
       `Malformed payload: status must be one of ${REPORT_RESOLVE_STATUSES.join(", ")}`
     );

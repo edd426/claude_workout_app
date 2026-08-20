@@ -56,7 +56,14 @@ const CATEGORIES: readonly string[] = [
   "other",
 ];
 
-const RESOLVE_STATUSES: readonly string[] = ["resolved", "acknowledged"];
+/// Every status the write path will set, reopening included (#146).
+///
+/// `open` was refused here until a real case forced the question: #136 was
+/// acknowledged, its fix shipped, and the fix turned out to be inert. With no
+/// route back, a genuine complaint had left the backlog permanently. Reopening
+/// is also the safe direction — it surfaces a complaint rather than hiding
+/// one, so it needs no approval gate.
+const RESOLVE_STATUSES: readonly string[] = ["resolved", "acknowledged", "open"];
 
 export async function listExerciseReports(
   options: {
@@ -92,27 +99,51 @@ export async function listExerciseReports(
 }
 
 /**
- * Enqueues the close-out. The report is not actually closed until the phone
- * next syncs and drains the inbox — this returns the queued operation, not a
- * finished write, and saying otherwise would be a lie about a durable queue.
+ * Sets a report's status through the durable inbox. The report is not actually
+ * changed until the phone next syncs and drains the inbox — this returns the
+ * queued operation(s), not a finished write, and saying otherwise would be a
+ * lie about a durable queue.
+ *
+ * Takes either `id` (returns one operation) or `ids` (returns an array, one
+ * per report). Closing out a gym session means answering several reports at
+ * once, and one call each is several round trips plus several chances to lose
+ * track of which are done.
+ *
+ * Every id is validated before any of them is enqueued: a batch that half
+ * applies is worse than one that is refused.
  */
 export async function resolveExerciseReport(
   args: unknown
-): Promise<InboxOperation> {
+): Promise<InboxOperation | InboxOperation[]> {
   if (args === null || typeof args !== "object" || Array.isArray(args)) {
     throw new Error("Arguments must be an object");
   }
   const input = args as Record<string, unknown>;
 
-  const id = input["id"];
-  if (typeof id !== "string" || id.trim().length === 0) {
-    throw new Error("id must be a non-empty string");
+  const rawId = input["id"];
+  const rawIds = input["ids"];
+  if (rawId !== undefined && rawIds !== undefined) {
+    throw new Error("Pass either id or ids, not both");
   }
+
+  const isBatch = rawIds !== undefined;
+  if (isBatch && !Array.isArray(rawIds)) {
+    throw new Error("ids must be an array of report UUIDs");
+  }
+  const ids = isBatch ? (rawIds as unknown[]) : [rawId];
+  if (ids.length === 0) {
+    throw new Error("ids must contain at least one report UUID");
+  }
+  for (const candidate of ids) {
+    if (typeof candidate !== "string" || candidate.trim().length === 0) {
+      throw new Error("id must be a non-empty string");
+    }
+  }
+
   const status = input["status"];
   if (status !== undefined && !RESOLVE_STATUSES.includes(status as string)) {
     throw new Error(
-      `status must be one of ${RESOLVE_STATUSES.join(", ")} — ` +
-        "a report cannot be reopened from here"
+      `status must be one of ${RESOLVE_STATUSES.join(", ")}`
     );
   }
   const resolution = input["resolution"];
@@ -120,8 +151,14 @@ export async function resolveExerciseReport(
     throw new Error("resolution must be a string");
   }
 
-  return apiPost<InboxOperation>("inbox", {
-    op: "resolveExerciseReport",
-    payload: { id, status, resolution },
-  });
+  const operations: InboxOperation[] = [];
+  for (const id of ids as string[]) {
+    operations.push(
+      await apiPost<InboxOperation>("inbox", {
+        op: "resolveExerciseReport",
+        payload: { id, status, resolution },
+      })
+    );
+  }
+  return isBatch ? operations : operations[0];
 }

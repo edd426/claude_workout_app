@@ -215,6 +215,7 @@
 		22808144F86FCDCD4967FD58 /* HomeViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C44B0FA03C14D20C9389468 /* HomeViewModelTests.swift */; };
 		6B23B904FEB12E4CC377B8E2 /* LocalPhotoStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C999AB43A1EBD631D51A1240 /* LocalPhotoStorageTests.swift */; };
 		BC062055415B9F5F2AA218D4 /* ProgressChartsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7146F35021932829001C2176 /* ProgressChartsViewModelTests.swift */; };
+		11BCB4FAEB0CF65CB75E4B9C /* ReportListViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36FBA282E430397FDB1DAB7 /* ReportListViewModelTests.swift */; };
 		4B340AF9EDD47AEC71F6BF34 /* ReportSheetViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39712B7C0FCDE4D7097EDA8D /* ReportSheetViewModelTests.swift */; };
 		6192B90B42FCA84FFD2BDD3F /* RestTimerViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF1E2ACFA475EC9FC3A8195 /* RestTimerViewModelTests.swift */; };
 		9EA086F04073CE8260011E36 /* SettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84F56BFC5255D1A1D68459C3 /* SettingsViewModelTests.swift */; };
@@ -464,6 +465,7 @@
 		1C44B0FA03C14D20C9389468 /* HomeViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModelTests.swift; sourceTree = "<group>"; };
 		C999AB43A1EBD631D51A1240 /* LocalPhotoStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPhotoStorageTests.swift; sourceTree = "<group>"; };
 		7146F35021932829001C2176 /* ProgressChartsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressChartsViewModelTests.swift; sourceTree = "<group>"; };
+		E36FBA282E430397FDB1DAB7 /* ReportListViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportListViewModelTests.swift; sourceTree = "<group>"; };
 		39712B7C0FCDE4D7097EDA8D /* ReportSheetViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportSheetViewModelTests.swift; sourceTree = "<group>"; };
 		2FF1E2ACFA475EC9FC3A8195 /* RestTimerViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimerViewModelTests.swift; sourceTree = "<group>"; };
 		84F56BFC5255D1A1D68459C3 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
@@ -941,6 +943,7 @@
 				1C44B0FA03C14D20C9389468,
 				C999AB43A1EBD631D51A1240,
 				7146F35021932829001C2176,
+				E36FBA282E430397FDB1DAB7,
 				39712B7C0FCDE4D7097EDA8D,
 				2FF1E2ACFA475EC9FC3A8195,
 				84F56BFC5255D1A1D68459C3,
@@ -1298,6 +1301,7 @@
 				22808144F86FCDCD4967FD58 /* HomeViewModelTests.swift in Sources */,
 				6B23B904FEB12E4CC377B8E2 /* LocalPhotoStorageTests.swift in Sources */,
 				BC062055415B9F5F2AA218D4 /* ProgressChartsViewModelTests.swift in Sources */,
+				11BCB4FAEB0CF65CB75E4B9C /* ReportListViewModelTests.swift in Sources */,
 				4B340AF9EDD47AEC71F6BF34 /* ReportSheetViewModelTests.swift in Sources */,
 				6192B90B42FCA84FFD2BDD3F /* RestTimerViewModelTests.swift in Sources */,
 				9EA086F04073CE8260011E36 /* SettingsViewModelTests.swift in Sources */,
@@ -1407,7 +1411,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = ClaudeLifter/ClaudeLifter.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Reads body-weight entries from Health so weights logged elsewhere appear here.";
@@ -1417,7 +1421,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1432,7 +1436,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = ClaudeLifter/ClaudeLifter.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Reads body-weight entries from Health so weights logged elsewhere appear here.";
@@ -1442,7 +1446,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1456,10 +1460,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifterTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1474,10 +1478,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifterTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1491,10 +1495,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifterUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1508,10 +1512,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 738XNTWZ5K;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.eddelord.ClaudeLifterUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

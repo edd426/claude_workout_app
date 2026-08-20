@@ -280,25 +280,34 @@ export const TOOLS = [
   {
     name: "resolve_exercise_report",
     description:
-      "Close out a report once it has been dealt with, so it leaves the " +
-      "backlog. Use status 'acknowledged' when the work is known but not " +
-      "done (an issue was filed), 'resolved' when it is finished. Enqueues " +
-      "an inbox operation — the report is closed when the phone next syncs.",
+      "Set a report's status, so the backlog reflects reality. Use " +
+      "'acknowledged' when the work is known but not done (an issue was " +
+      "filed, or a fix is written but not installed), 'resolved' when it is " +
+      "finished, and 'open' to reopen one that was closed too early — a fix " +
+      "that turns out not to work must be able to come back. Pass 'ids' to " +
+      "answer several at once. Enqueues inbox operations: the change lands " +
+      "when the phone next syncs.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        id: { type: "string", description: "Report UUID" },
+        id: { type: "string", description: "Report UUID. Use this or ids." },
+        ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Several report UUIDs, all set to the same status. Every id is " +
+            "validated before any is enqueued.",
+        },
         status: {
           type: "string",
-          enum: ["resolved", "acknowledged"],
-          description: "Defaults to resolved. Reports cannot be reopened here.",
+          enum: ["resolved", "acknowledged", "open"],
+          description: "Defaults to resolved",
         },
         resolution: {
           type: "string",
           description: "What was done — shown next to the report in the app",
         },
       },
-      required: ["id"],
     },
   },
   {

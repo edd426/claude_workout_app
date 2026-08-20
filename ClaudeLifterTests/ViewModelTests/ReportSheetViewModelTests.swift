@@ -174,7 +174,9 @@ struct ReportListViewModelTests {
 
         #expect(vm.openCount == 1)
         #expect(vm.visibleReports.count == 1)
-        vm.showsResolved = true
+        // `showsResolved` became a status filter in #146 — the old boolean
+        // keyed on a state nothing ever produced.
+        vm.statusFilter = .all
         #expect(vm.visibleReports.count == 2)
     }
 

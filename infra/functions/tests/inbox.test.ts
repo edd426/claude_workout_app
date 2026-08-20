@@ -871,10 +871,25 @@ describe("POST /api/inbox — resolveExerciseReport (#135)", () => {
     expect(response.status).toBe(400);
   });
 
-  test("rejects reopening a report", async () => {
+  // Inverted by #146. Reopening was refused on the grounds that the inbox
+  // exists to close reports, not to reopen them behind the user. The case that
+  // changed it: #136 was acknowledged, its fix shipped, and the fix was inert
+  // — a real complaint had left the backlog with no way back.
+  test("accepts reopening a report that was closed too early", async () => {
     const response = await enqueue({
       op: "resolveExerciseReport",
       payload: { id: "8f2a0b0c-1111-4222-8333-444455556666", status: "open" },
+    });
+
+    // A successful enqueue omits an explicit status; 200 is the default.
+    expect(response.status ?? 200).toBe(200);
+    expect((response.jsonBody as { op: string }).op).toBe("resolveExerciseReport");
+  });
+
+  test("still rejects a status outside the lifecycle", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666", status: "wontfix" },
     });
 
     expect(response.status).toBe(400);

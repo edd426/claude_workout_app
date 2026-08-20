@@ -10,11 +10,16 @@ struct ReportListView: View {
         return List {
             if vm.visibleReports.isEmpty {
                 ContentUnavailableView(
-                    vm.showsResolved ? "No reports" : "Nothing outstanding",
-                    systemImage: "flag",
+                    vm.statusFilter == .all
+                        ? "No reports"
+                        : "Nothing \(vm.statusFilter.displayName.lowercased())",
+                    systemImage: vm.statusFilter.systemImage,
                     description: Text(
-                        "Reports you file from a workout show up here, and "
-                        + "Claude can read them over MCP."
+                        vm.reports.isEmpty
+                            ? "Reports you file from a workout show up here, and "
+                                + "Claude can read them over MCP."
+                            : "\(vm.reports.count) report\(vm.reports.count == 1 ? "" : "s") "
+                                + "under a different filter."
                     )
                 )
             } else {
@@ -34,6 +39,25 @@ struct ReportListView: View {
                                 }
                                 .tint(.green)
                             }
+                            if report.status == .open {
+                                Button {
+                                    Task { await vm.setStatus(.acknowledged, for: report) }
+                                } label: {
+                                    Label("Acknowledge", systemImage: "checkmark.bubble")
+                                }
+                                .tint(BrandTheme.terracotta)
+                            }
+                            // The escape hatch #136 needed: a fix that turns
+                            // out to be inert has to be reopenable, or the
+                            // backlog quietly loses a real complaint.
+                            if report.status != .open {
+                                Button {
+                                    Task { await vm.setStatus(.open, for: report) }
+                                } label: {
+                                    Label("Reopen", systemImage: "arrow.uturn.backward")
+                                }
+                                .tint(.orange)
+                            }
                         }
                 }
             }
@@ -42,9 +66,20 @@ struct ReportListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Toggle("Show resolved", isOn: $vm.showsResolved)
-                    .toggleStyle(.button)
-                    .accessibilityIdentifier("toggleResolvedReports")
+                // A picker rather than the old "Show resolved" toggle. That
+                // toggle keyed on a state nothing in the app or the write path
+                // ever produced, so it could not visibly do anything (#146).
+                Menu {
+                    Picker("Filter", selection: $vm.statusFilter) {
+                        ForEach(ReportStatusFilter.allCases) { filter in
+                            Label(filter.displayName, systemImage: filter.systemImage)
+                                .tag(filter)
+                        }
+                    }
+                } label: {
+                    Label(vm.statusFilter.displayName, systemImage: "line.3.horizontal.decrease.circle")
+                }
+                .accessibilityIdentifier("reportStatusFilter")
             }
         }
         .task { await vm.load() }

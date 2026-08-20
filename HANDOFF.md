@@ -22,11 +22,11 @@ What is left is the gym: the probes below all need a human at a machine.
    Sanity-check the Settings footer reads `1.4.1 (6)` anyway.
 2. Run the gym probes in the table below.
 3. Resolve the three acknowledged reports once the probes pass.
-4. ~~Approve the pending Lower B edit~~ — **applied** at 04:01 UTC, op
-   `43593a49-…`; Lower B now reads Split Squat 2 × 8. One thing to confirm:
-   that operation was `requiresApproval: true` and went straight to `applied`.
-   If you did **not** see an approval prompt, the guardrail has a hole and is
-   worth an issue. Report `990C04B4` stays open until you train it.
+4. ~~Approve the pending Lower B edit~~ — **approved on the phone** and applied
+   at 04:01 UTC, op `43593a49-…`; Lower B now reads Split Squat 2 × 8. The
+   approval guardrail fired correctly (screenshot confirms the prompt), but the
+   prompt showed no diff — **#147**. Report `990C04B4` stays open until you
+   train it.
 
 ## The probes, in the gym
 
@@ -178,6 +178,12 @@ The unit suite is the hard gate: deterministic and green.
 - **#142** search the library from the report sheet
 - **#143** the mirror cannot distinguish a draft from a finished workout
 - **#144** target reps on the workout screen + drift marker
+- **#146** `acknowledged` reports read as done but count as open, and *Show
+  resolved* can never do anything — no report ever reaches `resolved`. Live
+  data confirms: 3 acknowledged, 3 open, **0 resolved**
+- **#147** *Review Change* shows no change — the inbox approval prompt is a
+  `confirmationDialog` whose whole message is an exercise **count**, so a
+  one-number edit is indistinguishable from a full rewrite
 
 ---
 

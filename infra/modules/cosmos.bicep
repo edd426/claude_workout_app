@@ -28,6 +28,12 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
       }
     ]
     capabilities: []
+    // Both of these already hold on the live account. They are declared here
+    // because they were not, and `what-if` therefore proposed turning them
+    // OFF on any deployment — silently weakening TLS and disabling failover
+    // as a side effect of adding a container (#140).
+    minimalTlsVersion: 'Tls12'
+    enableAutomaticFailover: true
     backupPolicy: {
       type: 'Periodic'
       // Two backup copies are free; copies = retention / interval, so keep the
@@ -97,6 +103,17 @@ var containers = [
   // from the phone so the MCP server can read the complaint backlog.
   {
     name: 'exerciseReports'
+    partitionKeyPath: '/id'
+  }
+  // Snapshot sync (issue #140): user data added to *bundled* exercises —
+  // notes and photos. Keyed by the free-exercise-db `externalId`, not the
+  // local UUID, because a reinstall mints new UUIDs for the same exercise.
+  // Deliberately its own container rather than a `kind` discriminator inside
+  // `exercises`: reconcileContainer deletes every doc absent from the
+  // snapshot, so two doc kinds sharing a container means each push wipes the
+  // other unless every read remembers to union them first.
+  {
+    name: 'exerciseOverlays'
     partitionKeyPath: '/id'
   }
   // MCP write path (issue #88): durable operations drained by the phone.

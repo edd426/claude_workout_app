@@ -1,4 +1,4 @@
-# HANDOFF — 1.5.0 is built; 1.4.1 is installed and its migration held
+# HANDOFF — 1.5.0 is installed
 
 Updated 2026-08-20. Branch **`feat/exercise-reports`**, **PR #145**. `main`
 untouched. **Version 1.4.1 (6) is on the phone** — Release build, installed
@@ -181,13 +181,18 @@ The unit suite is the hard gate: deterministic and green.
 - **#146** `acknowledged` reports read as done but count as open, and *Show
   resolved* can never do anything — no report ever reaches `resolved`. Live
   data confirms: 3 acknowledged, 3 open, **0 resolved**
+- **#148** inbox operations cannot be deleted, so failed ones accumulate forever
 - **#147** *Review Change* shows no change — the inbox approval prompt is a
   `confirmationDialog` whose whole message is an exercise **count**, so a
   one-number edit is indistinguishable from a full rewrite
 
-## 1.5.0 (7) — built, not installed
+## 1.5.0 (7) — installed 2026-08-20
 
-**#146 is fixed** and the server half is deployed. Not on the phone yet.
+**#146 is fixed**, the server half is deployed, and the build is on the phone
+(Release, launched, data intact: mirror still revision 380 with all 17 workouts,
+5 templates and 6 reports). No schema migration in this one — a plain upgrade
+install. The mirror revision did **not** advance, which is correct: nothing was
+dirty, so no push was due.
 
 - The reports list filter is now Outstanding / Open / Acknowledged / Resolved /
   All — the same vocabulary `list_exercise_reports` uses, so the phone and the
@@ -203,8 +208,14 @@ No schema change — nothing here adds a stored property. Nutrition still takes 
 
 **Litter I made:** inbox op `f4c9187b` is a validation probe with a bogus report
 id, now terminal in `failed` alongside the three July `deleteTemplate` ones. It
-will never reach the phone. There is no way to delete an inbox operation, which
-is arguably worth an issue of its own.
+will never reach the phone, and it cannot be removed — filed as **#148**.
+
+### Check when you next open the app
+
+- Reports → the filter chip top-right reads **Outstanding**, and switching it to
+  Acknowledged shows exactly the three answered reports
+- The home card reads **3 open · 3 awaiting install**, not "6 open reports"
+- Swipe a report: Resolve / Acknowledge / Reopen / Delete
 
 ---
 

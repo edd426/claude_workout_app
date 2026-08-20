@@ -16,6 +16,19 @@ def pbxproj_path(name):
         return f'"{name}"'
     return name
 
+# ─── Version ────────────────────────────────────────────────────────────────
+# THE place to bump the version. Editing ClaudeLifter.xcodeproj/project.pbxproj
+# directly does nothing lasting: this script regenerates that file, so a bump
+# made there is wiped the next time a Swift file is added and the generator
+# runs. Both values below are written into all three targets.
+#
+# Three-part semver, per Evan's convention: patch for fixes, minor for
+# features, major for reshapes. The Settings footer shows it, and a bump is the
+# visible confirmation that the new build actually landed on the phone — so
+# bump BOTH before every device install.
+APP_VERSION = '1.5.0'
+BUILD_NUMBER = '7'
+
 # Collect all Swift source files
 def collect_swift_files(root_dir):
     files = []
@@ -645,7 +658,7 @@ app_settings = {
     'CODE_SIGN_STYLE': 'Automatic',
     'CODE_SIGN_ENTITLEMENTS': 'ClaudeLifter/ClaudeLifter.entitlements',
     'DEVELOPMENT_TEAM': '738XNTWZ5K',
-    'CURRENT_PROJECT_VERSION': '1',
+    'CURRENT_PROJECT_VERSION': BUILD_NUMBER,
     'GENERATE_INFOPLIST_FILE': 'YES',
     'INFOPLIST_KEY_NSHealthShareUsageDescription': '"Reads body-weight entries from Health so weights logged elsewhere appear here."',
     'INFOPLIST_KEY_NSHealthUpdateUsageDescription': '"Writes body-weight entries you log here to Health."',
@@ -654,7 +667,7 @@ app_settings = {
     'INFOPLIST_KEY_UILaunchScreen_Generation': 'YES',
     'INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad': '"UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
     'INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone': '"UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
-    'MARKETING_VERSION': '1.0',
+    'MARKETING_VERSION': APP_VERSION,
     'PRODUCT_BUNDLE_IDENTIFIER': 'com.eddelord.ClaudeLifter',
     'PRODUCT_NAME': '"$(TARGET_NAME)"',
     'SWIFT_EMIT_LOC_STRINGS': 'YES',
@@ -666,9 +679,9 @@ test_settings = {
     'BUNDLE_LOADER': '"$(TEST_HOST)"',
     'CODE_SIGN_STYLE': 'Automatic',
     'DEVELOPMENT_TEAM': '738XNTWZ5K',
-    'CURRENT_PROJECT_VERSION': '1',
+    'CURRENT_PROJECT_VERSION': BUILD_NUMBER,
     'GENERATE_INFOPLIST_FILE': 'YES',
-    'MARKETING_VERSION': '1.0',
+    'MARKETING_VERSION': APP_VERSION,
     'PRODUCT_BUNDLE_IDENTIFIER': 'com.eddelord.ClaudeLifterTests',
     'PRODUCT_NAME': '"$(TARGET_NAME)"',
     'SWIFT_EMIT_LOC_STRINGS': 'NO',
@@ -680,9 +693,9 @@ test_settings = {
 uitest_settings = {
     'CODE_SIGN_STYLE': 'Automatic',
     'DEVELOPMENT_TEAM': '738XNTWZ5K',
-    'CURRENT_PROJECT_VERSION': '1',
+    'CURRENT_PROJECT_VERSION': BUILD_NUMBER,
     'GENERATE_INFOPLIST_FILE': 'YES',
-    'MARKETING_VERSION': '1.0',
+    'MARKETING_VERSION': APP_VERSION,
     'PRODUCT_BUNDLE_IDENTIFIER': 'com.eddelord.ClaudeLifterUITests',
     'PRODUCT_NAME': '"$(TARGET_NAME)"',
     'SWIFT_EMIT_LOC_STRINGS': 'NO',

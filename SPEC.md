@@ -180,6 +180,21 @@ ProactiveInsight
 ├── isRead: Bool
 └── type: InsightType (.suggestion/.warning/.encouragement)
 
+ExerciseReport  (issue #135)
+├── id: UUID
+├── createdAt: Date
+├── category: ReportCategory (.bug/.swapRequest/.wrongExercise/.dataError/.formOrSetup/.other)
+├── detail: String                    (the complaint, in the user's words)
+├── exerciseExternalId: String?       (stable free-exercise-db id — NEVER Exercise.id)
+├── exerciseName: String?             (snapshot at file time, survives a swap)
+├── suggestedReplacement: String?
+├── workoutId / workoutExerciseId / templateId: UUID?
+├── contextSummary: String?           (set state when filed — the repro nobody typed)
+├── status: ReportStatus (.open/.acknowledged/.resolved)
+├── resolution: String?
+├── appVersion / iosVersion: String?
+└── syncStatus: SyncStatus
+
 TrainingPreference
 ├── id: UUID
 ├── key: String (e.g., "exercise_order", "injury", "training_style")
@@ -507,6 +522,8 @@ Write tools (`create_template`, `update_template`, `delete_template`, `create_pr
 | `get_exercise_history` | Get historical data for a specific exercise |
 | `get_stats` | Get summary statistics (PRs, volume trends, frequency) |
 | `get_calendar` | Get workout frequency data for a date range |
+| `list_exercise_reports` | Read the complaint backlog filed from the app (#135) |
+| `resolve_exercise_report` | Close a report out through the inbox (#135) |
 | `health` | Connectivity + auth diagnostic against the Functions API |
 
 ### Configuration (Claude Code)

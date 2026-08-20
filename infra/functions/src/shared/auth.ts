@@ -1,4 +1,5 @@
 import { HttpRequest, HttpResponseInit } from "@azure/functions";
+import { secretsMatch } from "./secretCompare";
 
 /**
  * Validates the x-api-key header against the API_KEY environment variable.
@@ -14,7 +15,7 @@ export function authenticate(request: HttpRequest): HttpResponseInit | null {
   }
 
   const providedKey = request.headers.get("x-api-key");
-  if (!providedKey || providedKey !== apiKey) {
+  if (!providedKey || !secretsMatch(providedKey, apiKey)) {
     return {
       status: 401,
       jsonBody: { error: "Unauthorized: invalid or missing API key" },

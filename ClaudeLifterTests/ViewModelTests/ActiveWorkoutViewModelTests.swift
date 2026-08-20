@@ -1421,4 +1421,758 @@ extension ActiveWorkoutViewModelTests {
         await vm.awaitPendingSave()
         withExtendedLifetime(container) {}
     }
+
+    // MARK: - Per-exercise notes (#136)
+    //
+    // The machine settings ("Ankle 4; Seat 4; Pivot 1") live on
+    // TemplateExercise.notes and were never copied into the session, so they
+    // vanished exactly where they are needed — standing at the machine.
+
+    @Test("startFromTemplate copies per-exercise notes into the session")
+    func startFromTemplateCopiesNotes() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 1,
+            defaultReps: 8,
+            defaultWeight: 60,
+            notes: "Ankle 4; Seat 4; Pivot 1"
+        )
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        let we = try #require(vm.workout?.exercises.first)
+        #expect(we.notes == "Ankle 4; Seat 4; Pivot 1")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("startFromTemplate leaves notes nil when the template has none")
+    func startFromTemplateLeavesNotesNilWhenAbsent() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+
+        #expect(vm.workout?.exercises.first?.notes == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("updateExerciseNotes writes the note onto the exercise, not the session")
+    func updateExerciseNotesWritesToExercise() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let exerciseRepo = MockExerciseRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            exerciseRepository: exerciseRepo
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+
+        await vm.updateExerciseNotes(we, notes: "Ankle 4; Seat 4; Pivot 1")
+
+        // The note belongs to the machine, so it lands on the library
+        // exercise and every future workout using it inherits it.
+        #expect(exercise.notes == "Ankle 4; Seat 4; Pivot 1")
+        #expect(exerciseRepo.savedExercises.contains { $0.id == exercise.id })
+        // Bundled exercises never sync, so the session copy is the one that
+        // reaches the server and the Coach.
+        #expect(we.notes == "Ankle 4; Seat 4; Pivot 1")
+        #expect(vm.workout?.syncStatus == .pending)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("updateExerciseNotes stores an emptied note as nil, not as empty text")
+    func updateExerciseNotesClearsToNil() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        exercise.notes = "Ankle 4"
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            exerciseRepository: MockExerciseRepository()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+
+        await vm.updateExerciseNotes(we, notes: "   ")
+
+        #expect(exercise.notes == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("updateExerciseNotes after finish still saves — the note is not workout data")
+    func updateExerciseNotesAfterFinishStillSaves() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            exerciseRepository: MockExerciseRepository()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+        vm.completeSet(try #require(we.sets.first))
+        let workout = try #require(vm.workout)
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+        workout.syncStatus = .synced
+
+        await vm.updateExerciseNotes(we, notes: "late note")
+
+        #expect(exercise.notes == "late note")
+        // The finished workout record stays authoritative — the note write
+        // must not re-open it for a draft save (#124).
+        #expect(workout.syncStatus == .synced)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Reps adoption (#137)
+    //
+    // "It should auto-fill with the previous reps automatically if not
+    // specified." An exercise added mid-workout got three empty sets and the
+    // ghosts were display-only, so sets reached Cosmos with no reps at all.
+    //
+    // Reps only, never weight: `WorkoutSet.weight == nil` already means
+    // bodyweight, so adopting a previous weight logs 80kg for a bodyweight
+    // set. That bug was found and cut once already — see
+    // "Ghost adoption was built and deliberately cut" in HANDOFF.md. A nil
+    // rep count carries no such meaning.
+
+    @Test("Adopting reps never adopts weight — an untouched bodyweight set stays bodyweight")
+    func adoptingRepsLeavesWeightNil() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let workoutRepo = MockWorkoutRepository()
+        let autoFill = MockAutoFillService()
+        // Last time this exercise was loaded: 80kg × 8.
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 80.0, weightUnit: .kg, reps: 8, date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: workoutRepo,
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+
+        vm.addExercise(exercise)
+        await vm.awaitPreviousValuesLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        for set in we.sets {
+            #expect(set.reps == 8, "reps should adopt the previous session")
+            #expect(set.weight == nil, "weight must stay nil — nil means bodyweight")
+        }
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    @Test("An exercise added mid-workout fills its reps from the previous session")
+    func addExerciseAdoptsPreviousReps() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let autoFill = MockAutoFillService()
+        autoFill.valuesByExerciseId[exercise.id] = [
+            AutoFillResult(weight: 30, weightUnit: .kg, reps: 10, date: .now),
+            AutoFillResult(weight: 40, weightUnit: .kg, reps: 9, date: .now),
+            AutoFillResult(weight: 45, weightUnit: .kg, reps: 8, date: .now),
+        ]
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+
+        vm.addExercise(exercise)
+        await vm.awaitPreviousValuesLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        let sorted = we.sets.sorted(by: { $0.order < $1.order })
+        // Per-set-index, the same shape as the template start path (#82).
+        #expect(sorted.map(\.reps) == [10, 9, 8])
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    @Test("Reps the user cleared are not silently re-filled")
+    func clearedRepsAreNotReadopted() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 30, weightUnit: .kg, reps: 10, date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        let we = try #require(vm.workout?.exercises.first)
+        let first = try #require(we.sets.sorted(by: { $0.order < $1.order }).first)
+
+        // Explicitly cleared, before the ghost load lands.
+        vm.updateSetReps(first, reps: nil)
+        await vm.awaitPreviousValuesLoad()
+
+        #expect(first.reps == nil, "an explicit clear is a decision, not an absence")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    @Test("Reps the user entered are never overwritten by adoption")
+    func enteredRepsAreNotOverwritten() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 30, weightUnit: .kg, reps: 10, date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        let we = try #require(vm.workout?.exercises.first)
+        let first = try #require(we.sets.sorted(by: { $0.order < $1.order }).first)
+
+        vm.updateSetReps(first, reps: 3)
+        await vm.awaitPreviousValuesLoad()
+
+        #expect(first.reps == 3)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    @Test("A completed set is never re-filled by adoption")
+    func completedSetIsNotReadopted() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let autoFill = MockAutoFillService()
+        autoFill.resultByExerciseId[exercise.id] = AutoFillResult(
+            weight: 30, weightUnit: .kg, reps: 10, date: .now
+        )
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        let we = try #require(vm.workout?.exercises.first)
+        let first = try #require(we.sets.sorted(by: { $0.order < $1.order }).first)
+
+        // Logged as a bodyweight set with no reps recorded — deliberate.
+        vm.completeSet(first)
+        await vm.awaitPreviousValuesLoad()
+
+        #expect(first.reps == nil, "a logged set is a record, not a draft")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+        _ = template
+    }
+
+    // MARK: - Set completion stamps one set only (#139)
+    //
+    // The 2026-08-19 session had set timestamps 0.68s and 5.9s apart, which
+    // read like retroactive bulk completion. There is no batch-complete path
+    // anywhere in the app — `completedAt` is written one set at a time here
+    // and in LogSetTool — and the real explanation was the user working
+    // through the card list out of order. This pins that, so the next person
+    // reading odd timestamps in the mirror does not have to re-derive it.
+
+    @Test("Completing a set stamps that set and no other")
+    func completingSetStampsOnlyThatSet() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 3, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+        let sorted = we.sets.sorted(by: { $0.order < $1.order })
+        #expect(sorted.count == 3)
+
+        vm.completeSet(sorted[1])
+
+        #expect(sorted[0].completedAt == nil)
+        #expect(sorted[1].completedAt != nil)
+        #expect(sorted[2].completedAt == nil)
+        #expect(sorted.filter(\.isCompleted).count == 1)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Un-completing a set clears only that set's stamp")
+    func unCompletingSetClearsOnlyThatSet() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+        let sorted = we.sets.sorted(by: { $0.order < $1.order })
+        vm.completeSet(sorted[0])
+        vm.completeSet(sorted[1])
+
+        vm.completeSet(sorted[0])   // second tap un-completes
+
+        #expect(sorted[0].completedAt == nil)
+        #expect(sorted[1].completedAt != nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Template provenance (#128)
+    //
+    // The plan the workout started from, frozen before the user touches
+    // anything. Without it a finished workout cannot be compared to what was
+    // intended: mutations erase the evidence, and the logged values say nothing
+    // about intent because auto-fill pre-populates them from history.
+
+    @Test("Starting from a template captures the plan as a baseline")
+    func startFromTemplateCapturesBaseline() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        exercise.externalId = "Split_Squat_with_Dumbbells"
+        let te = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 2,
+            defaultReps: 8,
+            defaultWeight: 12,
+            defaultRestSeconds: 120,
+            notes: "Rear foot on the bench"
+        )
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let baselineRepo = MockTemplateBaselineRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: baselineRepo
+        )
+        await vm.startWorkout()
+
+        let workout = try #require(vm.workout)
+        let baseline = try #require(baselineRepo.baselines.first)
+        #expect(baseline.workoutId == workout.id)
+        #expect(baseline.templateId == template.id)
+        #expect(baseline.templateRevision == template.lastModified)
+        #expect(baseline.templateName == "Push Day")
+
+        let entries = try await baselineRepo.fetchEntries(workoutId: workout.id)
+        #expect(entries.count == 1)
+        let entry = try #require(entries.first)
+        #expect(entry.sourceTemplateExerciseId == te.id)
+        #expect(entry.plannedOrder == 0)
+        #expect(entry.plannedSets == 2)
+        #expect(entry.plannedReps == 8)
+        #expect(entry.plannedRestSeconds == 120)
+        #expect(entry.plannedNotes == "Rear foot on the bench")
+        #expect(entry.exerciseExternalId == "Split_Squat_with_Dumbbells")
+        #expect(entry.workoutExerciseId == workout.exercises.first?.id)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An ad-hoc workout captures no baseline — there was no plan")
+    func adHocWorkoutCapturesNoBaseline() async throws {
+        let container = try makeTestContainer()
+        let baselineRepo = MockTemplateBaselineRepository()
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: baselineRepo
+        )
+        await vm.startWorkout()
+
+        #expect(baselineRepo.baselines.isEmpty)
+        #expect(baselineRepo.saveCallCount == 0)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An exercise added mid-workout gets no baseline entry — that absence is the signal")
+    func midWorkoutAdditionHasNoBaselineEntry() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        let added = TestFixtures.makeExercise(name: "Ab Crunch Machine")
+        context.insert(added)
+        try context.save()
+
+        let baselineRepo = MockTemplateBaselineRepository()
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: baselineRepo
+        )
+        await vm.startWorkout()
+        let workout = try #require(vm.workout)
+
+        vm.addExercise(added)
+
+        let entries = try await baselineRepo.fetchEntries(workoutId: workout.id)
+        #expect(entries.count == 1, "the baseline is frozen at start and never grows")
+        #expect(entries.first?.exerciseId == exercise.id)
+        #expect(workout.exercises.count == 2)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("A failing baseline write does not stop the workout starting")
+    func baselineFailureDoesNotBlockStart() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let baselineRepo = MockTemplateBaselineRepository()
+        baselineRepo.errorToThrow = NSError(domain: "test", code: 128)
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: baselineRepo
+        )
+        await vm.startWorkout()
+
+        // Provenance is a nicety; being able to train is not. Losing the
+        // baseline costs a post-workout suggestion, nothing more.
+        #expect(vm.workout != nil)
+        #expect(vm.workout?.exercises.count == 1)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Target reps on screen (#144)
+    //
+    // PREVIOUS shows what you did last time, and since #137 the reps field is
+    // prefilled from last time too — so nothing on screen was the plan, and
+    // drift compounded silently: template 8, last session 12, this session
+    // prefills 12, next session's "previous" is 12.
+
+    @Test("A template-started workout exposes the planned target per exercise")
+    func exposesPlannedTarget() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(
+            order: 0,
+            exercise: exercise,
+            defaultSets: 2,
+            defaultReps: 8,
+            defaultWeight: 12,
+            defaultRestSeconds: 120
+        )
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        await vm.awaitPlannedTargetsLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        let target = try #require(vm.plannedTarget(for: we))
+        #expect(target.sets == 2)
+        #expect(target.reps == 8)
+        #expect(target.restSeconds == 120)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An exercise added mid-workout has no target — none is invented")
+    func addedExerciseHasNoTarget() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        let added = TestFixtures.makeExercise(name: "Ab Crunch Machine")
+        context.insert(added)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        await vm.awaitPlannedTargetsLoad()
+        vm.addExercise(added)
+
+        let addedWE = try #require(vm.workout?.exercises.first { $0.exercise?.id == added.id })
+        #expect(vm.plannedTarget(for: addedWE) == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An ad-hoc workout has no targets at all")
+    func adHocWorkoutHasNoTargets() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        await vm.awaitPlannedTargetsLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        #expect(vm.plannedTarget(for: we) == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Last session's reps are flagged as drifted when they miss the target")
+    func lastSessionDriftIsFlagged() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 2, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let autoFill = MockAutoFillService()
+        // Last session drifted: 12 reps against a target of 8.
+        autoFill.valuesByExerciseId[exercise.id] = [
+            AutoFillResult(weight: 12, weightUnit: .kg, reps: 12, date: .now),
+            AutoFillResult(weight: 14, weightUnit: .kg, reps: 8, date: .now),
+        ]
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: autoFill,
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        await vm.awaitPlannedTargetsLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        let sets = we.sets.sorted(by: { $0.order < $1.order })
+        // Flagged on the PREVIOUS value — the thing you can still act on
+        // while choosing what to do this session.
+        #expect(vm.previousDriftedFromTarget(sets[0], in: we) == true)
+        #expect(vm.previousDriftedFromTarget(sets[1], in: we) == false)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("No previous session means no drift flag — absence is not disagreement")
+    func noPreviousMeansNoDrift() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        await vm.awaitPlannedTargetsLoad()
+
+        let we = try #require(vm.workout?.exercises.first)
+        let set = try #require(we.sets.first)
+        #expect(vm.previousDriftedFromTarget(set, in: we) == false)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    // MARK: - Post-workout template review, end to end (#129/#130)
+
+    @Test("Finishing a workout with a mid-workout addition offers it for the template")
+    func finishingSurfacesTemplateChanges() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        let added = TestFixtures.makeExercise(name: "Ab Crunch Machine")
+        added.externalId = "Ab_Crunch_Machine"
+        context.insert(added)
+        try context.save()
+
+        let templateRepo = MockTemplateRepository()
+        templateRepo.templates = [template]
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            templateRepository: templateRepo,
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        vm.completeSet(try #require(vm.workout?.exercises.first?.sets.first))
+
+        vm.addExercise(added)
+        let addedWE = try #require(vm.workout?.exercises.first { $0.exercise?.id == added.id })
+        for set in addedWE.sets { vm.completeSet(set) }
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        guard case .finished(let summary) = vm.completionState else {
+            Issue.record("expected a finished workout, got \(vm.completionState)")
+            return
+        }
+        let changeSet = try #require(summary?.templateChangeSet)
+        #expect(changeSet.changes.count == 1)
+        #expect(changeSet.templateId == template.id)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("A workout performed as planned offers nothing — the card must not appear")
+    func finishingAsPlannedOffersNothing() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let templateRepo = MockTemplateRepository()
+        templateRepo.templates = [template]
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            templateRepository: templateRepo,
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        vm.completeSet(try #require(vm.workout?.exercises.first?.sets.first))
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        guard case .finished(let summary) = vm.completionState else {
+            Issue.record("expected a finished workout")
+            return
+        }
+        #expect(summary?.templateChangeSet == nil, "nil, not empty — the card has one condition")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An ad-hoc workout never offers a template update")
+    func adHocWorkoutOffersNoTemplateUpdate() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            adHocName: "Quick Workout",
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            baselineRepository: MockTemplateBaselineRepository()
+        )
+        await vm.startWorkout()
+        vm.addExercise(exercise)
+        let we = try #require(vm.workout?.exercises.first)
+        for set in we.sets { vm.completeSet(set) }
+
+        await vm.finishWorkout()
+        await vm.awaitPostCommitWork()
+
+        guard case .finished(let summary) = vm.completionState else {
+            Issue.record("expected a finished workout")
+            return
+        }
+        #expect(summary?.templateChangeSet == nil)
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
 }

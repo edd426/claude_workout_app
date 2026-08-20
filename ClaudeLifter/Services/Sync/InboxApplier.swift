@@ -8,6 +8,9 @@ enum InboxApplyError: Error, LocalizedError {
     case templateNotFound(String)
     case unresolvedExerciseIds([String])
     case invalidCustomExternalId(String)
+    case invalidReportId(String)
+    case reportNotFound(String)
+    case invalidReportStatus(String)
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +28,12 @@ enum InboxApplyError: Error, LocalizedError {
             return "Unresolved exercise externalIds: \(ids.joined(separator: ", "))"
         case .invalidCustomExternalId(let id):
             return "Invalid custom exercise externalId: \(id)"
+        case .invalidReportId(let id):
+            return "Invalid report id: \(id)"
+        case .reportNotFound(let id):
+            return "Report not found: \(id)"
+        case .invalidReportStatus(let status):
+            return "Invalid report status: \(status) (expected acknowledged or resolved)"
         }
     }
 }
@@ -38,13 +47,16 @@ enum InboxApplyError: Error, LocalizedError {
 final class InboxApplier {
     private let templateRepository: any TemplateRepository
     private let exerciseRepository: any ExerciseRepository
+    private let reportRepository: any ExerciseReportRepository
 
     init(
         templateRepository: any TemplateRepository,
-        exerciseRepository: any ExerciseRepository
+        exerciseRepository: any ExerciseRepository,
+        reportRepository: any ExerciseReportRepository
     ) {
         self.templateRepository = templateRepository
         self.exerciseRepository = exerciseRepository
+        self.reportRepository = reportRepository
     }
 
     /// Process every operation even when an earlier one is malformed or fails.
@@ -156,6 +168,12 @@ final class InboxApplier {
                 id: try entityID(for: operation)
             )
 
+        case "resolveExerciseReport":
+            let payload = try decode(
+                ResolveExerciseReportPayload.self, from: operation.payload
+            )
+            try await resolveExerciseReport(payload)
+
         case "updateTemplate":
             let payload = try decode(UpdateTemplatePayload.self, from: operation.payload)
             try validateUpdatePayload(payload)
@@ -222,11 +240,48 @@ final class InboxApplier {
         try await exerciseRepository.save(exercise)
     }
 
+    /// Closing out a report is deliberately approval-free: the whole point of
+    /// the status lifecycle is that the AI can clear the backlog without a
+    /// second confirmation step, and the write is trivially reversible.
+    private func resolveExerciseReport(
+        _ payload: ResolveExerciseReportPayload
+    ) async throws {
+        guard let id = UUID(uuidString: payload.id) else {
+            throw InboxApplyError.invalidReportId(payload.id)
+        }
+        guard let report = try await reportRepository.fetch(id: id) else {
+            throw InboxApplyError.reportNotFound(payload.id)
+        }
+
+        let status: ReportStatus
+        switch payload.status {
+        case nil, ReportStatus.resolved.rawValue:
+            status = .resolved
+        case ReportStatus.acknowledged.rawValue:
+            status = .acknowledged
+        case ReportStatus.open.rawValue:
+            // Reopening, allowed since #146. It was refused on the grounds
+            // that the inbox exists to close reports out — but a fix that
+            // turns out to be inert (#136) needs a route back, and reopening
+            // surfaces a complaint rather than hiding one.
+            status = .open
+        case let other?:
+            throw InboxApplyError.invalidReportStatus(other)
+        }
+
+        report.status = status
+        if let resolution = payload.resolution {
+            report.resolution = resolution
+        }
+        report.recordChange()
+        try await reportRepository.save(report)
+    }
+
     private func approvalRequirement(for operation: String) throws -> Bool {
         switch operation {
         case "updateTemplate", "deleteTemplate":
             return true
-        case "createTemplate", "createCustomExercise":
+        case "createTemplate", "createCustomExercise", "resolveExerciseReport":
             return false
         default:
             throw InboxApplyError.unknownOperation(operation)

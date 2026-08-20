@@ -23,8 +23,22 @@ protocol ExerciseRepository {
 final class SwiftDataExerciseRepository: ExerciseRepository {
     private let context: ModelContext
 
-    init(context: ModelContext) {
+    /// Invoked when a CUSTOM exercise is created, updated, or deleted.
+    ///
+    /// `Exercise` is the one mirrored type with no per-record `syncStatus`,
+    /// so `hasPendingChanges` cannot see it and a custom exercise created
+    /// through the UI would sit unpushed until some unrelated workout change
+    /// happened to trigger a snapshot (#104). This callback is that missing
+    /// signal. Bundled exercises are excluded — they are never mirrored, and
+    /// marking on import would dirty the phone 800 times on first launch.
+    private let onCustomExerciseChanged: () -> Void
+
+    init(
+        context: ModelContext,
+        onCustomExerciseChanged: @escaping () -> Void = {}
+    ) {
         self.context = context
+        self.onCustomExerciseChanged = onCustomExerciseChanged
     }
 
     func fetchAll() async throws -> [Exercise] {
@@ -138,13 +152,26 @@ final class SwiftDataExerciseRepository: ExerciseRepository {
         return Array(Set(tags.map(\.value))).sorted()
     }
 
+    // Every save marks the snapshot dirty, not only `isCustom` ones (#140).
+    // A bundled exercise now carries synced data too — its note and photo
+    // travel as an overlay — and gating on "does it currently hold data"
+    // would silently drop the case that matters most: CLEARING a note, where
+    // the exercise is clean by the time it is saved and the stale overlay
+    // would then live in the mirror forever.
+    //
+    // The ~800-row first-launch import does not come through here — it inserts
+    // into the context directly (ExerciseImportService) — so this costs one
+    // flag write per genuine user edit.
+
     func save(_ exercise: Exercise) async throws {
         context.insert(exercise)
         try context.save()
+        onCustomExerciseChanged()
     }
 
     func delete(_ exercise: Exercise) async throws {
         context.delete(exercise)
         try context.save()
+        onCustomExerciseChanged()
     }
 }

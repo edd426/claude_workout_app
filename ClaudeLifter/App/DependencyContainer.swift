@@ -6,6 +6,7 @@ import SwiftUI
 final class DependencyContainer {
     let workoutRepository: any WorkoutRepository
     let templateRepository: any TemplateRepository
+    let baselineRepository: any TemplateBaselineRepository
     let exerciseRepository: any ExerciseRepository
     let chatRepository: any ChatMessageRepository
     let preferenceRepository: any TrainingPreferenceRepository
@@ -19,6 +20,7 @@ final class DependencyContainer {
     let insightGenerationService: any InsightGenerationServiceProtocol
     let backupService: any BackupServiceProtocol
     let bodyWeightRepository: any BodyWeightRepository
+    let exerciseReportRepository: any ExerciseReportRepository
     let inboxApplier: InboxApplier
     let healthKitService: any HealthKitServiceProtocol
     /// Shared rest-timer tick source — one instance for the app instead of
@@ -41,14 +43,21 @@ final class DependencyContainer {
 
         let workoutRepo = SwiftDataWorkoutRepository(context: modelContext)
         let templateRepo = SwiftDataTemplateRepository(context: modelContext)
+        let baselineRepo = SwiftDataTemplateBaselineRepository(context: modelContext)
         let chatRepo = SwiftDataChatMessageRepository(context: modelContext)
         let prefRepo = SwiftDataTrainingPreferenceRepository(context: modelContext)
         let insightRepo = SwiftDataInsightRepository(context: modelContext)
-        let exerciseRepo = SwiftDataExerciseRepository(context: modelContext)
+        // Custom exercises have no per-record syncStatus, so their only
+        // "a push is due" signal is this callback (#104).
+        let exerciseRepo = SwiftDataExerciseRepository(
+            context: modelContext,
+            onCustomExerciseChanged: { settings.markSnapshotDirty() }
+        )
         let network = NetworkService(settings: settings)
 
         self.workoutRepository = workoutRepo
         self.templateRepository = templateRepo
+        self.baselineRepository = baselineRepo
         self.exerciseRepository = exerciseRepo
         self.chatRepository = chatRepo
         self.preferenceRepository = prefRepo
@@ -68,9 +77,12 @@ final class DependencyContainer {
         self.imageUploadService = ImageUploadService(networkService: network)
         let bodyWeightRepo = SwiftDataBodyWeightRepository(context: modelContext)
         self.bodyWeightRepository = bodyWeightRepo
+        let reportRepo = SwiftDataExerciseReportRepository(context: modelContext)
+        self.exerciseReportRepository = reportRepo
         let inboxApplier = InboxApplier(
             templateRepository: templateRepo,
-            exerciseRepository: exerciseRepo
+            exerciseRepository: exerciseRepo,
+            reportRepository: reportRepo
         )
         self.inboxApplier = inboxApplier
         self.healthKitService = HealthKitService()
@@ -97,6 +109,7 @@ final class DependencyContainer {
             templateRepository: templateRepo,
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
+            exerciseReportRepository: reportRepo,
             networkService: network,
             settings: settings,
             inboxApplier: inboxApplier

@@ -832,3 +832,76 @@ describe("POST /api/inbox/ack — an illegal transition must not poison the batc
     );
   });
 });
+
+describe("POST /api/inbox — resolveExerciseReport (#135)", () => {
+  test("enqueues a valid resolve without requiring approval", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: {
+        id: "8f2a0b0c-1111-4222-8333-444455556666",
+        status: "resolved",
+        resolution: "Filed as #140",
+      },
+    });
+
+    expect(isOk(response.status)).toBe(true);
+    const operation = response.jsonBody as Doc;
+    expect(operation["op"]).toBe("resolveExerciseReport");
+    // Closing out a report is trivially reversible; a second confirmation
+    // step would defeat the point of letting the AI clear the backlog.
+    expect(operation["requiresApproval"]).toBe(false);
+    expect(operation["status"]).toBe("pending");
+  });
+
+  test("accepts a resolve with no status (server default applies on the phone)", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666" },
+    });
+
+    expect(isOk(response.status)).toBe(true);
+  });
+
+  test("rejects a resolve without an id", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { resolution: "done" },
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  // Inverted by #146. Reopening was refused on the grounds that the inbox
+  // exists to close reports, not to reopen them behind the user. The case that
+  // changed it: #136 was acknowledged, its fix shipped, and the fix was inert
+  // — a real complaint had left the backlog with no way back.
+  test("accepts reopening a report that was closed too early", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666", status: "open" },
+    });
+
+    // A successful enqueue omits an explicit status; 200 is the default.
+    expect(response.status ?? 200).toBe(200);
+    expect((response.jsonBody as { op: string }).op).toBe("resolveExerciseReport");
+  });
+
+  test("still rejects a status outside the lifecycle", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666", status: "wontfix" },
+    });
+
+    expect(response.status).toBe(400);
+    expect((response.jsonBody as { error: string }).error).toContain("status");
+  });
+
+  test("rejects a non-string resolution", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666", resolution: 42 },
+    });
+
+    expect(response.status).toBe(400);
+  });
+});

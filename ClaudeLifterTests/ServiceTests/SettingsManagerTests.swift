@@ -77,10 +77,41 @@ struct SettingsManagerTests {
         let defaults = UserDefaults(suiteName: suite)!
         let settings = SettingsManager(defaults: defaults)
 
-        settings.isSnapshotDirty = true
+        settings.markSnapshotDirty()
         let reloaded = SettingsManager(defaults: UserDefaults(suiteName: suite)!)
 
         #expect(reloaded.isSnapshotDirty == true)
+    }
+
+    @Test("a legacy stored isSnapshotDirty flag survives the upgrade to generations")
+    func legacyDirtyFlagMigrates() {
+        // A pre-#104 install that was dirty at upgrade time has unpushed state.
+        // Reading the new keys and finding nothing must not be read as clean.
+        let suite = "settings-legacy-dirty-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.set(true, forKey: "isSnapshotDirty")
+
+        let settings = SettingsManager(defaults: defaults)
+
+        #expect(settings.isSnapshotDirty == true)
+    }
+
+    @Test("clearing names the generation it pushed, so a mid-request change stays dirty")
+    func cleanUpToStaleGenerationLeavesItDirty() {
+        let defaults = UserDefaults(suiteName: "settings-generation-\(UUID())")!
+        let settings = SettingsManager(defaults: defaults)
+
+        settings.markSnapshotDirty()
+        let inFlight = settings.currentSnapshotGeneration()
+        // A custom exercise created while the POST was in flight.
+        settings.markSnapshotDirty()
+        settings.markSnapshotClean(upTo: inFlight)
+
+        #expect(settings.isSnapshotDirty == true)
+
+        // The next push covers both and does clear it.
+        settings.markSnapshotClean(upTo: settings.currentSnapshotGeneration())
+        #expect(settings.isSnapshotDirty == false)
     }
 
     @Test("clearing lastSyncRevision removes the stored value")
@@ -97,5 +128,44 @@ struct SettingsManagerTests {
         // Assert
         let reloaded = SettingsManager(defaults: UserDefaults(suiteName: suite)!)
         #expect(reloaded.lastSyncRevision == nil)
+    }
+}
+
+@Suite("SettingsManager — snapshot dirty generations (#104)")
+struct SettingsManagerSnapshotGenerationTests {
+
+    @Test("A phone marked dirty but never cleaned reloads as dirty")
+    func dirtyWithoutCleanKeyReloadsDirty() {
+        // `didSet` does not fire for init assignments, so the clean key is
+        // absent on a phone that has only ever been marked dirty. Reading
+        // that as clean would strand unpushed state.
+        let suite = "settings-dirty-no-clean-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        SettingsManager(defaults: defaults).markSnapshotDirty()
+
+        let reloaded = SettingsManager(defaults: UserDefaults(suiteName: suite)!)
+
+        #expect(reloaded.isSnapshotDirty == true)
+    }
+
+    @Test("A cleared phone reloads clean")
+    func cleanedReloadsClean() {
+        let suite = "settings-cleaned-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        let settings = SettingsManager(defaults: defaults)
+        settings.markSnapshotDirty()
+        settings.markSnapshotClean(upTo: settings.currentSnapshotGeneration())
+
+        let reloaded = SettingsManager(defaults: UserDefaults(suiteName: suite)!)
+
+        #expect(reloaded.isSnapshotDirty == false)
+    }
+
+    @Test("A fresh install starts clean")
+    func freshInstallIsClean() {
+        let settings = SettingsManager(
+            defaults: UserDefaults(suiteName: "settings-fresh-\(UUID())")!
+        )
+        #expect(settings.isSnapshotDirty == false)
     }
 }

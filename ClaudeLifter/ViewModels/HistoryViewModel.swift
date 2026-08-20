@@ -57,6 +57,43 @@ final class HistoryViewModel {
         }
     }
 
+    /// Edits a set on a **past** workout (#117).
+    ///
+    /// History edits used to be written straight to the model by the detail
+    /// view, so they persisted locally and were never re-queued for sync — the
+    /// local record silently diverged from the mirror. Every edit goes through
+    /// here instead, mirroring the rule `ActiveWorkoutViewModel` states for the
+    /// live session: views never write to WorkoutSet directly.
+    ///
+    /// `nil` is a legitimate value, not a failed parse: a nil weight is how a
+    /// bodyweight set is recorded, and the old `if let value = Double(text)`
+    /// made it unreachable.
+    ///
+    /// Deliberately *not* routed through `ActiveWorkoutViewModel.persistMutation`
+    /// — that early-returns on a finished workout and its `saveDraft()` deletes
+    /// records it judges empty, which is the wrong semantics for a completed
+    /// session.
+    func updateSet(_ set: WorkoutSet, weight: Double?, in workout: Workout) async {
+        guard set.weight != weight else { return }
+        set.weight = weight
+        await persist(workout)
+    }
+
+    func updateSet(_ set: WorkoutSet, reps: Int?, in workout: Workout) async {
+        guard set.reps != reps else { return }
+        set.reps = reps
+        await persist(workout)
+    }
+
+    private func persist(_ workout: Workout) async {
+        workout.recordChange()
+        do {
+            try await workoutRepository.save(workout)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func updateWorkout(_ workout: Workout) async {
         // History edits mutate nested sets/exercises directly in the detail
         // view; without recordChange() here the edit never bumped the parent

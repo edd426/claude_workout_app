@@ -85,6 +85,13 @@ See `.claude/rules/tdd.md` for the full workflow.
 
 - **Typechecking is not testing.** A clean `tsc`/`swiftc` parse says nothing about behavior — on 2026-07-27 two rounds of write-path work typechecked cleanly and still failed the simulator suite. Run `xcodebuild test` before claiming a change works, and beware piping it through `tail` without `set -o pipefail`, which masks the real exit code.
 
+- **Versioning**: three-part semver, bumped on **every device install** (patch
+  for fixes, minor for features). Edit `APP_VERSION` and `BUILD_NUMBER` in
+  **`generate_project.py`** — never `ClaudeLifter.xcodeproj/project.pbxproj`,
+  which that script regenerates, silently discarding any bump made there. The
+  Settings footer shows the version, so the bump is the visible proof that the
+  new build actually landed on the phone.
+
 - **Architecture**: MVVM with `@Observable` ViewModels
 - **DI**: Protocol-based. Every service/repository has a protocol. Tests inject mocks.
 - **Testing**: Swift Testing (`@Test`, `#expect`) — NOT XCTest (`XCTAssert*`)

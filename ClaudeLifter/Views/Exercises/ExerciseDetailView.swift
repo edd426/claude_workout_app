@@ -6,6 +6,9 @@ struct ExerciseDetailView: View {
 
     @State private var photoVM = ExercisePhotoViewModel()
     @State private var selectedItem: PhotosPickerItem? = nil
+    /// Considered reports, filed away from the gym (issue #135).
+    @State private var reportContext: ReportContext?
+    @Environment(\.dependencies) private var dependencies
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,6 +16,7 @@ struct ExerciseDetailView: View {
             List {
                 imageSection
                 photoSection
+                notesSection
                 musclesSection
                 if !exercise.instructions.isEmpty {
                     instructionsSection
@@ -22,6 +26,26 @@ struct ExerciseDetailView: View {
         }
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    reportContext = .forLibraryExercise(exercise)
+                } label: {
+                    Label("Report a problem…", systemImage: "flag")
+                }
+                .accessibilityIdentifier("reportExerciseFromLibrary")
+            }
+        }
+        .sheet(item: $reportContext) { context in
+            if let dependencies {
+                ReportSheetView(
+                    vm: ReportSheetViewModel(
+                        context: context,
+                        repository: dependencies.exerciseReportRepository
+                    )
+                )
+            }
+        }
         // Use .task instead of .onAppear — .onAppear re-fires on every view
         // redraw (e.g. navigation push/pop, orientation change), which would
         // overwrite any local photo state the user has just chosen.
@@ -134,6 +158,21 @@ struct ExerciseDetailView: View {
     }
 
     // MARK: - Muscles / instructions / metadata
+
+    /// The note attached to the exercise (#136) — machine settings written at
+    /// the machine during a workout. Read-only here; it is edited where it is
+    /// used, on the workout screen.
+    @ViewBuilder
+    private var notesSection: some View {
+        if let notes = exercise.notes?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !notes.isEmpty {
+            Section("Notes") {
+                Text(notes)
+                    .accessibilityIdentifier("exerciseDetailNotes")
+            }
+        }
+    }
 
     private var musclesSection: some View {
         Section("Muscles") {

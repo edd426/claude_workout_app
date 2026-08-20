@@ -7,6 +7,10 @@ import { getStats, getCalendar } from "./tools/stats.js";
 import { health } from "./tools/health.js";
 import { searchExercises } from "./tools/catalog.js";
 import {
+  listExerciseReports,
+  resolveExerciseReport,
+} from "./tools/reports.js";
+import {
   createCustomExercise,
   createProgram,
   createTemplate,
@@ -237,6 +241,76 @@ export const TOOLS = [
     },
   },
   {
+    name: "list_exercise_reports",
+    description:
+      "Read the complaint backlog filed from the app: mislabeled exercises, " +
+      "swap requests, app bugs, bad data. Each report carries the context " +
+      "captured when it was filed (exercise externalId, workout, set state, " +
+      "app version). Defaults to everything not yet resolved.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["open", "acknowledged", "resolved", "all"],
+          description: "Defaults to open + acknowledged (the live backlog)",
+        },
+        category: {
+          type: "string",
+          enum: [
+            "bug",
+            "swapRequest",
+            "wrongExercise",
+            "dataError",
+            "formOrSetup",
+            "other",
+          ],
+        },
+        exerciseExternalId: {
+          type: "string",
+          description: "Filter to reports about one exercise",
+        },
+        limit: {
+          type: "number",
+          description: "Max results (default: 100, capped at 500)",
+        },
+      },
+    },
+  },
+  {
+    name: "resolve_exercise_report",
+    description:
+      "Set a report's status, so the backlog reflects reality. Use " +
+      "'acknowledged' when the work is known but not done (an issue was " +
+      "filed, or a fix is written but not installed), 'resolved' when it is " +
+      "finished, and 'open' to reopen one that was closed too early — a fix " +
+      "that turns out not to work must be able to come back. Pass 'ids' to " +
+      "answer several at once. Enqueues inbox operations: the change lands " +
+      "when the phone next syncs.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Report UUID. Use this or ids." },
+        ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Several report UUIDs, all set to the same status. Every id is " +
+            "validated before any is enqueued.",
+        },
+        status: {
+          type: "string",
+          enum: ["resolved", "acknowledged", "open"],
+          description: "Defaults to resolved",
+        },
+        resolution: {
+          type: "string",
+          description: "What was done — shown next to the report in the app",
+        },
+      },
+    },
+  },
+  {
     name: "list_pending_writes",
     description:
       "List inbox operations by status, including failures and their errors",
@@ -371,6 +445,19 @@ export async function handleToolCall(
 
       case "create_custom_exercise":
         return textResult(await createCustomExercise(args));
+
+      case "list_exercise_reports":
+        return textResult(
+          await listExerciseReports({
+            status: optionalString(args, "status"),
+            category: optionalString(args, "category"),
+            exerciseExternalId: optionalString(args, "exerciseExternalId"),
+            limit: optionalNumber(args, "limit"),
+          })
+        );
+
+      case "resolve_exercise_report":
+        return textResult(await resolveExerciseReport(args));
 
       case "list_pending_writes":
         return textResult(

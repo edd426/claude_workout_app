@@ -37,17 +37,34 @@ export interface SyncPushResponse {
   results: SyncPushRecordResult[];
 }
 
-// ─── Snapshot sync (issue #78, wire contract v2) ─────────────────────────────
+// ─── Snapshot sync (issue #78, wire contract v2/v3) ──────────────────────────
 // The phone is authoritative; Azure is a read-mostly mirror. A push is always
 // the complete state of each collection — full-state replace, not deltas.
+//
+// v4 (issue #140) adds `exerciseOverlays`. v3 (issue #135) adds
+// `exerciseReports`. Every earlier version is still ACCEPTED: the server is
+// deployed independently of the app, so a v2 push from a phone that has not
+// updated yet must keep working. A v2 push simply does not mention reports,
+// and reconciliation therefore leaves that container alone rather than
+// wiping it — see SNAPSHOT_COLLECTIONS_BY_VERSION in syncSnapshot.ts.
 
-export const SNAPSHOT_SCHEMA_VERSION = 2;
+export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = [2, 3, 4] as const;
 
 export interface SnapshotCollections {
   workouts: Record<string, unknown>[];
   templates: Record<string, unknown>[];
   customExercises: Record<string, unknown>[];
   bodyWeightEntries: Record<string, unknown>[];
+  /** Present only on schemaVersion 3 pushes. */
+  exerciseReports?: Record<string, unknown>[];
+  /**
+   * Present only on schemaVersion 4 pushes. User data layered onto *bundled*
+   * exercises — machine notes and photos. Keyed by the free-exercise-db
+   * `externalId`, NOT the local UUID: a reinstall mints fresh UUIDs for the
+   * same exercise, so a UUID key would strand every overlay (#140).
+   */
+  exerciseOverlays?: Record<string, unknown>[];
 }
 
 export interface SnapshotPushRequest {
@@ -65,6 +82,8 @@ export interface SnapshotCounts {
   templates: SnapshotContainerCounts;
   customExercises: SnapshotContainerCounts;
   bodyWeightEntries: SnapshotContainerCounts;
+  exerciseReports?: SnapshotContainerCounts;
+  exerciseOverlays?: SnapshotContainerCounts;
 }
 
 export interface SnapshotPushResponse {
@@ -99,7 +118,8 @@ export type InboxOperationType =
   | "createTemplate"
   | "updateTemplate"
   | "deleteTemplate"
-  | "createCustomExercise";
+  | "createCustomExercise"
+  | "resolveExerciseReport";
 
 export type InboxOperationStatus =
   | "pending"
@@ -147,11 +167,24 @@ export interface CreateCustomExercisePayload {
   notes?: string;
 }
 
+/**
+ * Closes out a user-filed report (issue #135). Deliberately approval-free:
+ * the point of the status lifecycle is that the backlog can be cleared
+ * without a second confirmation, and the write is trivially reversible.
+ */
+export interface ResolveExerciseReportPayload {
+  id: string;
+  /** "resolved" (default) or "acknowledged". Reopening is not an operation. */
+  status?: "resolved" | "acknowledged";
+  resolution?: string;
+}
+
 export type InboxOperationPayload =
   | CreateTemplatePayload
   | UpdateTemplatePayload
   | DeleteTemplatePayload
-  | CreateCustomExercisePayload;
+  | CreateCustomExercisePayload
+  | ResolveExerciseReportPayload;
 
 export interface InboxOperation {
   id: string;
@@ -168,7 +201,8 @@ export type InboxEnqueueRequest =
   | { op: "createTemplate"; payload: CreateTemplatePayload }
   | { op: "updateTemplate"; payload: UpdateTemplatePayload }
   | { op: "deleteTemplate"; payload: DeleteTemplatePayload }
-  | { op: "createCustomExercise"; payload: CreateCustomExercisePayload };
+  | { op: "createCustomExercise"; payload: CreateCustomExercisePayload }
+  | { op: "resolveExerciseReport"; payload: ResolveExerciseReportPayload };
 
 export type InboxEnqueueResponse = InboxOperation;
 
@@ -358,4 +392,36 @@ export interface CalendarEntry {
   workoutCount: number;
   totalSets: number;
   totalVolume: number;
+}
+
+// ─── Exercise reports (issue #135) ──────────────────────────────────────────
+// User-filed complaints, mirrored from the phone by snapshot sync so the MCP
+// server can read the backlog. Exercises are referenced by `externalId` —
+// never by the per-install `Exercise.id` UUID (infra/MCP_WRITE_PATH.md).
+
+export type ExerciseReportStatus = "open" | "acknowledged" | "resolved";
+
+export interface ExerciseReport {
+  id: string;
+  createdAt: string;
+  /** bug | swapRequest | wrongExercise | dataError | formOrSetup | other. */
+  category: string;
+  detail: string;
+  exerciseExternalId?: string | null;
+  exerciseName?: string | null;
+  suggestedReplacement?: string | null;
+  workoutId?: string | null;
+  workoutExerciseId?: string | null;
+  templateId?: string | null;
+  contextSummary?: string | null;
+  status: string;
+  resolution?: string | null;
+  appVersion?: string | null;
+  iosVersion?: string | null;
+  photoURL?: string | null;
+  lastModified: string;
+}
+
+export interface ExerciseReportListResponse {
+  reports: ExerciseReport[];
 }

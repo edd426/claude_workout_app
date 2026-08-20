@@ -112,6 +112,28 @@ enum SyncMapper {
         )
     }
 
+    static func toDTO(_ report: ExerciseReport) -> ExerciseReportDTO {
+        ExerciseReportDTO(
+            id: report.id,
+            createdAt: report.createdAt,
+            category: report.categoryRaw,
+            detail: report.detail,
+            exerciseExternalId: report.exerciseExternalId,
+            exerciseName: report.exerciseName,
+            suggestedReplacement: report.suggestedReplacement,
+            workoutId: report.workoutId,
+            workoutExerciseId: report.workoutExerciseId,
+            templateId: report.templateId,
+            contextSummary: report.contextSummary,
+            status: report.statusRaw,
+            resolution: report.resolution,
+            appVersion: report.appVersion,
+            iosVersion: report.iosVersion,
+            photoURL: report.photoURL,
+            lastModified: report.lastModified
+        )
+    }
+
     static func toDTO(_ pref: TrainingPreference) -> PreferenceDTO {
         PreferenceDTO(
             id: pref.id,
@@ -245,6 +267,36 @@ enum SyncMapper {
             syncStatus: .synced,
             lastModified: dto.lastModified
         )
+    }
+
+    static func createExerciseReport(from dto: ExerciseReportDTO) -> ExerciseReport {
+        let report = ExerciseReport(
+            id: dto.id,
+            createdAt: dto.createdAt,
+            category: ReportCategory(rawValue: dto.category) ?? .other,
+            detail: dto.detail,
+            exerciseExternalId: dto.exerciseExternalId,
+            exerciseName: dto.exerciseName,
+            suggestedReplacement: dto.suggestedReplacement,
+            workoutId: dto.workoutId,
+            workoutExerciseId: dto.workoutExerciseId,
+            templateId: dto.templateId,
+            contextSummary: dto.contextSummary,
+            status: ReportStatus(rawValue: dto.status) ?? .open,
+            resolution: dto.resolution,
+            appVersion: dto.appVersion,
+            iosVersion: dto.iosVersion,
+            photoURL: dto.photoURL,
+            syncStatus: .synced,
+            lastModified: dto.lastModified
+        )
+        // Keep the wire values verbatim rather than the coerced enums: a
+        // category written by a newer build must survive a restore instead of
+        // being flattened to `.other`. The computed accessors do the fallback
+        // at read time, so unknown values stay readable without being lost.
+        report.categoryRaw = dto.category
+        report.statusRaw = dto.status
+        return report
     }
 
     static func createPreference(from dto: PreferenceDTO) -> TrainingPreference {

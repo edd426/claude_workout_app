@@ -7,6 +7,7 @@
  */
 
 import { apiGet, ApiError } from "../shared/http.js";
+import { buildFreshness } from "../shared/build-info.js";
 
 export interface HealthReport {
   baseUrl: string;
@@ -15,6 +16,13 @@ export interface HealthReport {
   server?: { status: string; timestamp: string; version: string };
   authValid?: boolean;
   error?: string;
+  /** What this running server was built from, and whether it is current (#138). */
+  build?: {
+    builtAt: string | null;
+    gitHead: string | null;
+    stale: boolean;
+    staleReason: string | null;
+  };
 }
 
 function messageOf(err: unknown): string {
@@ -31,6 +39,17 @@ export async function health(): Promise<HealthReport> {
       : "(FUNCTIONS_BASE_URL not set)",
     apiKeyConfigured,
     reachable: false,
+  };
+
+  // Reported before the connectivity checks so it is answered even when the
+  // API is unreachable — "is the server stale?" is a question about this
+  // process, not about Azure.
+  const freshness = await buildFreshness();
+  report.build = {
+    builtAt: freshness.builtAt,
+    gitHead: freshness.gitHead,
+    stale: freshness.stale,
+    staleReason: freshness.staleReason,
   };
 
   if (!baseUrlRaw || !apiKeyConfigured) {

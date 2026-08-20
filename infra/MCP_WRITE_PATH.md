@@ -59,9 +59,10 @@ New Cosmos container `inbox`, partition key `/id`. Excluded from
 interface InboxOperation {
   id: string;              // uuid, assigned by the Function (never the client)
   createdAt: string;       // ISO 8601, server clock
-  op: "createTemplate" | "updateTemplate" | "deleteTemplate" | "createCustomExercise";
+  op: "createTemplate" | "updateTemplate" | "deleteTemplate"
+    | "createCustomExercise" | "resolveExerciseReport";
   payload: object;         // op-specific, validated at enqueue
-  requiresApproval: boolean; // server-computed: false for creates, true for update/delete
+  requiresApproval: boolean; // server-computed: true only for update/deleteTemplate
   status: "pending" | "awaitingApproval" | "applied" | "rejected" | "failed";
   appliedAt?: string;
   error?: string;          // set when status === "failed"
@@ -135,6 +136,15 @@ remains unchanged.
 // createCustomExercise input — no externalId accepted from the producer.
 { name: string, equipment?: string, primaryMuscles?: string[],
   secondaryMuscles?: string[], instructions?: string[], notes?: string }
+
+// resolveExerciseReport (issue #135) — closes out a user-filed complaint.
+// Approval-free by design: the point of the status lifecycle is that the
+// backlog can be cleared without a second confirmation, and the write is
+// trivially reversible. `status` omitted means "resolved"; "open" is REJECTED
+// at the Function — an inbox operation exists to close a report, never to
+// reopen one behind the user's back.
+{ id: string /* report UUID from list_exercise_reports */,
+  status?: "resolved" | "acknowledged", resolution?: string }
 
 // Stored createCustomExercise payload — the Function adds this canonical id:
 // "custom:<ascii-name-slug>:<inbox-operation-uuid>"
@@ -222,6 +232,8 @@ Re-enabled / new:
 | `delete_template` | Enqueues `deleteTemplate`. Requires approval. |
 | `create_program` | N × `createTemplate` in one call, all-or-nothing validation. |
 | `create_custom_exercise` | Enqueues `createCustomExercise`. Auto-applies. |
+| `list_exercise_reports` | Reads the complaint backlog mirrored by snapshot sync (`GET /api/reports`). Not an inbox operation. |
+| `resolve_exercise_report` | Enqueues `resolveExerciseReport`. Auto-applies. |
 | `list_pending_writes` | Reads back queued/applied/failed operations — closes the loop so a write can be *verified*, not assumed. |
 
 ## Out of scope

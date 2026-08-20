@@ -44,6 +44,8 @@ slim build-time catalog before any write request is sent.
 | `delete_template` | Enqueue a template deletion for approval |
 | `create_program` | Validate all templates, then enqueue each |
 | `create_custom_exercise` | Enqueue a custom exercise |
+| `list_exercise_reports` | Read the complaint backlog filed from the app (defaults to unresolved) |
+| `resolve_exercise_report` | Enqueue a close-out for one report (`resolved` / `acknowledged`) |
 | `list_pending_writes` | List inbox operations by status |
 | `health` | Diagnostic: Functions API connectivity + auth status + base URL |
 
@@ -132,6 +134,7 @@ except health:
 | `/api/stats` | `startDate`, `endDate` (scan capped at 500 most recent workouts) |
 | `/api/calendar` | `startDate`, `endDate` (both required) |
 | `/api/sync/snapshot` | supplies `snapshot.customExercises` for catalog search |
+| `/api/reports` | `status` (open/acknowledged/resolved/all), `category`, `exerciseExternalId`, `limit` (default 100, max 500) |
 | `/api/inbox` | `GET ?status=` lists operations; `POST` enqueues one |
 | `/api/health` | — (anonymous) |
 

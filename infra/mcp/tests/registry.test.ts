@@ -33,9 +33,11 @@ describe("tool listing", () => {
         "get_template",
         "get_workout",
         "health",
+        "list_exercise_reports",
         "list_pending_writes",
         "list_templates",
         "list_workouts",
+        "resolve_exercise_report",
         "search_exercises",
         "update_template",
       ].sort()

@@ -72,8 +72,21 @@ final class CalendarViewModel {
     // MARK: - Private helpers
 
     private func monthDateRange(for date: Date) -> (start: Date, end: Date) {
-        let start = calendar.date(from: calendar.dateComponents([.year, .month], from: date))!
-        let end = calendar.date(byAdding: DateComponents(month: 1, second: -1), to: start)!
+        // Non-nil under the Gregorian calendar, but `Calendar` makes no such
+        // promise in general and the style rules ban force unwraps in
+        // production code (#93). Falling back to the day containing `date`
+        // renders a degraded month rather than crashing the History tab.
+        guard
+            let start = calendar.date(
+                from: calendar.dateComponents([.year, .month], from: date)
+            ),
+            let end = calendar.date(
+                byAdding: DateComponents(month: 1, second: -1), to: start
+            )
+        else {
+            let dayStart = calendar.startOfDay(for: date)
+            return (dayStart, dayStart.addingTimeInterval(86_400 - 1))
+        }
         return (start, end)
     }
 

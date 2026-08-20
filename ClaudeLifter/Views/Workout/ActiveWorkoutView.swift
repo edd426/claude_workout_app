@@ -54,6 +54,16 @@ func isSetEntryFieldAccessibilityIdentifier(_ identifier: String?) -> Bool {
         && UUID(uuidString: String(components[2])) != nil
 }
 
+/// Identifies the exercise whose note is being edited (#136). A wrapper rather
+/// than the model itself so `.sheet(item:)` keys on the stable UUID.
+struct ExerciseNoteTarget: Identifiable {
+    let workoutExercise: WorkoutExercise
+    var id: UUID { workoutExercise.id }
+    var exerciseName: String {
+        workoutExercise.exercise?.name ?? "Exercise"
+    }
+}
+
 struct ActiveWorkoutView: View {
     @State var vm: ActiveWorkoutViewModel
     var onDismiss: (() -> Void)? = nil
@@ -61,6 +71,10 @@ struct ActiveWorkoutView: View {
     @State private var restSession: RestTimerSession?
     @State private var showExercisePicker = false
     @State private var showCancelDialog = false
+    /// Non-nil while the report sheet is up; carries the captured context.
+    @State private var reportContext: ReportContext?
+    /// Non-nil while the per-exercise note editor is up (#136).
+    @State private var noteTarget: ExerciseNoteTarget?
     @FocusState private var focusedField: SetEntryFieldID?
     @Environment(AppState.self) private var appState
     @Environment(\.dependencies) private var dependencies
@@ -79,6 +93,22 @@ struct ActiveWorkoutView: View {
                 .toolbar { toolbarContent(scrollProxy: scrollProxy) }
                 .task { await vm.startWorkout() }
                 .sheet(isPresented: $showExercisePicker) { exercisePicker }
+                .sheet(item: $reportContext) { context in
+                    reportSheet(for: context)
+                }
+                .sheet(item: $noteTarget) { target in
+                    ExerciseNoteEditorView(
+                        exerciseName: target.exerciseName,
+                        initialNotes: target.workoutExercise.exercise?.notes
+                    ) { notes in
+                        Task {
+                            await vm.updateExerciseNotes(
+                                target.workoutExercise,
+                                notes: notes
+                            )
+                        }
+                    }
+                }
                 .confirmationDialog(
                     "Exit workout?",
                     isPresented: $showCancelDialog
@@ -201,8 +231,32 @@ struct ActiveWorkoutView: View {
             onRemoveSet: { set in
                 focusedField = nil
                 vm.removeSet(set, from: workoutExercise)
+            },
+            onReport: {
+                focusedField = nil
+                reportContext = .forExercise(workoutExercise, in: vm.workout)
+            },
+            onEditNotes: {
+                focusedField = nil
+                noteTarget = ExerciseNoteTarget(workoutExercise: workoutExercise)
+            },
+            plannedTarget: vm.plannedTarget(for: workoutExercise),
+            previousDrifted: { set in
+                vm.previousDriftedFromTarget(set, in: workoutExercise)
             }
         )
+    }
+
+    @ViewBuilder
+    private func reportSheet(for context: ReportContext) -> some View {
+        if let dependencies {
+            ReportSheetView(
+                vm: ReportSheetViewModel(
+                    context: context,
+                    repository: dependencies.exerciseReportRepository
+                )
+            )
+        }
     }
 
     @ViewBuilder
@@ -251,6 +305,15 @@ struct ActiveWorkoutView: View {
                 }
             }
             .accessibilityIdentifier("cancelWorkout")
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                focusedField = nil
+                reportContext = .forWorkout(vm.workout)
+            } label: {
+                Label("Report a problem…", systemImage: "flag")
+            }
+            .accessibilityIdentifier("reportWorkout")
         }
         ToolbarItem(placement: .primaryAction) {
             Button {

@@ -30,6 +30,12 @@ final class WorkoutCompletionSummary: Identifiable {
     /// so a slow or failing detector never delays the return to Home.
     var personalRecords: [PersonalRecord] = []
 
+    /// Proposed template changes detected after the workout was saved (#129),
+    /// for the review card in #130. Nil until detection finishes, and nil
+    /// forever for an ad-hoc workout or one whose plan produced nothing —
+    /// the card must appear only when there is genuinely something to decide.
+    var templateChangeSet: TemplateChangeSet?
+
     init(workout: Workout) {
         self.id = workout.id
         self.workout = workout

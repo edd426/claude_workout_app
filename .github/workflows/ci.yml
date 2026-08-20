@@ -1,0 +1,47 @@
+# First CI in this repo (#138). The Swift suite needs macOS + Xcode and is run
+# on the machine that has the right simulator; this covers the two TypeScript
+# packages, which had no automated run at all.
+#
+# Note what this does NOT catch: a stale `infra/mcp/dist/` on a developer
+# machine. `dist/` is gitignored, so there is nothing here to diff against.
+# That is what the runtime staleness guard in `src/shared/build-info.ts` is
+# for — CI and the guard cover different halves of the same problem.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  functions:
+    name: Azure Functions (jest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  mcp:
+    name: MCP server (vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The catalog builder reads ClaudeLifter/Resources/exercises.json, so the
+      # full checkout above is required — not a sparse one.
+      - run: npm ci
+      - run: npm run build
+      - run: npm test

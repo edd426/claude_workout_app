@@ -6,9 +6,8 @@ running 1.2.0 (2), so every user-visible fix below is unverified on hardware.
 
 1.4.1 adds #140's sync half to the 1.4.0 batch: bundled-exercise notes and
 photos now travel to the mirror as overlays, keyed by `externalId`. The Cosmos
-container was created through Bicep. **The Functions app still needs
-publishing** — see *Blocked* below; the client degrades to v3 on its own, so
-this does not gate the install.
+container was created through Bicep. The Functions app is **deployed
+and verified at v4**; the Cosmos container was created through Bicep.
 
 ## Do this first
 
@@ -29,7 +28,7 @@ this does not gate the install.
 | **#136** Seated Leg Curl → ⋯ → *Add a note…* → `Ankle 4; Seat 4; Pivot 1` | The note appears on the card, and on **every** future workout containing that exercise, whichever template |
 | **#137** Add Ab Crunch Machine mid-workout | Its sets arrive with reps prefilled from last session and **weight empty**. Empty weight is the fix working |
 | **#144** Any Lower B exercise | A `Target 2 × 8 · 90s rest` line under the name, and last session's PREVIOUS marked orange where it missed the target |
-| **#140** Note a bundled exercise, then Settings → sync | After the Functions publish, the note appears in the `exerciseOverlays` container. Before it, sync still succeeds — silently at v3 |
+| **#140** Note a bundled exercise, then Settings → sync | The note appears in the `exerciseOverlays` Cosmos container, keyed by `externalId` (e.g. `Seated_Leg_Curl`). The server side is already verified; this probe tests the phone half |
 | **#129/#130** Finish a Lower B with Ab Crunch Machine added | The summary offers *Update Lower B?* → Review → Apply. Ab Rollout, if skipped, must **not** be offered for removal |
 
 ## What changed, and the three things worth knowing
@@ -97,26 +96,32 @@ before Split Squat (order 1), and there is no batch-completion path anywhere:
 `completedAt` is written one set at a time, in exactly two places. Pinned with
 tests.
 
-## Blocked — needs you, and I did not route around it
+## Blocked — nothing, as of 2026-08-20
 
-**One action, and it is smaller than it was.** `func azure functionapp publish`
-is refused by the permission classifier. The Functions **source** is at wire
-version 4 and green (180 tests), but the **deployed** app still only knows v3:
+**Nothing.** Both actions that were blocked are done.
 
-```bash
-cd infra/functions && npm run build
-func azure functionapp publish func-workout-prod --javascript
-curl -sf https://func-workout-prod.azurewebsites.net/api/health
-```
-
-Until you run that, overlays do not reach the mirror. **Nothing else breaks** —
-the client sends v4, the server answers 400, and the client retries once at v3,
-which is the contract the deployed server already speaks. So installing 1.4.1
-before publishing costs you the overlays and nothing more. Verify afterwards by
-editing a note on a bundled exercise and checking `exerciseOverlays` in Cosmos.
-
-The Cosmos container **is created**, through Bicep rather than an ad-hoc `az`
+The Functions app is **deployed and verified at wire version 4**, and the
+Cosmos container was created **through Bicep** rather than an ad-hoc `az`
 command, so the repo still describes reality.
+
+Verified against production, read-only — a real push would have reconciled the
+live mirror, so the version checks used bodies that fail validation, which runs
+before any write:
+
+| Probe | Result |
+|---|---|
+| `GET /api/health` | 200 |
+| `GET /api/sync/snapshot` | revision **378**, and the mirror now returns an `exerciseOverlays` collection (empty — no phone has pushed one yet) |
+| `POST` schemaVersion 9 | `Expected one of 2, 3, 4` — v4 is live |
+| `POST` schemaVersion 4, no overlays key | rejected *by name* — v4 dispatch reaches the overlay collection |
+| `POST` schemaVersion 3 | still a known version — back-compat intact for the phone on 1.2.0 |
+
+Mirror contents unchanged throughout: 17 workouts, 5 templates, 2319
+body-weight entries, 6 reports.
+
+The client's degrade-to-v3 path stays in regardless. It is now belt and
+braces rather than load-bearing, and it means the next wire bump can ship in
+either order.
 
 ### On deploying with Bicep — read this before you try
 

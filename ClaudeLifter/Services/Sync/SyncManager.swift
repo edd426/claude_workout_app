@@ -40,6 +40,8 @@ struct RestoreSummary: Sendable, Equatable {
     var customExercises = 0
     var bodyWeightEntries = 0
     var exerciseReports = 0
+    /// Bundled exercises whose note/photo was reapplied from the mirror (#140).
+    var exerciseOverlays = 0
     /// Placeholder custom exercises created for exerciseIds that resolved
     /// neither by id nor by name (issue #79 fold-in). Zero on a healthy restore.
     var placeholderExercises = 0
@@ -331,6 +333,19 @@ final class SyncManager: InboxApprovalManaging {
         let customExercises = try await exerciseRepository.fetchAll().filter(\.isCustom)
         let bodyWeightEntries = try await bodyWeightRepository.fetchAll()
         let exerciseReports = try await exerciseReportRepository.fetchAll()
+        // Bundled exercises are never mirrored — all ~800 reproduce from the
+        // app bundle — but the user data attached to them is irreplaceable
+        // and, before #140, was never pushed at all. An exercise with no
+        // externalId cannot be keyed and is skipped rather than guessed at.
+        let exerciseOverlays = try await exerciseRepository.fetchAll()
+            .filter { !$0.isCustom }
+            .compactMap { exercise -> ExerciseOverlayDTO? in
+                guard let externalId = exercise.externalId, !externalId.isEmpty else { return nil }
+                let notes = exercise.notes?.isEmpty == false ? exercise.notes : nil
+                let photoURL = exercise.photoURL?.isEmpty == false ? exercise.photoURL : nil
+                guard notes != nil || photoURL != nil else { return nil }
+                return ExerciseOverlayDTO(id: externalId, notes: notes, photoURL: photoURL)
+            }
 
         // Snapshot lastModified at serialization time: a record edited while
         // the POST is in flight must stay .pending — the server received the
@@ -348,11 +363,12 @@ final class SyncManager: InboxApprovalManaging {
                 templates: templates.map { SyncMapper.toDTO($0) },
                 customExercises: customExercises.map { SyncMapper.toDTO($0) },
                 bodyWeightEntries: bodyWeightEntries.map { SyncMapper.toDTO($0) },
-                exerciseReports: exerciseReports.map { SyncMapper.toDTO($0) }
+                exerciseReports: exerciseReports.map { SyncMapper.toDTO($0) },
+                exerciseOverlays: exerciseOverlays
             )
         )
 
-        let response = try await networkService.pushSnapshot(request)
+        let response = try await push(request)
 
         for workout in workouts where workout.lastModified == workoutModified[workout.id] {
             workout.syncStatus = .synced
@@ -369,6 +385,28 @@ final class SyncManager: InboxApprovalManaging {
 
         recordSuccess(revision: response.revision, serverTime: response.serverTime)
         settings.markSnapshotClean(upTo: generation)
+    }
+
+    /// Sends the push, degrading to the previous wire version once if the
+    /// server rejects this one.
+    ///
+    /// The Functions app and the phone deploy independently, and there is no
+    /// ordering guarantee between them. Without this, installing a build whose
+    /// wire version the server has not learned yet breaks sync *entirely* —
+    /// not just the new collection — until someone remembers to deploy. A 400
+    /// is the server saying "I do not know this schemaVersion"; anything else
+    /// is a real failure and is rethrown untouched.
+    private func push(_ request: SnapshotPushRequest) async throws -> SnapshotPushResponse {
+        do {
+            return try await networkService.pushSnapshot(request)
+        } catch SyncError.serverError(400)
+            where request.schemaVersion > SnapshotPushRequest.fallbackSchemaVersion {
+            let downgraded = SnapshotPushRequest(
+                schemaVersion: SnapshotPushRequest.fallbackSchemaVersion,
+                snapshot: request.snapshot
+            )
+            return try await networkService.pushSnapshot(downgraded)
+        }
     }
 
     // MARK: - Restore
@@ -459,6 +497,29 @@ final class SyncManager: InboxApprovalManaging {
                     SyncMapper.createExerciseReport(from: dto)
                 )
                 summary.exerciseReports += 1
+            }
+
+            // 6. Overlays LAST, and by externalId — the bundled library was
+            //    re-imported with fresh UUIDs, so this is the only key that
+            //    still means anything (#140). An overlay for an exercise this
+            //    build does not ship is dropped, not an error: the library can
+            //    change between the backup and the restore.
+            if !snapshot.exerciseOverlays.isEmpty {
+                let installed = try await exerciseRepository.fetchAll()
+                let byExternalId = Dictionary(
+                    installed.compactMap { exercise -> (String, Exercise)? in
+                        guard let externalId = exercise.externalId else { return nil }
+                        return (externalId, exercise)
+                    },
+                    uniquingKeysWith: { first, _ in first }
+                )
+                for dto in snapshot.exerciseOverlays {
+                    guard let exercise = byExternalId[dto.id] else { continue }
+                    if let notes = dto.notes { exercise.notes = notes }
+                    if let photoURL = dto.photoURL { exercise.photoURL = photoURL }
+                    try await exerciseRepository.save(exercise)
+                    summary.exerciseOverlays += 1
+                }
             }
 
             recordSuccess(revision: response.revision, serverTime: response.serverTime)

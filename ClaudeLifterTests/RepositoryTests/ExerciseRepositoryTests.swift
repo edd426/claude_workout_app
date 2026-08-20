@@ -424,16 +424,27 @@ struct ExerciseRepositoryCustomSyncTriggerTests {
         _ = container
     }
 
-    @Test("Saving a bundled exercise does not")
-    func savingBundledExerciseDoesNotSignal() async throws {
-        // Bundled exercises are never mirrored, and signalling here would
-        // dirty the phone 800 times during the first-launch import.
+    @Test("Saving a bundled exercise signals as well, since #140")
+    func savingBundledExerciseSignals() async throws {
+        // Inverted by #140. This test used to assert the opposite, on the
+        // grounds that bundled exercises are never mirrored and signalling
+        // would dirty the phone 800 times during the first-launch import.
+        //
+        // The first half stopped being true: a bundled exercise's note and
+        // photo ARE mirrored now, as overlays. The second half was never true
+        // — the import inserts into the ModelContext directly and does not go
+        // through this repository at all.
+        //
+        // It signals unconditionally rather than "only when the exercise
+        // carries data", because the case that matters most is CLEARING a
+        // note: by save time the exercise is clean, and a gate would leave the
+        // deleted note alive in the mirror forever.
         let counter = CallCounter()
         let (container, repository) = try makeRepository(counter)
 
         try await repository.save(Exercise(name: "Bench Press", isCustom: false))
 
-        #expect(counter.count == 0)
+        #expect(counter.count == 1)
         _ = container
     }
 

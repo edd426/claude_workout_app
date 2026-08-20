@@ -152,18 +152,26 @@ final class SwiftDataExerciseRepository: ExerciseRepository {
         return Array(Set(tags.map(\.value))).sorted()
     }
 
+    // Every save marks the snapshot dirty, not only `isCustom` ones (#140).
+    // A bundled exercise now carries synced data too — its note and photo
+    // travel as an overlay — and gating on "does it currently hold data"
+    // would silently drop the case that matters most: CLEARING a note, where
+    // the exercise is clean by the time it is saved and the stale overlay
+    // would then live in the mirror forever.
+    //
+    // The ~800-row first-launch import does not come through here — it inserts
+    // into the context directly (ExerciseImportService) — so this costs one
+    // flag write per genuine user edit.
+
     func save(_ exercise: Exercise) async throws {
-        let isCustom = exercise.isCustom
         context.insert(exercise)
         try context.save()
-        if isCustom { onCustomExerciseChanged() }
+        onCustomExerciseChanged()
     }
 
     func delete(_ exercise: Exercise) async throws {
-        // Read before the delete — touching a deleted model is undefined.
-        let isCustom = exercise.isCustom
         context.delete(exercise)
         try context.save()
-        if isCustom { onCustomExerciseChanged() }
+        onCustomExerciseChanged()
     }
 }

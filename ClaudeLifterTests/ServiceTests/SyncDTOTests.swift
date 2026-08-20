@@ -180,7 +180,7 @@ struct SyncDTOTests {
 
     // MARK: - Snapshot wire contract (v3)
 
-    @Test("SnapshotPushRequest always encodes all five collection keys, even when empty")
+    @Test("SnapshotPushRequest always encodes every collection key, even when empty")
     func snapshotRequestAlwaysHasFiveKeys() throws {
         // The server rejects a body with a missing collection key (400). An empty
         // array means "wipe that type" — so empty must still be on the wire.
@@ -193,13 +193,14 @@ struct SyncDTOTests {
         let json = try #require(
             try JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
-        #expect(json["schemaVersion"] as? Int == 3)
+        #expect(json["schemaVersion"] as? Int == 4)
         let snapshot = try #require(json["snapshot"] as? [String: Any])
         #expect(snapshot["workouts"] as? [Any] != nil)
         #expect(snapshot["templates"] as? [Any] != nil)
         #expect(snapshot["customExercises"] as? [Any] != nil)
         #expect(snapshot["bodyWeightEntries"] as? [Any] != nil)
         #expect(snapshot["exerciseReports"] as? [Any] != nil)
+        #expect(snapshot["exerciseOverlays"] as? [Any] != nil)
     }
 
     @Test("A v2 snapshot without exerciseReports still decodes")

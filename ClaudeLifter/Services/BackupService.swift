@@ -12,11 +12,10 @@ import SwiftData
 /// Keyed by `externalId`, never by `id`: a reinstall re-imports the catalog
 /// with brand-new random UUIDs, so a UUID-keyed overlay would attach to
 /// nothing. Same identity rule as the MCP write path.
-struct ExerciseOverlayDTO: Codable, Sendable, Equatable {
-    let externalId: String?
-    let notes: String?
-    let photoURL: String?
-}
+// `ExerciseOverlayDTO` now lives in Services/Sync/SyncDTOs.swift — the backup
+// file and the snapshot wire carry the same shape, and #140's sync half needed
+// a non-optional `id` for the Cosmos document key. Files written by 1.4.0 with
+// only `externalId` still decode.
 
 /// A device-local JSON backup: everything the user would lose if the store were
 /// wiped and cloud sync had never run. Bundled (non-custom) exercises are not
@@ -178,7 +177,7 @@ final class BackupService: BackupServiceProtocol {
             .filter { $0.notes?.isEmpty == false || $0.photoURL?.isEmpty == false }
             .map {
                 ExerciseOverlayDTO(
-                    externalId: $0.externalId,
+                    id: $0.externalId ?? "",
                     notes: $0.notes,
                     photoURL: $0.photoURL
                 )

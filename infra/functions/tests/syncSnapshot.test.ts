@@ -594,7 +594,11 @@ describe("GET /api/sync/snapshot", () => {
     expect(Number.isNaN(Date.parse(body.serverTime))).toBe(false);
     // A read always returns every mirrored collection, including the ones a
     // v2 push never mentions.
-    expect(body.snapshot).toEqual({ ...emptySnapshot(), exerciseReports: [] });
+    expect(body.snapshot).toEqual({
+      ...emptySnapshot(),
+      exerciseReports: [],
+      exerciseOverlays: [],
+    });
   });
 
   test("returns 500 when a container read fails", async () => {
@@ -666,10 +670,10 @@ describe("schemaVersion 3 — exerciseReports", () => {
   });
 
   test("rejects an unsupported schemaVersion listing the ones accepted", async () => {
-    const res = await push({ schemaVersion: 4, snapshot: emptySnapshot() });
+    const res = await push({ schemaVersion: 9, snapshot: emptySnapshot() });
     expect(res.status).toBe(400);
     const body = res.jsonBody as { error: string };
-    expect(body.error).toContain("2, 3");
+    expect(body.error).toContain("2, 3, 4");
   });
 
   test("GET returns reports so a restore can rebuild them", async () => {
@@ -683,6 +687,125 @@ describe("schemaVersion 3 — exerciseReports", () => {
     };
     expect(body.snapshot["exerciseReports"]).toEqual([
       { id: "r-1", detail: "mislabeled" },
+    ]);
+  });
+});
+
+// ─── schemaVersion 4 — exerciseOverlays (issue #140) ─────────────────────────
+// User data added to *bundled* exercises: machine notes and photos. These
+// never reached the mirror at all, because only `isCustom` exercises were
+// synced — so a note typed at the machine died with the install.
+describe("schemaVersion 4 — exerciseOverlays", () => {
+  function v4Body(
+    overlays: Doc[],
+    partial: Record<string, Doc[]> = {}
+  ): Record<string, unknown> {
+    return {
+      schemaVersion: 4,
+      snapshot: {
+        ...emptySnapshot(),
+        ...partial,
+        exerciseReports: [],
+        exerciseOverlays: overlays,
+      },
+    };
+  }
+
+  test("reconciles the exerciseOverlays container like any other collection", async () => {
+    const overlays = container("exerciseOverlays");
+    overlays.seed({ id: "Barbell_Squat" });
+    seedMeta(11);
+
+    const res = await push(
+      v4Body([
+        { id: "Barbell_Bench_Press", notes: "seat 4" },
+        { id: "Leg_Curl", notes: "pin 7" },
+      ])
+    );
+
+    expect(res.status ?? 200).toBe(200);
+    expect(overlays.ids()).toEqual(["Barbell_Bench_Press", "Leg_Curl"]);
+    const counts = (res.jsonBody as { counts: Record<string, unknown> }).counts;
+    expect(counts["exerciseOverlays"]).toEqual({ upserted: 2, deleted: 1 });
+  });
+
+  test("a v4 push still reconciles every earlier collection", async () => {
+    const reports = container("exerciseReports");
+    reports.seed({ id: "r-old" });
+
+    const res = await push(v4Body([]));
+
+    expect(res.status ?? 200).toBe(200);
+    expect(reports.ids()).toEqual([]);
+  });
+
+  test("rejects a v4 push that omits exerciseOverlays with 400", async () => {
+    const res = await push({
+      schemaVersion: 4,
+      snapshot: { ...emptySnapshot(), exerciseReports: [] },
+    });
+    expect(res.status).toBe(400);
+    expect(mockDatabase.container).not.toHaveBeenCalled();
+  });
+
+  test("an empty array wipes the overlays container", async () => {
+    const overlays = container("exerciseOverlays");
+    overlays.seed({ id: "Barbell_Squat" }, { id: "Leg_Curl" });
+
+    const res = await push(v4Body([]));
+
+    expect(res.status ?? 200).toBe(200);
+    expect(overlays.ids()).toEqual([]);
+  });
+
+  test("a v3 push leaves existing overlays alone instead of wiping them", async () => {
+    // The same trap #135 set: a phone on the previous build does not know
+    // overlays exist, and its silence must not read as "the user deleted
+    // every machine note".
+    const overlays = container("exerciseOverlays");
+    overlays.seed({ id: "Barbell_Squat", notes: "safety bars at 3" });
+
+    const res = await push({
+      schemaVersion: 3,
+      snapshot: { ...emptySnapshot(), exerciseReports: [] },
+    });
+
+    expect(res.status ?? 200).toBe(200);
+    expect(overlays.ids()).toEqual(["Barbell_Squat"]);
+    expect(requestedContainerNames).not.toContain("exerciseOverlays");
+  });
+
+  test("a v2 push leaves overlays alone too", async () => {
+    const overlays = container("exerciseOverlays");
+    overlays.seed({ id: "Barbell_Squat" });
+
+    const res = await push(pushBody());
+
+    expect(res.status ?? 200).toBe(200);
+    expect(overlays.ids()).toEqual(["Barbell_Squat"]);
+  });
+
+  test("rejects a v4 push whose exerciseOverlays is not an array", async () => {
+    const res = await push({
+      schemaVersion: 4,
+      snapshot: {
+        ...emptySnapshot(),
+        exerciseReports: [],
+        exerciseOverlays: { id: "Leg_Curl" },
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("GET returns overlays so a restore can rebuild them", async () => {
+    seedMeta(12);
+    container("exerciseOverlays").seed({ id: "Leg_Curl", notes: "pin 7" });
+
+    const res = await read();
+
+    const body = res.jsonBody as { snapshot: Record<string, Doc[]> };
+    expect(body.snapshot["exerciseOverlays"]).toEqual([
+      { id: "Leg_Curl", notes: "pin 7" },
     ]);
   });
 });

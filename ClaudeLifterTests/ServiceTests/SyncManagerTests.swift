@@ -111,7 +111,7 @@ private func runAckValidationScenario(
 @Suite("SyncManager Snapshot Push")
 @MainActor
 struct SyncManagerSnapshotPushTests {
-    @Test("snapshot push serializes full state: all five types, nothing else")
+    @Test("snapshot push serializes full state: every mirrored type, nothing else")
     func snapshotContainsAllFiveTypesAndNothingElse() async throws {
         // Arrange — one of everything, including types that must NOT sync
         let env = try SyncTestEnv()
@@ -132,9 +132,9 @@ struct SyncManagerSnapshotPushTests {
         // Act
         try await env.manager.pushSnapshot()
 
-        // Assert — request carries exactly the five mirrored collections
+        // Assert — request carries exactly the mirrored collections
         let request = try #require(env.network.lastSnapshotRequest)
-        #expect(request.schemaVersion == 3)
+        #expect(request.schemaVersion == 4)
         #expect(request.snapshot.workouts.count == 1)
         #expect(request.snapshot.templates.count == 1)
         #expect(request.snapshot.customExercises.count == 1)
@@ -1082,5 +1082,176 @@ struct SyncManagerCustomExerciseTriggerTests {
         // Assert — still dirty, so the next trigger picks the new exercise up.
         #expect(env.settings.isSnapshotDirty == true)
         _ = repository
+    }
+}
+
+// MARK: - Bundled-exercise overlays (issue #140)
+
+/// Notes and photos the user attaches to *bundled* exercises never reached the
+/// mirror: only `isCustom` exercises were pushed. A machine setting typed at
+/// the gym survived exactly as long as the install did.
+@Suite("Snapshot sync — exercise overlays")
+@MainActor
+struct SyncManagerOverlayTests {
+
+    private func makeOverlayPushResponse() -> SnapshotPushResponse {
+        makePushResponse()
+    }
+
+    private func makeOverlayFetchResponse(
+        overlays: [ExerciseOverlayDTO]
+    ) -> SnapshotFetchResponse {
+        SnapshotFetchResponse(
+            revision: 3,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            snapshot: SyncSnapshot(
+                workouts: [],
+                templates: [],
+                customExercises: [],
+                bodyWeightEntries: [],
+                exerciseReports: [],
+                exerciseOverlays: overlays
+            )
+        )
+    }
+
+    private func seedBundled(
+        _ env: SyncTestEnv,
+        externalId: String,
+        notes: String? = nil,
+        photoURL: String? = nil
+    ) throws -> Exercise {
+        let exercise = Exercise(
+            name: "Leg Curl",
+            isCustom: false,
+            externalId: externalId,
+            notes: notes,
+            photoURL: photoURL
+        )
+        env.context.insert(exercise)
+        try env.context.save()
+        return exercise
+    }
+
+    @Test("A bundled exercise carrying a note is pushed as an overlay")
+    func bundledNoteIsPushed() async throws {
+        let env = try SyncTestEnv()
+        _ = try seedBundled(env, externalId: "Leg_Curl", notes: "pin 7, seat 4")
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        let overlays = try #require(env.network.lastSnapshotRequest?.snapshot.exerciseOverlays)
+        #expect(overlays.count == 1)
+        #expect(overlays.first?.id == "Leg_Curl")
+        #expect(overlays.first?.notes == "pin 7, seat 4")
+    }
+
+    @Test("A bundled exercise with no user data is not pushed")
+    func cleanBundledExerciseIsOmitted() async throws {
+        let env = try SyncTestEnv()
+        _ = try seedBundled(env, externalId: "Barbell_Squat")
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.lastSnapshotRequest?.snapshot.exerciseOverlays.isEmpty == true)
+    }
+
+    @Test("An overlay is keyed by externalId, never the local UUID")
+    func overlayKeyedByExternalId() async throws {
+        let env = try SyncTestEnv()
+        let exercise = try seedBundled(env, externalId: "Leg_Curl", notes: "pin 7")
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        let id = env.network.lastSnapshotRequest?.snapshot.exerciseOverlays.first?.id
+        #expect(id == "Leg_Curl")
+        #expect(id != exercise.id.uuidString)
+    }
+
+    @Test("A bundled exercise with no externalId cannot be keyed, so it is skipped")
+    func missingExternalIdIsSkipped() async throws {
+        let env = try SyncTestEnv()
+        let exercise = Exercise(name: "Mystery Machine")
+        exercise.isCustom = false
+        exercise.externalId = nil
+        exercise.notes = "seat 3"
+        env.context.insert(exercise)
+        try env.context.save()
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.lastSnapshotRequest?.snapshot.exerciseOverlays.isEmpty == true)
+    }
+
+    @Test("The push declares schemaVersion 4")
+    func pushDeclaresV4() async throws {
+        let env = try SyncTestEnv()
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.lastSnapshotRequest?.schemaVersion == 4)
+    }
+
+    /// The Functions app deploys separately from the phone, and this time the
+    /// phone shipped first. A v4 push to a server that only knows v3 must not
+    /// break sync outright — it degrades, so install order stops mattering.
+    @Test("A server that rejects v4 gets a v3 push instead of a failed sync")
+    func downgradesToV3WhenServerRejectsV4() async throws {
+        let env = try SyncTestEnv()
+        _ = try seedBundled(env, externalId: "Leg_Curl", notes: "pin 7")
+        env.network.pushSnapshotErrorQueue = [SyncError.serverError(400), nil]
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.snapshotRequests.count == 2)
+        #expect(env.network.snapshotRequests.first?.schemaVersion == 4)
+        #expect(env.network.snapshotRequests.last?.schemaVersion == 3)
+    }
+
+    @Test("A non-400 failure is not retried at a lower version")
+    func serverErrorIsNotDowngraded() async throws {
+        let env = try SyncTestEnv()
+        env.network.pushSnapshotErrorQueue = [SyncError.serverError(500), nil]
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        await #expect(throws: SyncError.self) {
+            try await env.manager.pushSnapshot()
+        }
+        #expect(env.network.snapshotRequests.count == 1)
+    }
+
+    @Test("Restoring applies an overlay onto the matching bundled exercise")
+    func restoreAppliesOverlay() async throws {
+        let env = try SyncTestEnv()
+        let exercise = try seedBundled(env, externalId: "Leg_Curl")
+        env.network.fetchSnapshotResult = makeOverlayFetchResponse(
+            overlays: [
+                ExerciseOverlayDTO(id: "Leg_Curl", notes: "pin 7", photoURL: nil)
+            ]
+        )
+
+        _ = try await env.manager.restoreFromSnapshot()
+
+        #expect(exercise.notes == "pin 7")
+    }
+
+    @Test("An overlay for an exercise that is not installed is ignored, not an error")
+    func unknownOverlayIsIgnored() async throws {
+        let env = try SyncTestEnv()
+        env.network.fetchSnapshotResult = makeOverlayFetchResponse(
+            overlays: [
+                ExerciseOverlayDTO(id: "Not_Installed", notes: "x", photoURL: nil)
+            ]
+        )
+
+        let summary = try await env.manager.restoreFromSnapshot()
+
+        #expect(summary.exerciseOverlays == 0)
     }
 }

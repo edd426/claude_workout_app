@@ -175,6 +175,55 @@ struct PreferenceDTO: Codable, Sendable {
     let lastModified: Date
 }
 
+/// User data layered onto a *bundled* exercise — the machine note and the
+/// photo. Bundled exercises themselves are never synced (all ~800 reproduce
+/// from the app bundle), so before #140 this data existed only on the device
+/// that typed it.
+///
+/// Keyed by `externalId`, the stable free-exercise-db identifier, and NOT by
+/// `Exercise.id`: a reinstall re-imports the library with fresh UUIDs, so a
+/// UUID key would orphan every overlay exactly when it was needed most.
+///
+/// `id` is the Cosmos document key and carries the same value. Both keys are
+/// written, and either is accepted on decode, because backup files produced
+/// by 1.4.0 wrote only `externalId`.
+struct ExerciseOverlayDTO: Codable, Sendable, Equatable {
+    let id: String
+    let notes: String?
+    let photoURL: String?
+
+    var externalId: String? { id }
+
+    init(id: String, notes: String?, photoURL: String?) {
+        self.id = id
+        self.notes = notes
+        self.photoURL = photoURL
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, externalId, notes, photoURL
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let id = try c.decodeIfPresent(String.self, forKey: .id) {
+            self.id = id
+        } else {
+            self.id = try c.decode(String.self, forKey: .externalId)
+        }
+        notes = try c.decodeIfPresent(String.self, forKey: .notes)
+        photoURL = try c.decodeIfPresent(String.self, forKey: .photoURL)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(id, forKey: .externalId)
+        try c.encodeIfPresent(notes, forKey: .notes)
+        try c.encodeIfPresent(photoURL, forKey: .photoURL)
+    }
+}
+
 // MARK: - Snapshot request/response (POST/GET /api/sync/snapshot)
 
 /// The complete mirrored state. ALWAYS carries all five collections — the
@@ -191,19 +240,24 @@ struct SyncSnapshot: Codable, Sendable {
     let customExercises: [ExerciseDTO]
     let bodyWeightEntries: [BodyWeightEntryDTO]
     let exerciseReports: [ExerciseReportDTO]
+    /// Arrived with schemaVersion 4 (issue #140). Decodes as empty when
+    /// absent, for the same reason `exerciseReports` does.
+    let exerciseOverlays: [ExerciseOverlayDTO]
 
     init(
         workouts: [WorkoutDTO],
         templates: [TemplateDTO],
         customExercises: [ExerciseDTO],
         bodyWeightEntries: [BodyWeightEntryDTO],
-        exerciseReports: [ExerciseReportDTO] = []
+        exerciseReports: [ExerciseReportDTO] = [],
+        exerciseOverlays: [ExerciseOverlayDTO] = []
     ) {
         self.workouts = workouts
         self.templates = templates
         self.customExercises = customExercises
         self.bodyWeightEntries = bodyWeightEntries
         self.exerciseReports = exerciseReports
+        self.exerciseOverlays = exerciseOverlays
     }
 
     init(from decoder: Decoder) throws {
@@ -217,14 +271,24 @@ struct SyncSnapshot: Codable, Sendable {
         exerciseReports = try container.decodeIfPresent(
             [ExerciseReportDTO].self, forKey: .exerciseReports
         ) ?? []
+        exerciseOverlays = try container.decodeIfPresent(
+            [ExerciseOverlayDTO].self, forKey: .exerciseOverlays
+        ) ?? []
     }
 }
 
 struct SnapshotPushRequest: Codable, Sendable {
+    /// Wire contract the client speaks. 4 adds `exerciseOverlays` (#140).
+    static let currentSchemaVersion = 4
+    /// What to fall back to when the server has not been updated yet. The
+    /// Functions app deploys independently of the phone, and this time the
+    /// phone can ship first — see SyncManager.pushSnapshot.
+    static let fallbackSchemaVersion = 3
+
     let schemaVersion: Int
     let snapshot: SyncSnapshot
 
-    init(schemaVersion: Int = 3, snapshot: SyncSnapshot) {
+    init(schemaVersion: Int = SnapshotPushRequest.currentSchemaVersion, snapshot: SyncSnapshot) {
         self.schemaVersion = schemaVersion
         self.snapshot = snapshot
     }

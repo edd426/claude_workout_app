@@ -41,14 +41,15 @@ export interface SyncPushResponse {
 // The phone is authoritative; Azure is a read-mostly mirror. A push is always
 // the complete state of each collection — full-state replace, not deltas.
 //
-// v3 (issue #135) adds `exerciseReports`. v2 is still ACCEPTED: the server is
+// v4 (issue #140) adds `exerciseOverlays`. v3 (issue #135) adds
+// `exerciseReports`. Every earlier version is still ACCEPTED: the server is
 // deployed independently of the app, so a v2 push from a phone that has not
 // updated yet must keep working. A v2 push simply does not mention reports,
 // and reconciliation therefore leaves that container alone rather than
 // wiping it — see SNAPSHOT_COLLECTIONS_BY_VERSION in syncSnapshot.ts.
 
-export const SNAPSHOT_SCHEMA_VERSION = 3;
-export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = [2, 3] as const;
+export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = [2, 3, 4] as const;
 
 export interface SnapshotCollections {
   workouts: Record<string, unknown>[];
@@ -57,6 +58,13 @@ export interface SnapshotCollections {
   bodyWeightEntries: Record<string, unknown>[];
   /** Present only on schemaVersion 3 pushes. */
   exerciseReports?: Record<string, unknown>[];
+  /**
+   * Present only on schemaVersion 4 pushes. User data layered onto *bundled*
+   * exercises — machine notes and photos. Keyed by the free-exercise-db
+   * `externalId`, NOT the local UUID: a reinstall mints fresh UUIDs for the
+   * same exercise, so a UUID key would strand every overlay (#140).
+   */
+  exerciseOverlays?: Record<string, unknown>[];
 }
 
 export interface SnapshotPushRequest {
@@ -75,6 +83,7 @@ export interface SnapshotCounts {
   customExercises: SnapshotContainerCounts;
   bodyWeightEntries: SnapshotContainerCounts;
   exerciseReports?: SnapshotContainerCounts;
+  exerciseOverlays?: SnapshotContainerCounts;
 }
 
 export interface SnapshotPushResponse {

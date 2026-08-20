@@ -67,6 +67,11 @@ const V3_COLLECTIONS: SnapshotCollectionMapping[] = [
   { field: "exerciseReports", container: "exerciseReports" },
 ];
 
+const V4_COLLECTIONS: SnapshotCollectionMapping[] = [
+  ...V3_COLLECTIONS,
+  { field: "exerciseOverlays", container: "exerciseOverlays" },
+];
+
 /**
  * Which collections a push of a given schemaVersion reconciles.
  *
@@ -78,10 +83,11 @@ const V3_COLLECTIONS: SnapshotCollectionMapping[] = [
 const SNAPSHOT_COLLECTIONS_BY_VERSION: Record<number, SnapshotCollectionMapping[]> = {
   2: V2_COLLECTIONS,
   3: V3_COLLECTIONS,
+  4: V4_COLLECTIONS,
 };
 
 /** Every container a read/restore should return, regardless of push version. */
-const SNAPSHOT_COLLECTIONS = V3_COLLECTIONS;
+const SNAPSHOT_COLLECTIONS = V4_COLLECTIONS;
 
 const SYNC_META_CONTAINER = "syncMeta";
 const SYNC_META_ID = "snapshot";

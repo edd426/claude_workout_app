@@ -1,4 +1,4 @@
-# HANDOFF — 1.4.1 is installed and the migration held
+# HANDOFF — 1.5.0 is built; 1.4.1 is installed and its migration held
 
 Updated 2026-08-20. Branch **`feat/exercise-reports`**, **PR #145**. `main`
 untouched. **Version 1.4.1 (6) is on the phone** — Release build, installed
@@ -184,6 +184,27 @@ The unit suite is the hard gate: deterministic and green.
 - **#147** *Review Change* shows no change — the inbox approval prompt is a
   `confirmationDialog` whose whole message is an exercise **count**, so a
   one-number edit is indistinguishable from a full rewrite
+
+## 1.5.0 (7) — built, not installed
+
+**#146 is fixed** and the server half is deployed. Not on the phone yet.
+
+- The reports list filter is now Outstanding / Open / Acknowledged / Resolved /
+  All — the same vocabulary `list_exercise_reports` uses, so the phone and the
+  AI agree about what is left. Default is Outstanding (open + acknowledged).
+- The home card counts only `.open`, with acknowledged shown beside it:
+  "3 open · 3 awaiting install" rather than "6 open reports".
+- **Reopening works end to end** — MCP tool, Functions validation, inbox
+  applier. All three had refused it deliberately; #136's inert fix is what
+  changed the call. Swipe a report for Resolve / Acknowledge / Reopen.
+- `resolve_exercise_report` takes `ids` for a batch, validated all-or-nothing.
+
+No schema change — nothing here adds a stored property. Nutrition still takes V5.
+
+**Litter I made:** inbox op `f4c9187b` is a validation probe with a bogus report
+id, now terminal in `failed` alongside the three July `deleteTemplate` ones. It
+will never reach the phone. There is no way to delete an inbox operation, which
+is arguably worth an issue of its own.
 
 ---
 

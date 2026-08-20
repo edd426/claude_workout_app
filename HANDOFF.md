@@ -1,17 +1,26 @@
-# HANDOFF — 1.4.0 is built, reviewed, and not installed
+# HANDOFF — 1.4.1 is built, reviewed, and not installed
 
-Updated 2026-08-19, late. Branch **`feat/exercise-reports`**, pushed, **PR #145**.
-`main` untouched. **Version 1.4.0 (5) — not on the phone.** The device is still
+Updated 2026-08-20. Branch **`feat/exercise-reports`**, **PR #145**. `main`
+untouched. **Version 1.4.1 (6) — not on the phone.** The device is still
 running 1.2.0 (2), so every user-visible fix below is unverified on hardware.
+
+1.4.1 adds #140's sync half to the 1.4.0 batch: bundled-exercise notes and
+photos now travel to the mirror as overlays, keyed by `externalId`. The Cosmos
+container was created through Bicep. **The Functions app still needs
+publishing** — see *Blocked* below; the client degrades to v3 on its own, so
+this does not gate the install.
 
 ## Do this first
 
-1. **Install 1.4.0 (5).** The Settings footer showing `1.4.0 (5)` is the proof.
+1. **Install 1.4.1 (6).** The Settings footer showing `1.4.1 (6)` is the proof.
    This build carries a **schema V4 migration** — watch the first launch. If the
    store quarantines instead of opening, that is the one serious risk in this
    batch (see #128 below), and the fix is to reinstall from a backup.
 2. Run the four gym probes in the table below.
 3. Resolve the three acknowledged reports once the probes pass.
+4. **Approve the pending Lower B edit.** Split Squat 10 → 8 is enqueued in the
+   inbox (op `43593a49-…`) and the phone will ask on next sync. Report
+   `990C04B4` stays open until you confirm it on the device.
 
 ## The probes, in the gym
 
@@ -20,6 +29,7 @@ running 1.2.0 (2), so every user-visible fix below is unverified on hardware.
 | **#136** Seated Leg Curl → ⋯ → *Add a note…* → `Ankle 4; Seat 4; Pivot 1` | The note appears on the card, and on **every** future workout containing that exercise, whichever template |
 | **#137** Add Ab Crunch Machine mid-workout | Its sets arrive with reps prefilled from last session and **weight empty**. Empty weight is the fix working |
 | **#144** Any Lower B exercise | A `Target 2 × 8 · 90s rest` line under the name, and last session's PREVIOUS marked orange where it missed the target |
+| **#140** Note a bundled exercise, then Settings → sync | After the Functions publish, the note appears in the `exerciseOverlays` container. Before it, sync still succeeds — silently at v3 |
 | **#129/#130** Finish a Lower B with Ab Crunch Machine added | The summary offers *Update Lower B?* → Review → Apply. Ab Rollout, if skipped, must **not** be offered for removal |
 
 ## What changed, and the three things worth knowing
@@ -89,36 +99,49 @@ tests.
 
 ## Blocked — needs you, and I did not route around it
 
-Two actions were refused by the permission classifier:
+**One action, and it is smaller than it was.** `func azure functionapp publish`
+is refused by the permission classifier. The Functions **source** is at wire
+version 4 and green (180 tests), but the **deployed** app still only knows v3:
 
-1. **Creating the Cosmos container for #140's sync half.**
-   ```bash
-   az cosmosdb sql container create \
-     --account-name cosmos-workout-prod --database-name workout-db \
-     --resource-group rg-workout-app-prod \
-     --name exerciseOverlays --partition-key-path "/id"
-   ```
-   The **backup half of #140 shipped** — a reinstall-and-restore no longer loses
-   your notes. The sync half is designed and written up on the issue but not
-   built, and **the client wire version is still 3**, so nothing was deployed
-   and the phone is unaffected. It needs its own container because
-   `reconcileContainer` deletes every id absent from the snapshot, so two
-   collections sharing `exercises` would wipe each other.
+```bash
+cd infra/functions && npm run build
+func azure functionapp publish func-workout-prod --javascript
+curl -sf https://func-workout-prod.azurewebsites.net/api/health
+```
 
-   A full `az deployment group create` is **not** the way to do it unattended:
-   `main.bicep` takes `apiKey` and `anthropicApiKey` as `@secure()` parameters,
-   and deploying without the real values breaks auth for the phone and MCP both.
+Until you run that, overlays do not reach the mirror. **Nothing else breaks** —
+the client sends v4, the server answers 400, and the client retries once at v3,
+which is the contract the deployed server already speaks. So installing 1.4.1
+before publishing costs you the overlays and nothing more. Verify afterwards by
+editing a note on a bundled exercise and checking `exerciseOverlays` in Cosmos.
 
-2. **The Split Squat 10 → 8 template edit** over MCP (`update_template` on
-   `B83E7341-…`, exercise `4DE7A259-…`). Still unmade. #144 at least makes the
-   disagreement visible while training.
+The Cosmos container **is created**, through Bicep rather than an ad-hoc `az`
+command, so the repo still describes reality.
+
+### On deploying with Bicep — read this before you try
+
+`what-if` earned its keep. Deploying `cosmos.bicep` as written would have made
+three changes nobody asked for: `enableAutomaticFailover` **off**,
+`minimalTlsVersion` **dropped**, and a database-throughput rewrite. The live
+account had all three set correctly and the template declared none of them, so
+the template was quietly proposing to weaken production. Two are now declared;
+the third was a false alarm (autoscale max 1000 already matches).
+
+**Do not deploy `main.bicep` whole without re-publishing the code after.**
+`functions.bicep`'s `appSettings` array is wholesale — ARM replaces the entire
+setting collection — and the live app carries `WEBSITE_RUN_FROM_PACKAGE`, a
+rotating SAS URL that cannot be expressed in Bicep. Deploying strips it and the
+API 404s until `func publish` runs. The runbook is in a comment at the top of
+that resource. For Cosmos-only work, deploy the module alone: no secrets, no
+Function App, `what-if` first.
 
 ## Test state
 
+
 | Suite | Result |
 |---|---|
-| Swift unit (`-only-testing:ClaudeLifterTests`) | **772 tests, 97 suites, exit 0** |
-| Azure Functions (jest) | **172 pass** |
+| Swift unit (`-only-testing:ClaudeLifterTests`) | **781 tests, 98 suites, exit 0** |
+| Azure Functions (jest) | **180 pass** |
 | MCP server (vitest) | **64 pass** (60 + 4 for the staleness guard) |
 | XCUITest | **not run** — flaky here; not a regression without a clean-worktree comparison |
 
@@ -138,7 +161,7 @@ The unit suite is the hard gate: deterministic and green.
 
 ## New issues filed this session
 
-- **#140** bundled-exercise user data excluded from sync and backup (backup half done)
+- **#140** bundled-exercise user data excluded from sync and backup — **both halves done**, pending the Functions publish
 - **#141** photo upload on exercise reports
 - **#142** search the library from the report sheet
 - **#143** the mirror cannot distinguish a draft from a finished workout

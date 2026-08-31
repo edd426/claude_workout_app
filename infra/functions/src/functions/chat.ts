@@ -7,6 +7,7 @@ import {
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticate } from "../shared/auth";
 import { ChatRequest } from "../shared/types";
+import { getMaxTokensCap, isModelAllowed } from "../shared/chatLimits";
 
 let anthropicClient: Anthropic | null = null;
 
@@ -51,7 +52,34 @@ app.http("chat", {
 
     const model =
       body.model || process.env.ANTHROPIC_MODEL_DEFAULT || "claude-haiku-4-5-20251001";
+
+    if (!isModelAllowed(model)) {
+      return {
+        status: 400,
+        jsonBody: { error: `Model not allowed: ${model}` },
+      };
+    }
+
+    const maxTokensCap = getMaxTokensCap();
     const maxTokens = body.max_tokens || 4096;
+
+    if (maxTokens > maxTokensCap) {
+      return {
+        status: 400,
+        jsonBody: {
+          error: `max_tokens (${maxTokens}) exceeds the allowed cap of ${maxTokensCap}`,
+        },
+      };
+    }
+
+    if (body.thinking_budget && body.thinking_budget + 4096 > maxTokensCap) {
+      return {
+        status: 400,
+        jsonBody: {
+          error: `thinking_budget (${body.thinking_budget}) exceeds the allowed cap of ${maxTokensCap}`,
+        },
+      };
+    }
 
     try {
       const client = getAnthropicClient();

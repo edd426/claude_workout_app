@@ -1,3 +1,59 @@
+# HANDOFF — 2026-08-31 cheap-delegate batch
+
+Updated 2026-08-31. Branch **`feat/exercise-reports`**, still PR #145. Three
+commits landed today via Haiku/Sonnet delegates with a Fable review pass
+(outcome log: `docs/agent-task-log-2026-08-31.md`):
+
+- `1130978` — #90/#91/#94: chat proxy model/max_tokens allowlist
+  (`ALLOWED_MODELS`, `MAX_TOKENS_CAP` app settings, defaults fit the app's
+  three models and the 14096-token extended-thinking path), SAS path locked to
+  `exercises/{uuid}.jpg`, auth via constant-time compare + 30s-cooldown
+  throttle (the delegate's version locked out permanently; reworked).
+- `8988b6d` — #148: `DELETE /api/inbox/{id}` (terminal statuses only,
+  etag-conditioned) + MCP `delete_inbox_operation` (all-or-nothing batch).
+- `0d9b69d` — report-sheet UX: keyboard Done bar, Home-toolbar report button
+  (general report, no exercise attached), note-prefill pinned by regression
+  test (couldn't reproduce the complaint — watch report DA879E08).
+
+**Verified on the integrated branch:** Swift unit suite exit 0 (791 tests,
+99 suites), Functions jest exit 0, MCP vitest 85/85 (needs `npm run build`
+first — dist staleness guard).
+
+**Not deployed / not installed.** Wire version unchanged, so order doesn't
+matter this time, but the server fixes need `func publish` and the UX fixes
+need a device install (bump `generate_project.py` first — minor, this is
+feature work). #90/#91/#94/#148/#117/#93 closed on GitHub as committed.
+
+## Needs Evan
+
+- **#92 collision**: syncPull/syncPush + their tests are deleted UNCOMMITTED
+  in the main working tree by someone else (Evan or a parallel session). A
+  finished delegate commit doing the same plus `types.ts` cleanup is held on
+  `worktree-agent-a105a0a5bce5a6662` (`a769cc0`). Reconcile: either commit
+  yours or take the delegate's.
+- **Template writes were classifier-blocked** from this session. Proposals
+  ready: Lower A Leg Press → Single-Leg Press custom (created, syncs next
+  pull; 2×12 @ 50kg per leg); Lower B Ab Rollout → Ab Crunch Machine
+  ("TechnoGym Total Abdominal"); Friday Pump variety — Side Lateral Raise →
+  Cable Rear Delt Fly, Barbell Curl → Hammer Curls, rope pushdown → Machine
+  Triceps Extension, Seated → Standing Calf Raises (Lower A already has
+  seated), plus a generalized template note per report F231AC4F.
+- **Report D9F9F093** ("interview me about template-update UX") — wants a live
+  conversation, deliberately untouched.
+- Issue candidates from reports: session-scoped "why I did this" notes
+  (8A8E7366, model field exists); body-weight graph + goal-rate tracking
+  (D82C516F).
+
+## Inbox ops enqueued today (land on next phone sync)
+
+Single-Leg Press creation; report status changes — resolved: Spotify
+(C7F9B7E5, investigated: app has no audio session, chime is a notification),
+the stale "awaiting install" trio (79EEC980, 5B380FF1, CD42B832), Split Squat
+2×8 (990C04B4); acknowledged with next-build notes: 8A8E7366, DA879E08,
+A590AD71, A67CF295.
+
+---
+
 # HANDOFF — 1.5.0 is installed
 
 Updated 2026-08-20. Branch **`feat/exercise-reports`**, **PR #145**. `main`

@@ -1,3 +1,14 @@
+# NEXT PRIORITY: #141 — photo attachments on exercise reports
+
+Evan, end of 2026-08-31: "It's easier to show you what's wrong as an image."
+Labeled P1-high, design pointers commented on the issue. Watch the #91 SAS
+path validation — reports need their own blob path family added deliberately,
+not by loosening the exercises/{uuid}.jpg regex. #142 pairs with it. After
+that: #153 (batch approval screen), #150 (decide-at-the-change), #154
+(report-action discoverability + fixedInVersion auto-resolve).
+
+---
+
 # HANDOFF — 2026-08-31, evening: 1.6.0 (8) INSTALLED, server DEPLOYED
 
 - **1.6.0 (8) is on the phone** — Evan confirmed the Settings footer. Installed

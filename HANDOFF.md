@@ -24,25 +24,25 @@ matter this time, but the server fixes need `func publish` and the UX fixes
 need a device install (bump `generate_project.py` first — minor, this is
 feature work). #90/#91/#94/#148/#117/#93 closed on GitHub as committed.
 
-## Needs Evan
+## Follow-up session, same day — everything above that needed Evan is done
 
-- **#92 collision**: syncPull/syncPush + their tests are deleted UNCOMMITTED
-  in the main working tree by someone else (Evan or a parallel session). A
-  finished delegate commit doing the same plus `types.ts` cleanup is held on
-  `worktree-agent-a105a0a5bce5a6662` (`a769cc0`). Reconcile: either commit
-  yours or take the delegate's.
-- **Template writes were classifier-blocked** from this session. Proposals
-  ready: Lower A Leg Press → Single-Leg Press custom (created, syncs next
-  pull; 2×12 @ 50kg per leg); Lower B Ab Rollout → Ab Crunch Machine
-  ("TechnoGym Total Abdominal"); Friday Pump variety — Side Lateral Raise →
-  Cable Rear Delt Fly, Barbell Curl → Hammer Curls, rope pushdown → Machine
-  Triceps Extension, Seated → Standing Calf Raises (Lower A already has
-  seated), plus a generalized template note per report F231AC4F.
-- **Report D9F9F093** ("interview me about template-update UX") — wants a live
-  conversation, deliberately untouched.
-- Issue candidates from reports: session-scoped "why I did this" notes
-  (8A8E7366, model field exists); body-weight graph + goal-rate tracking
-  (D82C516F).
+- **#92 landed** (`588fd1b`): the mystery uncommitted deletions were neither
+  Evan's nor agent-cost-optimization-02's; intent matched the delegate's
+  finished commit, so it was cherry-picked over them (plus the `types.ts`
+  cleanup and the current v2/v3 header). Jest 203/203. Issue closed.
+- **Five template approvals are waiting on the phone** (Evan approved the
+  content in-session; #147 means the prompts show only a count): Lower A
+  Leg Press → Single-Leg Press custom; Lower B Ab Rollout → Ab Crunch
+  Machine; Friday Pump variety rework + generalized note; Upper A and
+  Upper B notes recording the **day swap — Upper B takes Monday (no barbell
+  bench), Upper A with bench moves to Wed/Thu** (the bench-hogger report).
+- **Interview done** → issue **#150**: template changes prompt at the moment
+  of change; drift only when repeated 2+ sessions; explicit Ask/Always/Never
+  per category in Settings. Supersedes #130's review-first direction.
+- Issues filed: **#151** session-scoped "why" notes, **#152** body-weight
+  graph + goal rate. GitHub closes done: #90 #91 #92 #93 #94 #117 #148.
+- **Report backlog fully answered** — every open/acknowledged report now has
+  an accurate status and resolution text queued to sync.
 
 ## Inbox ops enqueued today (land on next phone sync)
 

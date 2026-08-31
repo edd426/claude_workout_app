@@ -18,7 +18,9 @@ struct ReportContext: Identifiable, Equatable, Sendable {
     /// The subtitle shown at the top of the sheet, so it is obvious what the
     /// report will be attached to before anything is typed.
     var subject: String {
-        exerciseName ?? "This workout"
+        if let exerciseName { return exerciseName }
+        if workoutId != nil { return "This workout" }
+        return "The app"
     }
 }
 
@@ -56,6 +58,13 @@ extension ReportContext {
             exerciseExternalId: exercise.externalId,
             exerciseName: exercise.name
         )
+    }
+
+    /// Report filed from the Home screen — not about any exercise or
+    /// workout. The only entry point that previously required opening an
+    /// unrelated exercise just to reach the sheet (report A590AD71).
+    static func general() -> ReportContext {
+        ReportContext()
     }
 
     /// A bounded, human-readable line describing the sets as they stood when

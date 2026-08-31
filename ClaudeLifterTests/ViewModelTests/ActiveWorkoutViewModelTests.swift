@@ -1511,6 +1511,42 @@ extension ActiveWorkoutViewModelTests {
         withExtendedLifetime(container) {}
     }
 
+    @Test("Editing a note starts from the existing text, not a blank field (DA879E08)")
+    func noteEditorPrefillsFromExistingText() async throws {
+        let (container, exercise, template) = try makeSetup()
+        let context = container.mainContext
+        exercise.notes = "Ankle 4; Seat 4; Pivot 1"
+        let te = TemplateExercise(order: 0, exercise: exercise, defaultSets: 1, defaultReps: 8, defaultWeight: 60)
+        context.insert(te)
+        template.exercises.append(te)
+        try context.save()
+
+        let vm = ActiveWorkoutViewModel(
+            template: template,
+            workoutRepository: MockWorkoutRepository(),
+            autoFillService: MockAutoFillService(),
+            exerciseRepository: MockExerciseRepository()
+        )
+        await vm.startWorkout()
+        let we = try #require(vm.workout?.exercises.first)
+
+        // This is exactly what ExerciseNoteEditorView reads to seed its
+        // `@State private var text` in `init` — if this were empty, the
+        // editor would open blank and the user's "add on, don't replace"
+        // complaint would reproduce.
+        let prefillSource = we.exercise?.notes
+        #expect(prefillSource == "Ankle 4; Seat 4; Pivot 1")
+
+        // Simulate the user appending to the prefilled text rather than
+        // retyping it from scratch.
+        let appended = (prefillSource ?? "") + "; also check pin height"
+        await vm.updateExerciseNotes(we, notes: appended)
+
+        #expect(exercise.notes == "Ankle 4; Seat 4; Pivot 1; also check pin height")
+        await vm.awaitPendingSave()
+        withExtendedLifetime(container) {}
+    }
+
     @Test("updateExerciseNotes stores an emptied note as nil, not as empty text")
     func updateExerciseNotesClearsToNil() async throws {
         let (container, exercise, template) = try makeSetup()

@@ -82,6 +82,13 @@ struct ReportSheetView: View {
                     .disabled(!vm.canSubmit)
                     .accessibilityIdentifier("submitReport")
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        detailFocused = false
+                    }
+                    .accessibilityIdentifier("reportKeyboardDone")
+                }
             }
             .task { detailFocused = true }
         }

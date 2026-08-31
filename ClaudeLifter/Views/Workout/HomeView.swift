@@ -9,6 +9,8 @@ struct HomeView: View {
     @State private var showTemplateEditor = false
     @State private var reportListVM: ReportListViewModel?
     @State private var showReports = false
+    /// Non-nil while the general (no-exercise) report sheet is up (A590AD71).
+    @State private var generalReportContext: ReportContext?
     @State private var unreadInsights: [ProactiveInsight] = []
     @State private var path = NavigationPath()
 
@@ -27,6 +29,18 @@ struct HomeView: View {
                 }
             }
             .navigationTitle("ClaudeLifter")
+            .toolbar {
+                if appState.activeWorkoutVM == nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            generalReportContext = .general()
+                        } label: {
+                            Label("Report a problem…", systemImage: "flag")
+                        }
+                        .accessibilityIdentifier("reportFromHome")
+                    }
+                }
+            }
         }
         // The completion summary is presented here, not inside
         // ActiveWorkoutView, because ending the workout tears that view down.
@@ -105,6 +119,17 @@ struct HomeView: View {
             }
         } message: {
             Text(approvalVM?.errorMessage ?? "")
+        }
+        .sheet(item: $generalReportContext) { context in
+            if let deps {
+                ReportSheetView(
+                    vm: ReportSheetViewModel(
+                        context: context,
+                        repository: deps.exerciseReportRepository
+                    ),
+                    onSaved: { Task { await reportListVM?.load() } }
+                )
+            }
         }
         .sheet(isPresented: $showReports) {
             if let reportListVM {

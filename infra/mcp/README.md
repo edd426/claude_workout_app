@@ -47,6 +47,7 @@ slim build-time catalog before any write request is sent.
 | `list_exercise_reports` | Read the complaint backlog filed from the app (defaults to unresolved) |
 | `resolve_exercise_report` | Enqueue a close-out for one report (`resolved` / `acknowledged`) |
 | `list_pending_writes` | List inbox operations by status |
+| `delete_inbox_operation` | Permanently delete one or more terminal (applied/rejected/failed) inbox operations |
 | `health` | Diagnostic: Functions API connectivity + auth status + base URL |
 
 If something isn't working, call the `health` tool first — it reports whether

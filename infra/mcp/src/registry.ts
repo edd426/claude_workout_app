@@ -14,6 +14,7 @@ import {
   createCustomExercise,
   createProgram,
   createTemplate,
+  deleteInboxOperation,
   deleteTemplate,
   listPendingWrites,
   updateTemplate,
@@ -311,6 +312,31 @@ export const TOOLS = [
     },
   },
   {
+    name: "delete_inbox_operation",
+    description:
+      "Permanently delete one or more terminal inbox operations (applied, " +
+      "rejected, or failed) so the backlog seen by list_pending_writes stops " +
+      "growing. Refused with an error for pending/awaitingApproval operations " +
+      "— the phone may not have fetched those yet, and deleting unseen work " +
+      "would make it disappear silently. Pass 'ids' to clear several at once.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: {
+          type: "string",
+          description: "Inbox operation UUID. Use this or ids.",
+        },
+        ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Several inbox operation UUIDs. Every id is validated before " +
+            "any is deleted.",
+        },
+      },
+    },
+  },
+  {
     name: "list_pending_writes",
     description:
       "List inbox operations by status, including failures and their errors",
@@ -465,6 +491,9 @@ export async function handleToolCall(
             status: optionalString(args, "status"),
           })
         );
+
+      case "delete_inbox_operation":
+        return textResult(await deleteInboxOperation(args));
 
       default:
         return errorResult(`Unknown tool: ${name}`);

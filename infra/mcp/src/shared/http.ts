@@ -85,6 +85,43 @@ export async function apiGet<T = unknown>(
   return (await response.json()) as T;
 }
 
+/**
+ * DELETE {base}/api/{path}. A 204 (No Content) is the expected success case
+ * for the inbox delete endpoint, so `undefined` is returned rather than
+ * attempting to parse an empty body as JSON.
+ */
+export async function apiDelete(path: string): Promise<void> {
+  const { baseUrl, apiKey } = getConfig();
+  const url = new URL(`${baseUrl}/api/${path}`);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "DELETE",
+      headers: { "x-api-key": apiKey },
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Cannot reach Functions API at ${baseUrl}: ${detail}`);
+  }
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const body = (await response.json()) as { error?: string };
+      detail = body?.error ?? "";
+    } catch {
+      // Non-JSON error body — status alone will have to do.
+    }
+    throw new ApiError(
+      response.status,
+      `Functions API returned ${response.status}` +
+        (detail ? `: ${detail}` : "") +
+        ` (DELETE /api/${path})`
+    );
+  }
+}
+
 export async function apiPost<T = unknown>(
   path: string,
   body: unknown

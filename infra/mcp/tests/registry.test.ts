@@ -4,10 +4,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockApiGet = vi.fn();
 const mockApiPost = vi.fn();
+const mockApiDelete = vi.fn();
 
 vi.mock("../src/shared/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/shared/http.js")>();
-  return { ...actual, apiGet: mockApiGet, apiPost: mockApiPost };
+  return {
+    ...actual,
+    apiGet: mockApiGet,
+    apiPost: mockApiPost,
+    apiDelete: mockApiDelete,
+  };
 });
 
 const { ApiError } = await import("../src/shared/http.js");
@@ -16,6 +22,7 @@ const { TOOLS, handleToolCall } = await import("../src/registry.js");
 beforeEach(() => {
   mockApiGet.mockReset();
   mockApiPost.mockReset();
+  mockApiDelete.mockReset();
 });
 
 describe("tool listing", () => {
@@ -26,6 +33,7 @@ describe("tool listing", () => {
         "create_custom_exercise",
         "create_program",
         "create_template",
+        "delete_inbox_operation",
         "delete_template",
         "get_calendar",
         "get_exercise_history",
@@ -384,6 +392,69 @@ describe("inbox write dispatch", () => {
     const operations = JSON.parse(result.content[0].text);
     expect(operations[0].status).toBe("failed");
     expect(operations[0].error).toContain("Missing_Lift");
+  });
+
+  it("delete_inbox_operation deletes a single terminal operation", async () => {
+    mockApiDelete.mockResolvedValue(undefined);
+
+    const result = await handleToolCall("delete_inbox_operation", {
+      id: "f4c9187b",
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiDelete).toHaveBeenCalledWith("inbox/f4c9187b");
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      deleted: ["f4c9187b"],
+    });
+  });
+
+  it("delete_inbox_operation deletes a batch of ids", async () => {
+    mockApiDelete.mockResolvedValue(undefined);
+
+    const result = await handleToolCall("delete_inbox_operation", {
+      ids: ["ff69a245", "b365dd1b", "d26f588a"],
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiDelete).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      deleted: ["ff69a245", "b365dd1b", "d26f588a"],
+    });
+  });
+
+  it("delete_inbox_operation surfaces the Functions API's 409 for a pending operation", async () => {
+    mockApiDelete.mockRejectedValue(
+      new ApiError(409, "Cannot delete pending createTemplate operation op-1")
+    );
+
+    const result = await handleToolCall("delete_inbox_operation", {
+      id: "op-1",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Cannot delete pending");
+  });
+
+  it("delete_inbox_operation surfaces an unknown id as a tool error", async () => {
+    mockApiDelete.mockRejectedValue(
+      new ApiError(404, "Inbox operation not found: nope")
+    );
+
+    const result = await handleToolCall("delete_inbox_operation", {
+      id: "nope",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not found");
+  });
+
+  it("delete_inbox_operation rejects an empty batch without calling the API", async () => {
+    const result = await handleToolCall("delete_inbox_operation", {
+      ids: [],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(mockApiDelete).not.toHaveBeenCalled();
   });
 });
 

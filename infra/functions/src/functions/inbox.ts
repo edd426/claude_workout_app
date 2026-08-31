@@ -13,6 +13,14 @@
  *   Advances operation statuses. Retrying the current status is an idempotent
  *   no-op. Illegal transitions fail nonterminal operations so they cannot loop;
  *   terminal disagreements remain unchanged. Both are reported per operation.
+ *
+ * DELETE /api/inbox/{id}
+ *   Removes one terminal operation (issue #148). Refused with 409 for
+ *   `pending`/`awaitingApproval` — the phone may not have fetched it yet, and
+ *   deleting unseen work is how a write silently disappears. Re-reads the
+ *   operation immediately before deleting and applies the read's etag as an
+ *   IfMatch condition, so a status change racing the delete (#101/#106) loses
+ *   the race with a 409 instead of destroying data the check never saw.
  */
 
 import {
@@ -742,5 +750,73 @@ app.http("inboxAck", {
       ),
     };
     return { jsonBody: response };
+  },
+});
+
+app.http("inboxDelete", {
+  methods: ["DELETE"],
+  authLevel: "anonymous",
+  route: "inbox/{id}",
+  handler: async (
+    request: HttpRequest,
+    context: InvocationContext
+  ): Promise<HttpResponseInit> => {
+    const authError = authenticate(request);
+    if (authError) return authError;
+
+    const id = request.params.id;
+    if (!isNonEmptyString(id)) {
+      return badRequest("Missing operation id");
+    }
+
+    const container = getDatabase().container(INBOX_CONTAINER);
+
+    try {
+      const { resource } = await container
+        .item(id, id)
+        .read<InboxOperation & { _etag?: string }>();
+      if (!resource) {
+        return {
+          status: 404,
+          jsonBody: { error: `Inbox operation not found: ${id}` },
+        };
+      }
+      if (!TERMINAL_STATUSES.has(resource.status)) {
+        return {
+          status: 409,
+          jsonBody: {
+            error:
+              `Cannot delete ${resource.status} operation ${id}: only terminal ` +
+              "operations (applied, rejected, failed) may be deleted — the " +
+              "phone may not have fetched it yet.",
+          },
+        };
+      }
+
+      await container.item(id, id).delete({
+        accessCondition: resource._etag
+          ? { type: "IfMatch", condition: resource._etag }
+          : undefined,
+      });
+      return { status: 204 };
+    } catch (error: unknown) {
+      const code = (error as { code?: number | string }).code;
+      if (code === 404 || code === "NotFound") {
+        return {
+          status: 404,
+          jsonBody: { error: `Inbox operation not found: ${id}` },
+        };
+      }
+      if (code === 412 || code === "PreconditionFailed") {
+        return {
+          status: 409,
+          jsonBody: {
+            error: `Inbox operation ${id} changed concurrently; retry`,
+          },
+        };
+      }
+      context.error("Inbox delete failed:", error);
+      return { status: 500, jsonBody: { error: "Failed to delete operation" } };
+    }
   },
 });

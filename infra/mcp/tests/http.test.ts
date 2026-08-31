@@ -173,3 +173,41 @@ describe("apiPost", () => {
     );
   });
 });
+
+describe("apiDelete", () => {
+  it("is exposed by the shared HTTP layer", () => {
+    expect("apiDelete" in http).toBe(true);
+  });
+
+  it("sends DELETE {base}/api/{path} with the API key and no body", async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 204, json: async () => ({}) } as Response);
+
+    const apiDelete = (
+      http as typeof http & { apiDelete(path: string): Promise<void> }
+    ).apiDelete;
+    const result = await apiDelete("inbox/op-1");
+
+    expect(result).toBeUndefined();
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(String(url)).toBe(`${BASE_URL}/api/inbox/op-1`);
+    expect(init).toMatchObject({
+      method: "DELETE",
+      headers: { "x-api-key": API_KEY },
+    });
+  });
+
+  it("reports DELETE and the server detail for non-2xx responses", async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({ error: "Cannot delete pending operation op-1" }, 409)
+    );
+
+    const apiDelete = (
+      http as typeof http & { apiDelete(path: string): Promise<void> }
+    ).apiDelete;
+
+    await expect(apiDelete("inbox/op-1")).rejects.toThrow(
+      /Cannot delete pending operation op-1.*DELETE \/api\/inbox\/op-1/
+    );
+  });
+});

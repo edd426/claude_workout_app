@@ -1,3 +1,26 @@
+# HANDOFF — 2026-08-31, evening: 1.6.0 (8) INSTALLED, server DEPLOYED
+
+- **1.6.0 (8) is on the phone** — Evan confirmed the Settings footer. Installed
+  via `devicectl` after `xcodebuild` against the device failed with "developer
+  disk image could not be mounted" (phone moved to iOS 26.6.1 since the last
+  install; build with `-destination 'generic/platform=iOS'` and install the
+  .app with `xcrun devicectl device install app --device 676B845C-…`). Open
+  Xcode once with the phone unlocked to re-prepare the device.
+- **Functions deployed and verified**: health 200, `sync/pull` → 404 (dead
+  endpoints really gone), `DELETE /api/inbox/{id}` live (401 unauthenticated).
+  **Two deploy gotchas, both cost a redeploy tonight:** (1) `func publish`
+  needs `--typescript` (cannot infer the runtime); (2) `tsc` never deletes
+  compiled output for removed sources — stale `syncPull.js`/`syncPush.js` in
+  `dist/` deployed and kept the routes alive until `npm run clean && npm run
+  build` + publish + **`az functionapp restart`** (registrations survive a
+  plain redeploy). That is #138's staleness bug in Functions form: consider a
+  clean step in a predeploy script.
+- Evan approved the five queued template changes on-phone; the serial,
+  Home-blocking dialog experience prompted **#153** (batch pending-changes
+  screen with real diffs, one sync per batch; closes #147's no-diff prompt).
+
+---
+
 # HANDOFF — 2026-08-31 cheap-delegate batch
 
 Updated 2026-08-31. Branch **`feat/exercise-reports`**, still PR #145. Three

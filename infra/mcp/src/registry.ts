@@ -7,6 +7,7 @@ import { getStats, getCalendar } from "./tools/stats.js";
 import { health } from "./tools/health.js";
 import { searchExercises } from "./tools/catalog.js";
 import {
+  getReportPhoto,
   listExerciseReports,
   resolveExerciseReport,
 } from "./tools/reports.js";
@@ -20,8 +21,12 @@ import {
   updateTemplate,
 } from "./tools/writes.js";
 
+export type ToolContent =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
 export interface ToolResult {
-  content: { type: "text"; text: string }[];
+  content: ToolContent[];
   isError?: boolean;
 }
 
@@ -247,7 +252,8 @@ export const TOOLS = [
       "Read the complaint backlog filed from the app: mislabeled exercises, " +
       "swap requests, app bugs, bad data. Each report carries the context " +
       "captured when it was filed (exercise externalId, workout, set state, " +
-      "app version). Defaults to everything not yet resolved.",
+      "app version). Defaults to everything not yet resolved. A non-null " +
+      "photoURL means a photo is attached; view it with get_report_photo.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -276,6 +282,26 @@ export const TOOLS = [
           description: "Max results (default: 100, capped at 500)",
         },
       },
+    },
+  },
+  {
+    name: "get_report_photo",
+    description:
+      "View the photo attached to an exercise report — a screenshot of a " +
+      "bug, or a picture of the machine a report is about. Returns a short " +
+      "description of the report and the photo itself. A report whose " +
+      "photoURL is null has no photo, or one that has not uploaded yet: the " +
+      "phone uploads on its next sync with connectivity, and the gym is " +
+      "often offline.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: {
+          type: "string",
+          description: "Report UUID, from list_exercise_reports",
+        },
+      },
+      required: ["id"],
     },
   },
   {
@@ -361,6 +387,24 @@ export const TOOLS = [
 
 function textResult(value: unknown): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
+}
+
+/** Prose for the model, sent as-is rather than JSON-quoted. */
+function messageResult(text: string): ToolResult {
+  return { content: [{ type: "text", text }] };
+}
+
+/** A caption followed by the image it describes. */
+function imageResult(
+  caption: string,
+  image: { data: string; mimeType: string }
+): ToolResult {
+  return {
+    content: [
+      { type: "text", text: caption },
+      { type: "image", data: image.data, mimeType: image.mimeType },
+    ],
+  };
 }
 
 function errorResult(message: string): ToolResult {
@@ -481,6 +525,13 @@ export async function handleToolCall(
             limit: optionalNumber(args, "limit"),
           })
         );
+
+      case "get_report_photo": {
+        const photo = await getReportPhoto(requireString(args, "id"));
+        return photo.image
+          ? imageResult(photo.caption, photo.image)
+          : messageResult(photo.caption);
+      }
 
       case "resolve_exercise_report":
         return textResult(await resolveExerciseReport(args));

@@ -1,6 +1,6 @@
 /** Tests for the MCP tool registry and inbox write path — issue #88. */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockApiGet = vi.fn();
 const mockApiPost = vi.fn();
@@ -37,6 +37,7 @@ describe("tool listing", () => {
         "delete_template",
         "get_calendar",
         "get_exercise_history",
+        "get_report_photo",
         "get_stats",
         "get_template",
         "get_workout",
@@ -455,6 +456,104 @@ describe("inbox write dispatch", () => {
 
     expect(result.isError).toBe(true);
     expect(mockApiDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe("get_report_photo (issue #141)", () => {
+  const REPORT_ID = "6E4B1C2A-9D3F-4E21-8A7B-0C1D2E3F4A5B";
+  const PHOTO_PATH = `reports/${REPORT_ID}.jpg`;
+  const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const report = {
+    id: REPORT_ID,
+    createdAt: "2026-09-20T18:00:00Z",
+    category: "wrongExercise",
+    detail: "This machine is the iso-lateral press, not a bench",
+    exerciseName: "Barbell Bench Press",
+    status: "open",
+    photoURL: PHOTO_PATH,
+    lastModified: "2026-09-20T18:00:00Z",
+  };
+  const mockFetch = vi.fn();
+
+  function serve(reports: unknown[]) {
+    mockApiGet.mockImplementation(async (path: string) => {
+      if (path === "reports") return { reports };
+      if (path === "images/sas") {
+        return {
+          sasUrl: `https://teststorage.blob.core.windows.net/workout-images/${PHOTO_PATH}?sig=x`,
+          expiresAt: "2026-09-25T07:00:00Z",
+        };
+      }
+      throw new Error(`unexpected apiGet(${path})`);
+    });
+  }
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    mockFetch.mockImplementation(async () => new Response(JPEG));
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns a caption naming the report, then the photo as MCP image content", async () => {
+    serve([report]);
+
+    const result = await handleToolCall("get_report_photo", { id: REPORT_ID });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    const [caption, image] = result.content;
+    expect(caption.type).toBe("text");
+    expect(caption.type === "text" && caption.text).toContain(
+      "Barbell Bench Press"
+    );
+    expect(image).toEqual({
+      type: "image",
+      data: Buffer.from(JPEG).toString("base64"),
+      mimeType: "image/jpeg",
+    });
+  });
+
+  it("a report without a photo is an informational text result, not an error", async () => {
+    serve([{ ...report, photoURL: null }]);
+
+    const result = await handleToolCall("get_report_photo", { id: REPORT_ID });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(1);
+    const [only] = result.content;
+    expect(only.type).toBe("text");
+    // Plain prose, not a JSON-quoted string.
+    expect(only.type === "text" && only.text).toMatch(/^Report /);
+    expect(only.type === "text" && only.text).toMatch(/not uploaded yet/);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an unknown report as a tool error", async () => {
+    serve([]);
+
+    const result = await handleToolCall("get_report_photo", { id: REPORT_ID });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].type === "text" && result.content[0].text).toContain(
+      "Report not found"
+    );
+  });
+
+  it("requires an id argument", async () => {
+    const result = await handleToolCall("get_report_photo", {});
+
+    expect(result.isError).toBe(true);
+    expect(mockApiGet).not.toHaveBeenCalled();
+  });
+
+  it("list_exercise_reports tells the model how to view an attached photo", () => {
+    const list = TOOLS.find((t) => t.name === "list_exercise_reports");
+    expect(list?.description).toContain("photoURL");
+    expect(list?.description).toContain("get_report_photo");
   });
 });
 

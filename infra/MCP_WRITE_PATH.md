@@ -233,6 +233,7 @@ Re-enabled / new:
 | `create_program` | N × `createTemplate` in one call, all-or-nothing validation. |
 | `create_custom_exercise` | Enqueues `createCustomExercise`. Auto-applies. |
 | `list_exercise_reports` | Reads the complaint backlog mirrored by snapshot sync (`GET /api/reports`). Not an inbox operation. |
+| `get_report_photo` | Reads a report's photo (#141): validates `photoURL` as `reports/{reportId}.jpg`, then downloads it with a read SAS from `GET /api/images/sas`. Read-only, not an inbox operation. |
 | `resolve_exercise_report` | Enqueues `resolveExerciseReport`. Auto-applies. |
 | `list_pending_writes` | Reads back queued/applied/failed operations — closes the loop so a write can be *verified*, not assumed. |
 

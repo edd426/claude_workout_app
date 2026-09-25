@@ -26,7 +26,7 @@ enum WorkoutAutoFinishPolicy {
     static func window(
         for workout: Workout,
         now: Date,
-        idleThreshold: TimeInterval = idleThreshold
+        idleThreshold: TimeInterval = WorkoutAutoFinishPolicy.idleThreshold
     ) -> DateInterval? {
         guard workout.completedAt == nil else { return nil }
         let loggedAt = workout.exercises

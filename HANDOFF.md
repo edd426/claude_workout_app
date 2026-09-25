@@ -1,3 +1,41 @@
+# ▶ START HERE — picking this up on the Mac
+
+**Branch `claude/clever-mayer-sb25i3`, PR #157.** It was written in a Linux cloud
+session on 2026-09-25 while Evan was travelling, and **nothing Swift in it has
+ever been compiled.** Do the steps in this order and stop at the first one that
+fails.
+
+```bash
+git fetch origin && git checkout claude/clever-mayer-sb25i3 && git pull
+python3 generate_project.py        # should be a no-op; if the pbxproj changes, commit it
+```
+
+1. **Build.** `xcodebuild -scheme ClaudeLifter -destination 'platform=iOS Simulator,name=iPhone 13 Pro Max' build`
+   Compile errors are the most likely first failure. Fix them in place. Where a
+   review flagged a risk, it is listed under "Most likely to break" below.
+2. **Unit + UI tests** (`set -o pipefail`; see §1 below). The baseline on `962c5b0` was exit 0 with 791 Swift tests. Anything red is this branch's fault until shown otherwise. Fix the code, not the test, unless the test itself is wrong.
+3. **Deploy the Functions app** (§3). Photo uploads get a 400 until this is done.
+4. **Install 1.7.0 (9)** on the phone. The Settings footer must read `1.7.0 (9)`.
+5. **Workout-MCP chores** (§5): resolve and acknowledge reports, Trap Bar Deadlift → 10 reps, the leverage pulldown, the Hammer Curls note. The cloud session had no MCP, so none of these is done.
+6. **Gym probes** (§4), then resolve the reports that pass.
+
+**Most likely to break** (all flagged by a read-only review; none confirmed):
+- `SetRowView.FocusWithCaretAtEnd`: XCUITest may call the set fields "not hittable". The fallback is to delete `.allowsHitTesting(isFocused)`, then check on the device that the caret still lands at the end.
+- `ReportSheetView` / `CameraPicker`: new UIKit bridging, and the camera does not exist in the simulator. Only a device exercises it.
+- Swift 6 strict concurrency in `ReportPhotos.swift` (`@MainActor` protocols; `UIGraphicsImageRenderer` used from a nonisolated static).
+
+**Who owns the branch.** The cloud session that wrote this watches #157 hourly.
+Once commits it did not write appear on the branch, it treats the Mac session as
+the owner and **does not push**. Push freely.
+
+Prompt to paste into Claude Code on the Mac:
+
+> Read HANDOFF.md (the START HERE block first), check out `claude/clever-mayer-sb25i3`,
+> and work through the steps in order. Fix compile and test failures on this branch,
+> commit and push each fix, and stop before deploying or installing so I can confirm.
+
+---
+
 # HANDOFF — 2026-09-25: the 13-report batch (branch `claude/clever-mayer-sb25i3`)
 
 Built from `feat/exercise-reports` @ `962c5b0` (1.6.0 (8)) in a **Linux cloud

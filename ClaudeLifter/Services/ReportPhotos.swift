@@ -34,8 +34,8 @@ enum JPEGEncoding {
     /// photo library would otherwise upload under a `.jpg` name.
     static func jpeg(
         from data: Data,
-        maxDimension: CGFloat = maxDimension,
-        quality: CGFloat = quality
+        maxDimension: CGFloat = JPEGEncoding.maxDimension,
+        quality: CGFloat = JPEGEncoding.quality
     ) -> Data? {
         guard let image = UIImage(data: data) else { return nil }
         let pixelWidth = image.size.width * image.scale

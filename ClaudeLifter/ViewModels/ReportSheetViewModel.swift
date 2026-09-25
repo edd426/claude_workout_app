@@ -123,11 +123,23 @@ final class ReportSheetViewModel {
     private(set) var isSaving = false
     var errorMessage: String?
 
-    private let repository: any ExerciseReportRepository
+    /// The attached photo, already re-encoded as a ≤1024px JPEG (#141). Kept
+    /// on the phone when the report is filed; uploaded on a later sync.
+    private(set) var photoData: Data?
+    /// Why the chosen photo could not be attached. Never blocks filing.
+    var photoError: String?
 
-    init(context: ReportContext, repository: any ExerciseReportRepository) {
+    private let repository: any ExerciseReportRepository
+    private let photoStore: any ReportPhotoStoring
+
+    init(
+        context: ReportContext,
+        repository: any ExerciseReportRepository,
+        photoStore: any ReportPhotoStoring = LocalReportPhotoStore()
+    ) {
         self.context = context
         self.repository = repository
+        self.photoStore = photoStore
         // A report filed against a specific exercise is far more often about
         // that exercise than about the app; one without an exercise almost
         // always is a bug. Start on the likelier chip.
@@ -142,6 +154,24 @@ final class ReportSheetViewModel {
 
     var canSubmit: Bool {
         !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSaving
+    }
+
+    /// Takes a photo from the camera or the library. Returns false, with a
+    /// message, when the data is not an image.
+    @discardableResult
+    func attachPhoto(_ data: Data) -> Bool {
+        guard let jpeg = JPEGEncoding.jpeg(from: data) else {
+            photoError = "Couldn't use that photo. Try another one."
+            return false
+        }
+        photoData = jpeg
+        photoError = nil
+        return true
+    }
+
+    func removePhoto() {
+        photoData = nil
+        photoError = nil
     }
 
     /// Returns true when the report was saved and the sheet should close.
@@ -167,10 +197,28 @@ final class ReportSheetViewModel {
             iosVersion: UIDevice.current.systemVersion
         )
 
+        // The photo is written first, under the report's id, so it is on disk
+        // before the report exists to be synced. If it cannot be written the
+        // report is filed without it: the report is the point (#141).
+        var storedPhoto = false
+        if let photoData {
+            do {
+                try photoStore.save(photoData, reportId: report.id)
+                storedPhoto = true
+            } catch {
+                photoError = "The photo couldn't be kept: \(error.localizedDescription)"
+            }
+        }
+
         do {
             try await repository.save(report)
             return true
         } catch {
+            if storedPhoto {
+                // Retrying files a new report with a new id; don't leave this
+                // photo orphaned under the old one.
+                photoStore.delete(reportId: report.id)
+            }
             errorMessage = "Couldn't save the report: \(error.localizedDescription)"
             return false
         }

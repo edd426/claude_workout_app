@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// File a complaint (issue #135). The gym version of this screen has to be
@@ -9,6 +10,8 @@ struct ReportSheetView: View {
 
     @Environment(\.dismiss) private var dismiss
     @FocusState private var detailFocused: Bool
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var showCamera = false
 
     var body: some View {
         NavigationStack {
@@ -36,6 +39,17 @@ struct ReportSheetView: View {
                         )
                         .accessibilityIdentifier("reportReplacementField")
                     }
+                }
+
+                Section {
+                    photoRow
+                } header: {
+                    Text("Photo")
+                } footer: {
+                    Text(
+                        "Optional. Kept on your phone and uploaded on the next sync, "
+                        + "so sending never waits for it."
+                    )
                 }
 
                 if let contextSummary = vm.context.contextSummary {
@@ -91,6 +105,72 @@ struct ReportSheetView: View {
                 }
             }
             .task { detailFocused = true }
+            .onChange(of: pickerItem) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        vm.attachPhoto(data)
+                    } else {
+                        vm.photoError = "Couldn't load that photo. Try another one."
+                    }
+                    pickerItem = nil
+                }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraPicker { data in
+                    vm.attachPhoto(data)
+                }
+                .ignoresSafeArea()
+            }
+        }
+    }
+
+    /// Issue #141: "It's easier to show you what's wrong as an image." The
+    /// camera comes first because the machine is right there; the library is
+    /// for a photo taken earlier.
+    @ViewBuilder
+    private var photoRow: some View {
+        if let data = vm.photoData, let image = UIImage(data: data) {
+            HStack(spacing: 12) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel("Attached photo")
+                    .accessibilityIdentifier("reportPhotoThumbnail")
+                Spacer()
+                Button("Remove", role: .destructive) {
+                    vm.removePhoto()
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("reportRemovePhoto")
+            }
+        } else {
+            // Explicit button styles: in a Form row, default-styled buttons
+            // make the whole row one tap target that fires every button in it.
+            HStack(spacing: 12) {
+                if CameraPicker.isAvailable {
+                    Button {
+                        detailFocused = false
+                        showCamera = true
+                    } label: {
+                        Label("Take Photo", systemImage: "camera")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("reportTakePhoto")
+                }
+                PhotosPicker(selection: $pickerItem, matching: .images) {
+                    Label("Choose Photo", systemImage: "photo.on.rectangle")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("reportChoosePhoto")
+            }
+        }
+        if let photoError = vm.photoError {
+            Text(photoError)
+                .font(.caption)
+                .foregroundStyle(.red)
         }
     }
 

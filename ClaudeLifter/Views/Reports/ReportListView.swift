@@ -96,6 +96,14 @@ private struct ReportRow: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(BrandTheme.terracotta)
                 Spacer()
+                // Set only once the photo is in blob storage, i.e. readable
+                // over MCP with get_report_photo (#141).
+                if report.photoURL != nil {
+                    Image(systemName: "photo")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Photo attached")
+                }
                 if report.status != .open {
                     Text(report.status.rawValue.capitalized)
                         .font(.caption2)

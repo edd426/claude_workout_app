@@ -21,6 +21,8 @@ final class DependencyContainer {
     let backupService: any BackupServiceProtocol
     let bodyWeightRepository: any BodyWeightRepository
     let exerciseReportRepository: any ExerciseReportRepository
+    /// Report photos kept on the phone until they upload (#141).
+    let reportPhotoStore: any ReportPhotoStoring
     let inboxApplier: InboxApplier
     let healthKitService: any HealthKitServiceProtocol
     /// Shared rest-timer tick source — one instance for the app instead of
@@ -74,11 +76,14 @@ final class DependencyContainer {
             preferenceRepository: prefRepo
         )
         self.networkService = network
-        self.imageUploadService = ImageUploadService(networkService: network)
+        let imageUploadService = ImageUploadService(networkService: network)
+        self.imageUploadService = imageUploadService
         let bodyWeightRepo = SwiftDataBodyWeightRepository(context: modelContext)
         self.bodyWeightRepository = bodyWeightRepo
         let reportRepo = SwiftDataExerciseReportRepository(context: modelContext)
         self.exerciseReportRepository = reportRepo
+        let reportPhotoStore = LocalReportPhotoStore()
+        self.reportPhotoStore = reportPhotoStore
         let inboxApplier = InboxApplier(
             templateRepository: templateRepo,
             exerciseRepository: exerciseRepo,
@@ -112,7 +117,12 @@ final class DependencyContainer {
             exerciseReportRepository: reportRepo,
             networkService: network,
             settings: settings,
-            inboxApplier: inboxApplier
+            inboxApplier: inboxApplier,
+            reportPhotoUploader: ReportPhotoUploader(
+                reportRepository: reportRepo,
+                photoStore: reportPhotoStore,
+                imageUploadService: imageUploadService
+            )
         )
     }
 }

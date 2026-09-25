@@ -16,7 +16,7 @@ struct ImageUploadServiceTests {
     private func makeSASResponse(exerciseId: UUID) -> SASResponse {
         SASResponse(
             sasUrl: "https://stworkout.blob.core.windows.net/workout-images/exercises/\(exerciseId).jpg?sv=sas",
-            blobUrl: "https://stworkout.blob.core.windows.net/workout-images/exercises/\(exerciseId).jpg"
+            expiresAt: "2026-09-25T06:00:00.000Z"
         )
     }
 
@@ -39,6 +39,63 @@ struct ImageUploadServiceTests {
             0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0xFB, 0x26,
             0xA5, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xD9
         ])
+    }
+
+    // MARK: - The SAS response as the server actually sends it (#141)
+
+    @Test("SASResponse decodes the body imagesSas.ts really returns")
+    func sasResponseDecodesServerBody() throws {
+        // `{ sasUrl, expiresAt }` is SasResponse in infra/functions. The client
+        // used to require a `blobUrl` the server never sent, so every real
+        // decode threw — invisible because MockNetworkService skips decoding.
+        let json = Data("""
+        {"sasUrl":"https://stworkout.blob.core.windows.net/workout-images/reports/ABC.jpg?sv=2024&sig=xyz","expiresAt":"2026-09-25T06:00:00.000Z"}
+        """.utf8)
+
+        let response = try JSONDecoder().decode(SASResponse.self, from: json)
+
+        #expect(response.sasUrl.hasSuffix("sig=xyz"))
+        #expect(response.blobUrl == "https://stworkout.blob.core.windows.net/workout-images/reports/ABC.jpg")
+    }
+
+    // MARK: - uploadReportPhoto (#141)
+
+    @Test("uploadReportPhoto asks for an upload SAS on reports/{reportId}.jpg")
+    func uploadReportPhotoRequestsReportPath() async throws {
+        let (service, network) = makeService()
+        let reportId = UUID()
+        network.setResponse(makeSASResponse(exerciseId: reportId), forEndpoint: "/api/images/sas")
+
+        _ = try await service.uploadReportPhoto(reportId: reportId, jpegData: makeFakeImageData())
+
+        let expectedPath = "reports/\(reportId.uuidString).jpg"
+        #expect(network.lastQueryItems?.contains(where: { $0.name == "path" && $0.value == expectedPath }) == true)
+        #expect(network.lastQueryItems?.contains(where: { $0.name == "mode" && $0.value == "upload" }) == true)
+        #expect(network.uploadBlobCallCount == 1)
+    }
+
+    @Test("uploadReportPhoto returns the blob path, which is what photoURL stores")
+    func uploadReportPhotoReturnsBlobPath() async throws {
+        let (service, network) = makeService()
+        let reportId = UUID()
+        network.setResponse(makeSASResponse(exerciseId: reportId), forEndpoint: "/api/images/sas")
+
+        let path = try await service.uploadReportPhoto(reportId: reportId, jpegData: makeFakeImageData())
+
+        // get_report_photo accepts exactly reports/{thisReportId}.jpg — a
+        // path, not a URL.
+        #expect(path == "reports/\(reportId.uuidString).jpg")
+    }
+
+    @Test("uploadReportPhoto propagates a refused SAS request")
+    func uploadReportPhotoPropagatesErrors() async {
+        let (service, network) = makeService()
+        network.errorToThrow = SyncError.serverError(400)
+
+        await #expect(throws: (any Error).self) {
+            _ = try await service.uploadReportPhoto(reportId: UUID(), jpegData: makeFakeImageData())
+        }
+        #expect(network.uploadBlobCallCount == 0)
     }
 
     // MARK: - uploadPhoto

@@ -660,6 +660,7 @@ app_settings = {
     'DEVELOPMENT_TEAM': '738XNTWZ5K',
     'CURRENT_PROJECT_VERSION': BUILD_NUMBER,
     'GENERATE_INFOPLIST_FILE': 'YES',
+    'INFOPLIST_KEY_NSCameraUsageDescription': '"Photograph a machine to attach to a report."',
     'INFOPLIST_KEY_NSHealthShareUsageDescription': '"Reads body-weight entries from Health so weights logged elsewhere appear here."',
     'INFOPLIST_KEY_NSHealthUpdateUsageDescription': '"Writes body-weight entries you log here to Health."',
     'INFOPLIST_KEY_UIApplicationSceneManifest_Generation': 'YES',

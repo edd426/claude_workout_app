@@ -87,6 +87,9 @@ final class SyncManager: InboxApprovalManaging {
     private let networkService: any NetworkServiceProtocol
     private let settings: SettingsManager
     private let inboxApplier: InboxApplier
+    /// Uploads report photos kept offline (#141). Optional so existing
+    /// construction sites keep compiling; nil means photos never upload.
+    private let reportPhotoUploader: (any ReportPhotoUploading)?
 
     private var pathMonitor: NWPathMonitor?
     private let monitorQueue = DispatchQueue(label: "com.claudelifter.sync.monitor")
@@ -99,7 +102,8 @@ final class SyncManager: InboxApprovalManaging {
         exerciseReportRepository: any ExerciseReportRepository,
         networkService: any NetworkServiceProtocol,
         settings: SettingsManager,
-        inboxApplier: InboxApplier
+        inboxApplier: InboxApplier,
+        reportPhotoUploader: (any ReportPhotoUploading)? = nil
     ) {
         self.workoutRepository = workoutRepository
         self.templateRepository = templateRepository
@@ -109,6 +113,7 @@ final class SyncManager: InboxApprovalManaging {
         self.networkService = networkService
         self.settings = settings
         self.inboxApplier = inboxApplier
+        self.reportPhotoUploader = reportPhotoUploader
         self.lastSyncDate = settings.lastSyncTimestamp
         self.lastRevision = settings.lastSyncRevision
     }
@@ -164,6 +169,12 @@ final class SyncManager: InboxApprovalManaging {
                 }
             }
             _ = try await fetchPendingApprovals()
+
+            // Before the pending check: an upload sets the report's photoURL
+            // and marks it pending, and that belongs in THIS push (#141).
+            // Never throws — a photo that fails waits for the next sync and
+            // must not hold the rest of sync back.
+            await reportPhotoUploader?.uploadPending()
 
             // Any record turning .pending means a snapshot push is due. The
             // snapshot itself is always FULL state — pending is only the trigger.

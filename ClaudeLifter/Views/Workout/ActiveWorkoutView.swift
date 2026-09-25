@@ -138,7 +138,7 @@ struct ActiveWorkoutView: View {
                     restSession?.cancel()
                 }
         }
-        .selectAllTextOnBeginEditing()
+        .caretAtEndOnBeginEditing()
     }
 
     @ViewBuilder
@@ -505,9 +505,16 @@ struct ActiveWorkoutView: View {
     }
 }
 
-/// A single screen-level observer fixes append-on-edit for every formatted
-/// numeric field without introducing row-owned copies of model values.
-private struct SelectAllTextOnBeginEditing: ViewModifier {
+/// A single screen-level observer puts the caret at the end of every set
+/// field that begins editing — including fields focused by the keyboard bar's
+/// previous/next buttons, which no tap is involved in.
+///
+/// This used to select all, so typing replaced the value (40 → 45, not 4045).
+/// Report 8FF8C6D5 asked for the caret at the end instead, so one backspace
+/// corrects a digit; typing now appends, which is the trade that was chosen.
+/// The first tap's own caret placement is handled in `SetRowView`
+/// (`FocusWithCaretAtEnd`), because this hop loses the race with it on device.
+private struct CaretAtEndOnBeginEditing: ViewModifier {
     func body(content: Content) -> some View {
         content.onReceive(
             NotificationCenter.default.publisher(
@@ -524,14 +531,18 @@ private struct SelectAllTextOnBeginEditing: ViewModifier {
             }
             Task { @MainActor in
                 await Task.yield()
-                textField.selectAll(nil)
+                let end = textField.endOfDocument
+                textField.selectedTextRange = textField.textRange(
+                    from: end,
+                    to: end
+                )
             }
         }
     }
 }
 
 private extension View {
-    func selectAllTextOnBeginEditing() -> some View {
-        modifier(SelectAllTextOnBeginEditing())
+    func caretAtEndOnBeginEditing() -> some View {
+        modifier(CaretAtEndOnBeginEditing())
     }
 }

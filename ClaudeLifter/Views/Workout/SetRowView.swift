@@ -175,6 +175,11 @@ struct SetRowView: View {
             .accessibilityIdentifier(
                 "weight_\(workoutExerciseID.uuidString)_\(set.id.uuidString)"
             )
+            .modifier(FocusWithCaretAtEnd(
+                isFocused: focusedField.wrappedValue == weightFieldID
+            ) {
+                focusedField.wrappedValue = weightFieldID
+            })
             Text(displayedWeightUnit.rawValue)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -206,6 +211,11 @@ struct SetRowView: View {
         .accessibilityIdentifier(
             "reps_\(workoutExerciseID.uuidString)_\(set.id.uuidString)"
         )
+        .modifier(FocusWithCaretAtEnd(
+            isFocused: focusedField.wrappedValue == repsFieldID
+        ) {
+            focusedField.wrappedValue = repsFieldID
+        })
     }
 
     private var completeButton: some View {
@@ -232,5 +242,39 @@ struct SetRowView: View {
         .accessibilityIdentifier(
             "completeSet_\(workoutExerciseID.uuidString)_\(set.id.uuidString)"
         )
+    }
+}
+
+/// The first tap on a set field leaves the caret at the END, so one backspace
+/// corrects the last digit without a second tap to reposition it (report
+/// 8FF8C6D5, Seated Calf Raise, 2026-09-14).
+///
+/// The tap is intercepted rather than corrected afterwards because correcting
+/// afterwards is what the screen already did: it selected all one main-actor
+/// hop after `textDidBeginEditing`. The report shows that never took effect on
+/// device — with the text selected, typing would have replaced the value and
+/// no second tap would be needed — so the tap's own caret placement lands
+/// after that hop, wherever the finger was (usually the start of a centred
+/// number). Any hop-based fix races the same placement. Focusing
+/// programmatically involves no touch to place a caret, so UIKit leaves it at
+/// the end.
+///
+/// Only the unfocused field is intercepted. Once focused, touches reach the
+/// field again, so the caret can still be dragged and the text long-pressed.
+private struct FocusWithCaretAtEnd: ViewModifier {
+    let isFocused: Bool
+    let focus: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .allowsHitTesting(isFocused)
+            .overlay {
+                if !isFocused {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: focus)
+                        .accessibilityHidden(true)
+                }
+            }
     }
 }

@@ -58,6 +58,7 @@ func isSetEntryFieldAccessibilityIdentifier(_ identifier: String?) -> Bool {
 /// than the model itself so `.sheet(item:)` keys on the stable UUID.
 struct ExerciseNoteTarget: Identifiable {
     let workoutExercise: WorkoutExercise
+    var kind: ExerciseNoteKind = .exercise
     var id: UUID { workoutExercise.id }
     var exerciseName: String {
         workoutExercise.exercise?.name ?? "Exercise"
@@ -97,17 +98,7 @@ struct ActiveWorkoutView: View {
                     reportSheet(for: context)
                 }
                 .sheet(item: $noteTarget) { target in
-                    ExerciseNoteEditorView(
-                        exerciseName: target.exerciseName,
-                        initialNotes: target.workoutExercise.exercise?.notes
-                    ) { notes in
-                        Task {
-                            await vm.updateExerciseNotes(
-                                target.workoutExercise,
-                                notes: notes
-                            )
-                        }
-                    }
+                    noteEditor(for: target)
                 }
                 .confirmationDialog(
                     "Exit workout?",
@@ -240,6 +231,13 @@ struct ActiveWorkoutView: View {
             onEditNotes: {
                 focusedField = nil
                 noteTarget = ExerciseNoteTarget(workoutExercise: workoutExercise)
+            },
+            onEditTemplateNote: {
+                focusedField = nil
+                noteTarget = ExerciseNoteTarget(
+                    workoutExercise: workoutExercise,
+                    kind: .template
+                )
             },
             plannedTarget: vm.plannedTarget(for: workoutExercise),
             previousDrifted: { set in
@@ -394,6 +392,26 @@ struct ActiveWorkoutView: View {
                 startOrRestartRest(duration: restDuration)
             } else {
                 restSession?.cancel()
+            }
+        }
+    }
+
+    private func noteEditor(for target: ExerciseNoteTarget) -> some View {
+        let workoutExercise = target.workoutExercise
+        return ExerciseNoteEditorView(
+            exerciseName: target.exerciseName,
+            initialNotes: target.kind == .exercise
+                ? workoutExercise.exercise?.notes
+                : workoutExercise.notes,
+            kind: target.kind
+        ) { notes in
+            switch target.kind {
+            case .exercise:
+                Task {
+                    await vm.updateExerciseNotes(workoutExercise, notes: notes)
+                }
+            case .template:
+                vm.updateTemplateNote(workoutExercise, notes: notes)
             }
         }
     }

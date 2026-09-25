@@ -16,6 +16,9 @@ struct ExerciseCardView: View {
     /// are needed standing at the machine, so the note is shown inline and the
     /// editor is one tap from it.
     var onEditNotes: (() -> Void)? = nil
+    /// Opens the editor for this workout's copy of the template's note — the
+    /// Coach's cue (reports 31A4983B, E26BBFAA), which used to be read-only.
+    var onEditTemplateNote: (() -> Void)? = nil
     /// The template plan for this exercise (#144). Nil for ad-hoc workouts and
     /// exercises added mid-session — both genuinely have no target, and an
     /// invented one would be worse than none.
@@ -24,6 +27,9 @@ struct ExerciseCardView: View {
     var previousDrifted: (WorkoutSet) -> Bool = { _ in false }
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The template note starts collapsed to one line (report 31A4983B: "They
+    /// take up a lot of space … should be clicked into, but not prominent").
+    @State private var isTemplateNoteExpanded = false
 
     private var sortedSets: [WorkoutSet] {
         workoutExercise.sets.sorted(by: { $0.order < $1.order })
@@ -60,8 +66,8 @@ struct ExerciseCardView: View {
 
     /// The durable note lives on the library `Exercise` — it describes the
     /// machine, so it follows the exercise into every workout (#136). The
-    /// session note is a separate, rarer thing (template cues, synced data)
-    /// and is shown beneath it rather than hidden.
+    /// session note is this workout's copy of the template's cue, usually
+    /// written by the Coach; it is shown beneath, collapsed to one line.
     private var exerciseNotes: String? {
         Self.cleaned(workoutExercise.exercise?.notes)
     }
@@ -78,8 +84,10 @@ struct ExerciseCardView: View {
         return value
     }
 
-    /// Shown inline, unconditionally when present — a note behind a tap is a
-    /// note you do not read mid-set, which is the whole of #136.
+    /// The user's own note is shown in full, unconditionally when present — a
+    /// note behind a tap is a note you do not read mid-set, which is the whole
+    /// of #136. The template note is the opposite case (report 31A4983B): long
+    /// Coach prose that crowded the card, so it gets one line until tapped.
     @ViewBuilder
     private var notesRow: some View {
         if exerciseNotes != nil || sessionNotes != nil {
@@ -93,13 +101,40 @@ struct ExerciseCardView: View {
                     )
                 }
                 if let sessionNotes {
-                    noteLine(
-                        sessionNotes,
-                        systemImage: "text.bubble",
-                        identifier: "sessionNotes",
-                        label: "Session note"
-                    )
+                    templateNoteLine(sessionNotes)
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func templateNoteLine(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.snappy) { isTemplateNoteExpanded.toggle() }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "text.bubble")
+                    Text(text)
+                        .lineLimit(isTemplateNoteExpanded ? nil : 1)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: isTemplateNoteExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Template note: \(text)")
+            .accessibilityHint(isTemplateNoteExpanded ? "Collapses the note" : "Shows the whole note")
+            .accessibilityIdentifier("sessionNotes")
+
+            if isTemplateNoteExpanded, let onEditTemplateNote {
+                Button("Edit template note", action: onEditTemplateNote)
+                    .font(.caption)
+                    .accessibilityIdentifier("editTemplateNote")
             }
         }
     }
@@ -222,7 +257,8 @@ struct ExerciseCardView: View {
 
     @ViewBuilder
     private var actionsMenu: some View {
-        if onRemoveSet != nil || onReport != nil || onEditNotes != nil {
+        if onRemoveSet != nil || onReport != nil || onEditNotes != nil
+            || onEditTemplateNote != nil {
             Menu {
                 if let onEditNotes {
                     Button {
@@ -234,6 +270,14 @@ struct ExerciseCardView: View {
                         )
                     }
                     .accessibilityIdentifier("editExerciseNotes")
+                }
+                if sessionNotes != nil, let onEditTemplateNote {
+                    Button {
+                        onEditTemplateNote()
+                    } label: {
+                        Label("Edit template note…", systemImage: "text.bubble")
+                    }
+                    .accessibilityIdentifier("editTemplateNoteMenu")
                 }
                 if let onReport {
                     Button {

@@ -528,6 +528,25 @@ final class ActiveWorkoutViewModel {
         }
     }
 
+    /// Edits this workout's copy of the template's note for an exercise — the
+    /// cue the Coach writes over MCP (reports 31A4983B, E26BBFAA). It used to
+    /// be read-only, so a wrong one ("with barbells" on a dumbbell curl) could
+    /// only be reported.
+    ///
+    /// Deliberately NOT written to the template here. The post-workout review
+    /// already turns a changed cue into an offer for the template (#129/#130),
+    /// behind a revision check; a direct write would move the template's
+    /// revision and make that review report a conflict with the user's own
+    /// edit. The library note (`updateExerciseNotes`) is untouched: it is a
+    /// different note, about the machine.
+    func updateTemplateNote(_ workoutExercise: WorkoutExercise, notes: String?) {
+        let trimmed = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        guard workoutExercise.notes != normalized else { return }
+        workoutExercise.notes = normalized
+        persistMutation()
+    }
+
     func updateSetReps(_ set: WorkoutSet, reps: Int?) {
         // Recorded even when the value is unchanged: clearing a field that is
         // already nil is still the user saying "blank is what I meant" (#137).

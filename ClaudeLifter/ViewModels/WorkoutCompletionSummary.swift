@@ -36,8 +36,15 @@ final class WorkoutCompletionSummary: Identifiable {
     /// the card must appear only when there is genuinely something to decide.
     var templateChangeSet: TemplateChangeSet?
 
-    init(workout: Workout) {
+    /// True when the app finished this workout after it sat idle, rather than
+    /// the user tapping Finish (report 07B1AD96). The summary is then the
+    /// "message letting me know when I come back on", so it has to say what
+    /// happened and which window was recorded.
+    let finishedAutomatically: Bool
+
+    init(workout: Workout, finishedAutomatically: Bool = false) {
         self.id = workout.id
         self.workout = workout
+        self.finishedAutomatically = finishedAutomatically
     }
 }

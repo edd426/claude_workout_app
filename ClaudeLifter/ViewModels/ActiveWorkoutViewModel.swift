@@ -101,6 +101,9 @@ final class ActiveWorkoutViewModel {
     /// The in-flight finish attempt, so duplicate taps join it rather than
     /// racing it (#124).
     private var finishTask: Task<Void, Never>?
+    /// Set only for the duration of an idle auto-finish, so the receipt can
+    /// say the app finished the workout rather than the user (report 07B1AD96).
+    private var finishingAutomatically = false
     /// Follow-up work that runs after the critical save has committed.
     private var postCommitTask: Task<Void, Never>?
 
@@ -772,6 +775,46 @@ final class ActiveWorkoutViewModel {
         finishTask = nil
     }
 
+    /// Finishes the workout if it has sat idle past
+    /// `WorkoutAutoFinishPolicy.idleThreshold` since its last logged set, and
+    /// returns whether it did (report 07B1AD96).
+    ///
+    /// The recorded window is first logged set → last logged set, stamped
+    /// before the ordinary finish runs; `performFinish` keeps a `completedAt`
+    /// that is already set, so everything else — idempotency (#124), the
+    /// post-commit work (#125), the receipt (#123) — is the same path as a
+    /// Finish tap. Called when the app comes back to the foreground, which is
+    /// the "when I come back on" in the report.
+    @discardableResult
+    func autoFinishIfIdle(now: Date = .now) async -> Bool {
+        switch completionState {
+        case .active, .failed:
+            break
+        case .finishing, .finished:
+            return false
+        }
+        guard
+            finishTask == nil,
+            let workout,
+            let window = WorkoutAutoFinishPolicy.window(for: workout, now: now)
+        else { return false }
+
+        let originalStart = workout.startedAt
+        workout.startedAt = window.start
+        workout.completedAt = window.end
+        finishingAutomatically = true
+        defer { finishingAutomatically = false }
+
+        await finishWorkout()
+
+        if case .finished = completionState { return true }
+        // The save failed. `performFinish` already cleared `completedAt`; put
+        // the start back too, so the workout is left exactly as it was and a
+        // later attempt recomputes the window from scratch.
+        workout.startedAt = originalStart
+        return false
+    }
+
     private func performFinish() async {
         guard let workout else { return }
         completionState = .finishing
@@ -813,7 +856,10 @@ final class ActiveWorkoutViewModel {
         // The critical transaction has committed. Publishing the receipt here
         // — before any of the follow-up work — is what lets the UI leave the
         // workout immediately.
-        let summary = WorkoutCompletionSummary(workout: workout)
+        let summary = WorkoutCompletionSummary(
+            workout: workout,
+            finishedAutomatically: finishingAutomatically
+        )
         completionState = .finished(summary: summary)
 
         postCommitTask = Task { @MainActor [weak self] in
@@ -831,7 +877,9 @@ final class ActiveWorkoutViewModel {
     ) async {
         if let template, let templateRepository {
             template.timesPerformed += 1
-            template.lastPerformedAt = .now
+            // When the workout ended, which is not "now" for an auto-finished
+            // workout noticed hours later (report 07B1AD96).
+            template.lastPerformedAt = workout.completedAt ?? .now
             template.recordChange()
             do {
                 try await templateRepository.save(template)

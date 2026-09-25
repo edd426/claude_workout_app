@@ -126,6 +126,7 @@ struct ActiveWorkoutView: View {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         restSession?.refreshFromClock()
+                        autoFinishIfIdle()
                     } else if phase == .background {
                         performAfterFlushingFocusedField {
                             Task {
@@ -393,6 +394,28 @@ struct ActiveWorkoutView: View {
                 startOrRestartRest(duration: restDuration)
             } else {
                 restSession?.cancel()
+            }
+        }
+    }
+
+    /// Coming back to a workout that has sat idle for hours finishes it and
+    /// shows the receipt over Home, which says it was automatic (report
+    /// 07B1AD96). Past the policy check this is the Finish button's path —
+    /// flush the focused field, then finish — so an ordinary return to the
+    /// app never touches the keyboard.
+    private func autoFinishIfIdle() {
+        guard
+            let workout = vm.workout,
+            WorkoutAutoFinishPolicy.window(for: workout, now: .now) != nil
+        else { return }
+        performAfterFlushingFocusedField {
+            restSession?.cancel()
+            Task {
+                guard await vm.autoFinishIfIdle() else { return }
+                if case .finished(let summary) = vm.completionState {
+                    appState.endWorkout(showing: summary)
+                    onDismiss?()
+                }
             }
         }
     }

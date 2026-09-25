@@ -10,6 +10,9 @@ struct WorkoutSummaryView: View {
     var templateChangeSet: TemplateChangeSet? = nil
     /// Returns an error message to show, or nil on success.
     var onApplyTemplateChanges: (([TemplateChange]) async -> String?)? = nil
+    /// The app finished this workout after it sat idle (report 07B1AD96).
+    /// This sheet is then the only word the user gets about it, so it says so.
+    var finishedAutomatically: Bool = false
 
     var totalSets: Int {
         workout.exercises.flatMap(\.sets).filter(\.isCompleted).count
@@ -50,6 +53,8 @@ struct WorkoutSummaryView: View {
                 Text("Workout Complete!")
                     .font(.title.bold())
 
+                autoFinishNotice
+
                 statsGrid
 
                 if !personalRecords.isEmpty {
@@ -70,6 +75,36 @@ struct WorkoutSummaryView: View {
                     .accessibilityIdentifier("summaryDone")
             }
             .padding()
+        }
+    }
+
+    /// What happened and which window was recorded, so a Duration that is
+    /// shorter than the time the workout was open is not a surprise.
+    @ViewBuilder
+    private var autoFinishNotice: some View {
+        if finishedAutomatically, let completedAt = workout.completedAt {
+            let hours = Int(WorkoutAutoFinishPolicy.idleThreshold / 3600)
+            let from = workout.startedAt.formatted(date: .abbreviated, time: .shortened)
+            let to = completedAt.formatted(date: .omitted, time: .shortened)
+            Label {
+                Text(
+                    "Finished automatically after \(hours) hours without a logged set. "
+                        + "Time is recorded from your first set to your last: \(from) – \(to)."
+                )
+                .multilineTextAlignment(.leading)
+            } icon: {
+                Image(systemName: "clock.badge.checkmark")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                Color(uiColor: .secondarySystemBackground),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("autoFinishedNotice")
         }
     }
 

@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(\.dependencies) private var deps
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var vm: HomeViewModel?
     @State private var bodyWeightVM: BodyWeightViewModel?
     @State private var approvalVM: InboxApprovalViewModel?
@@ -13,6 +14,9 @@ struct HomeView: View {
     @State private var generalReportContext: ReportContext?
     @State private var unreadInsights: [ProactiveInsight] = []
     @State private var path = NavigationPath()
+    /// Launch runs both `.task` and the scene-phase handler; two finishers on
+    /// one draft would each run PR detection on it.
+    @State private var isAutoFinishingDrafts = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -62,6 +66,7 @@ struct HomeView: View {
             // behind by a crash, force-quit, or explicit draft save.
             if !appState.isWorkoutActive {
                 await vm?.checkForResumableWorkout()
+                await autoFinishIdleDrafts()
             }
             if bodyWeightVM == nil {
                 bodyWeightVM = BodyWeightViewModel(
@@ -102,6 +107,15 @@ struct HomeView: View {
                     // progress as draft") becomes resumable right away (#75).
                     await vm?.checkForResumableWorkout()
                 }
+            }
+        }
+        // A draft can cross the idle threshold while the app sits in the
+        // background on Home (report 07B1AD96).
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, !appState.isWorkoutActive else { return }
+            Task {
+                await vm?.checkForResumableWorkout()
+                await autoFinishIdleDrafts()
             }
         }
         .onChange(of: deps?.syncManager.pendingApprovals ?? []) { _, approvals in
@@ -298,7 +312,8 @@ struct HomeView: View {
             templateChangeSet: summary.templateChangeSet,
             onApplyTemplateChanges: { changes in
                 await applyTemplateChanges(changes, from: summary)
-            }
+            },
+            finishedAutomatically: summary.finishedAutomatically
         )
     }
 
@@ -352,7 +367,17 @@ struct HomeView: View {
     /// session with all logged sets intact.
     private func resumeWorkout(_ workout: Workout) {
         guard let deps else { return }
-        let workoutVM = ActiveWorkoutViewModel(
+        let workoutVM = makeResumedWorkoutVM(for: workout, deps: deps)
+        path = NavigationPath()
+        vm?.resumableWorkout = nil
+        appState.startWorkout(id: workout.id, vm: workoutVM)
+    }
+
+    private func makeResumedWorkoutVM(
+        for workout: Workout,
+        deps: DependencyContainer
+    ) -> ActiveWorkoutViewModel {
+        ActiveWorkoutViewModel(
             resuming: workout,
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
@@ -362,9 +387,35 @@ struct HomeView: View {
             prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )
-        path = NavigationPath()
-        vm?.resumableWorkout = nil
-        appState.startWorkout(id: workout.id, vm: workoutVM)
+    }
+
+    /// A draft left open past the idle threshold — force-quit mid-workout, or
+    /// "Save progress as draft" and never resumed — is finished instead of
+    /// being offered for Resume (report 07B1AD96). It is finished through a
+    /// resumed `ActiveWorkoutViewModel`, so it is the same finish as a Finish
+    /// tap, and its receipt is presented over Home saying it was automatic.
+    ///
+    /// Bounded, because each pass finishes only the most recent draft; a
+    /// failed save ends the loop rather than retrying the same draft.
+    private func autoFinishIdleDrafts() async {
+        guard let deps, let vm, !isAutoFinishingDrafts else { return }
+        isAutoFinishingDrafts = true
+        defer { isAutoFinishingDrafts = false }
+        for _ in 0..<5 {
+            guard
+                !appState.isWorkoutActive,
+                let draft = vm.resumableWorkout,
+                WorkoutAutoFinishPolicy.window(for: draft, now: .now) != nil
+            else { return }
+            let finisher = makeResumedWorkoutVM(for: draft, deps: deps)
+            guard
+                await finisher.autoFinishIfIdle(),
+                case .finished(let summary) = finisher.completionState
+            else { return }
+            appState.completedWorkoutSummary = summary
+            await vm.checkForResumableWorkout()
+            await vm.loadTemplates()
+        }
     }
 
     private func startAdHocWorkout() {

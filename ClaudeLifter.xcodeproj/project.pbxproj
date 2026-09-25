@@ -57,6 +57,7 @@
 		80C31B958DED2E5A665DC426 /* RestTimerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7340E3D45C26DFC6DD81D572 /* RestTimerService.swift */; };
 		E39C47F31F01196784EEB454 /* TemplateChangeApplier.swift in Sources */ = {isa = PBXBuildFile; fileRef = F645B38C21D9F46FAA9D587F /* TemplateChangeApplier.swift */; };
 		590BE78D9A91C8154AAEB0BB /* TemplateChangeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 618CAD37CCFE0BE0E16C4048 /* TemplateChangeDetector.swift */; };
+		A4CA939CC87AB208D107C3E0 /* WorkoutAutoFinishPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 764029C5600460273A2A6B49 /* WorkoutAutoFinishPolicy.swift */; };
 		1D314075C6BBC031825BD896 /* AddExerciseTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434300F5979D665A9FEDEAB8 /* AddExerciseTool.swift */; };
 		384D47CAE7729162CFA82571 /* ClaudeTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C3D02A87E8873628EED035 /* ClaudeTool.swift */; };
 		C47B9E6DD445FAB9AE4A5B32 /* CreateProgramTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBF035B0B0B8C6A5934269C1 /* CreateProgramTool.swift */; };
@@ -201,8 +202,10 @@
 		AFA073FE14BE32FC6DA97DD0 /* SyncMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 980A31E123184E639F96BB6D /* SyncMapperTests.swift */; };
 		31FCEC5B57478F2DF0365842 /* TemplateChangeApplierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50EC424A0540A6B9082B35A5 /* TemplateChangeApplierTests.swift */; };
 		A869D101A452B583D089B911 /* TemplateChangeDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2121CB0A9FCD9A54E34FAE4 /* TemplateChangeDetectorTests.swift */; };
+		A5C0609E2CDD0CE338EAAD4D /* WorkoutAutoFinishPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6A62EA19023D56672EAF66 /* WorkoutAutoFinishPolicyTests.swift */; };
 		DFDE6819BDCEC50649598092 /* ActiveWorkoutViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F77C5DC8DB64B19B3FF94B84 /* ActiveWorkoutViewModelTests.swift */; };
 		ABF6205F7428FC8856011767 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC4BA4258EB06839B1EB14BE /* AppStateTests.swift */; };
+		6FFE47AAAA7449058E9C42B3 /* AutoFinishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2EE8E66038FB41E761810C /* AutoFinishTests.swift */; };
 		BD88CA8763EA48B6DF5EA1C0 /* BodyWeightViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A754765C32959052E27AC76D /* BodyWeightViewModelTests.swift */; };
 		FAE36F47262C670CBD18C189 /* BrandThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8700759E0BEF9D81F22B0BA /* BrandThemeTests.swift */; };
 		C736F5D1E91B33CB3462C165 /* CalendarViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC30A61797E98CE80A83F037 /* CalendarViewModelTests.swift */; };
@@ -307,6 +310,7 @@
 		7340E3D45C26DFC6DD81D572 /* RestTimerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimerService.swift; sourceTree = "<group>"; };
 		F645B38C21D9F46FAA9D587F /* TemplateChangeApplier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateChangeApplier.swift; sourceTree = "<group>"; };
 		618CAD37CCFE0BE0E16C4048 /* TemplateChangeDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateChangeDetector.swift; sourceTree = "<group>"; };
+		764029C5600460273A2A6B49 /* WorkoutAutoFinishPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAutoFinishPolicy.swift; sourceTree = "<group>"; };
 		434300F5979D665A9FEDEAB8 /* AddExerciseTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddExerciseTool.swift; sourceTree = "<group>"; };
 		43C3D02A87E8873628EED035 /* ClaudeTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTool.swift; sourceTree = "<group>"; };
 		FBF035B0B0B8C6A5934269C1 /* CreateProgramTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateProgramTool.swift; sourceTree = "<group>"; };
@@ -451,8 +455,10 @@
 		980A31E123184E639F96BB6D /* SyncMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMapperTests.swift; sourceTree = "<group>"; };
 		50EC424A0540A6B9082B35A5 /* TemplateChangeApplierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateChangeApplierTests.swift; sourceTree = "<group>"; };
 		B2121CB0A9FCD9A54E34FAE4 /* TemplateChangeDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateChangeDetectorTests.swift; sourceTree = "<group>"; };
+		FA6A62EA19023D56672EAF66 /* WorkoutAutoFinishPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutAutoFinishPolicyTests.swift; sourceTree = "<group>"; };
 		F77C5DC8DB64B19B3FF94B84 /* ActiveWorkoutViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutViewModelTests.swift; sourceTree = "<group>"; };
 		BC4BA4258EB06839B1EB14BE /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
+		3E2EE8E66038FB41E761810C /* AutoFinishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFinishTests.swift; sourceTree = "<group>"; };
 		A754765C32959052E27AC76D /* BodyWeightViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightViewModelTests.swift; sourceTree = "<group>"; };
 		B8700759E0BEF9D81F22B0BA /* BrandThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandThemeTests.swift; sourceTree = "<group>"; };
 		BC30A61797E98CE80A83F037 /* CalendarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViewModelTests.swift; sourceTree = "<group>"; };
@@ -630,6 +636,7 @@
 				7340E3D45C26DFC6DD81D572,
 				F645B38C21D9F46FAA9D587F,
 				618CAD37CCFE0BE0E16C4048,
+				764029C5600460273A2A6B49,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -922,6 +929,7 @@
 				980A31E123184E639F96BB6D,
 				50EC424A0540A6B9082B35A5,
 				B2121CB0A9FCD9A54E34FAE4,
+				FA6A62EA19023D56672EAF66,
 			);
 			path = ServiceTests;
 			sourceTree = "<group>";
@@ -931,6 +939,7 @@
 			children = (
 				F77C5DC8DB64B19B3FF94B84,
 				BC4BA4258EB06839B1EB14BE,
+				3E2EE8E66038FB41E761810C,
 				A754765C32959052E27AC76D,
 				B8700759E0BEF9D81F22B0BA,
 				BC30A61797E98CE80A83F037,
@@ -1136,6 +1145,7 @@
 				80C31B958DED2E5A665DC426 /* RestTimerService.swift in Sources */,
 				E39C47F31F01196784EEB454 /* TemplateChangeApplier.swift in Sources */,
 				590BE78D9A91C8154AAEB0BB /* TemplateChangeDetector.swift in Sources */,
+				A4CA939CC87AB208D107C3E0 /* WorkoutAutoFinishPolicy.swift in Sources */,
 				1D314075C6BBC031825BD896 /* AddExerciseTool.swift in Sources */,
 				384D47CAE7729162CFA82571 /* ClaudeTool.swift in Sources */,
 				C47B9E6DD445FAB9AE4A5B32 /* CreateProgramTool.swift in Sources */,
@@ -1287,8 +1297,10 @@
 				AFA073FE14BE32FC6DA97DD0 /* SyncMapperTests.swift in Sources */,
 				31FCEC5B57478F2DF0365842 /* TemplateChangeApplierTests.swift in Sources */,
 				A869D101A452B583D089B911 /* TemplateChangeDetectorTests.swift in Sources */,
+				A5C0609E2CDD0CE338EAAD4D /* WorkoutAutoFinishPolicyTests.swift in Sources */,
 				DFDE6819BDCEC50649598092 /* ActiveWorkoutViewModelTests.swift in Sources */,
 				ABF6205F7428FC8856011767 /* AppStateTests.swift in Sources */,
+				6FFE47AAAA7449058E9C42B3 /* AutoFinishTests.swift in Sources */,
 				BD88CA8763EA48B6DF5EA1C0 /* BodyWeightViewModelTests.swift in Sources */,
 				FAE36F47262C670CBD18C189 /* BrandThemeTests.swift in Sources */,
 				C736F5D1E91B33CB3462C165 /* CalendarViewModelTests.swift in Sources */,

@@ -55,6 +55,7 @@ struct ReportSheetPhotoTests {
         #expect(attached)
         let data = try #require(env.vm.photoData)
         #expect(data.starts(with: [0xFF, 0xD8]))
+        #expect(env.vm.photoPreview != nil)
         #expect(env.vm.photoError == nil)
     }
 
@@ -101,6 +102,7 @@ struct ReportSheetPhotoTests {
 
         #expect(saved)
         #expect(env.store.saveCallCount == 0)
+        #expect(!env.vm.photoWasLost)
     }
 
     @Test("a photo that cannot be written still files the report")
@@ -113,5 +115,6 @@ struct ReportSheetPhotoTests {
 
         #expect(saved, "The report is the point; the photo is a bonus")
         #expect(try await env.repository.fetchAll().count == 1)
+        #expect(env.vm.photoWasLost, "The sheet must say the photo didn't go with it")
     }
 }

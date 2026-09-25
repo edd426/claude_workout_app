@@ -126,8 +126,15 @@ final class ReportSheetViewModel {
     /// The attached photo, already re-encoded as a ≤1024px JPEG (#141). Kept
     /// on the phone when the report is filed; uploaded on a later sync.
     private(set) var photoData: Data?
+    /// `photoData` decoded once for the sheet's thumbnail, rather than on
+    /// every render — the body re-evaluates on each keystroke in the detail.
+    private(set) var photoPreview: UIImage?
     /// Why the chosen photo could not be attached. Never blocks filing.
     var photoError: String?
+    /// The report was filed but its photo could not be kept. Set by `submit`
+    /// so the sheet can say so before closing, instead of implying the photo
+    /// went with it.
+    private(set) var photoWasLost = false
 
     private let repository: any ExerciseReportRepository
     private let photoStore: any ReportPhotoStoring
@@ -165,12 +172,14 @@ final class ReportSheetViewModel {
             return false
         }
         photoData = jpeg
+        photoPreview = UIImage(data: jpeg)
         photoError = nil
         return true
     }
 
     func removePhoto() {
         photoData = nil
+        photoPreview = nil
         photoError = nil
     }
 
@@ -207,6 +216,7 @@ final class ReportSheetViewModel {
                 storedPhoto = true
             } catch {
                 photoError = "The photo couldn't be kept: \(error.localizedDescription)"
+                photoWasLost = true
             }
         }
 

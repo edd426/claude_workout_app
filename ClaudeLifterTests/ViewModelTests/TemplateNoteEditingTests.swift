@@ -132,4 +132,55 @@ struct TemplateNoteEditingTests {
         await f.vm.awaitPendingSave()
         withExtendedLifetime(f.container) {}
     }
+
+    // MARK: - The review's Apply must actually work
+
+    @Test("the workout's own usage bookkeeping is not a conflict, and Apply lands the note")
+    func ownBookkeepingIsNotAConflict() async throws {
+        let f = try await makeStartedWorkout()
+        let we = try #require(f.vm.workout?.exercises.first)
+        for set in we.sets { f.vm.completeSet(set) }
+        f.vm.updateTemplateNote(we, notes: "Stand tall, a dumbbell in each hand")
+
+        await f.vm.finishWorkout()
+        await f.vm.awaitPostCommitWork()
+
+        // Finishing bumps timesPerformed and so the template's lastModified.
+        // That used to happen BEFORE detection, so every template workout's
+        // review read "This template changed somewhere else" and Apply threw
+        // .conflict — the #130 review could never succeed.
+        let changeSet = try #require(f.vm.completionSummary?.templateChangeSet)
+        #expect(!changeSet.hasConflict)
+
+        try await TemplateChangeApplier(
+            templateRepository: f.templateRepository,
+            exerciseRepository: MockExerciseRepository()
+        ).apply(
+            changeSet.changes,
+            from: changeSet,
+            capturedRevision: changeSet.capturedRevision
+        )
+
+        #expect(f.template.exercises.first?.notes == "Stand tall, a dumbbell in each hand")
+        await f.vm.awaitPendingSave()
+        withExtendedLifetime(f.container) {}
+    }
+
+    @Test("an edit made elsewhere during the workout is still a conflict")
+    func foreignEditIsStillAConflict() async throws {
+        let f = try await makeStartedWorkout()
+        let we = try #require(f.vm.workout?.exercises.first)
+        for set in we.sets { f.vm.completeSet(set) }
+        f.vm.updateTemplateNote(we, notes: "Stand tall, a dumbbell in each hand")
+        // The Coach or the MCP inbox changes the template mid-workout.
+        f.template.recordChange(at: Date().addingTimeInterval(1))
+
+        await f.vm.finishWorkout()
+        await f.vm.awaitPostCommitWork()
+
+        let changeSet = try #require(f.vm.completionSummary?.templateChangeSet)
+        #expect(changeSet.hasConflict, "Applying over a newer template would silently overwrite it")
+        await f.vm.awaitPendingSave()
+        withExtendedLifetime(f.container) {}
+    }
 }

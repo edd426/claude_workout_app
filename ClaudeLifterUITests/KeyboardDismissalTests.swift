@@ -34,7 +34,16 @@ final class KeyboardDismissalTests: XCTestCase {
         ).element(boundBy: 0)
         XCTAssertTrue(weightField.waitForExistence(timeout: 5))
 
+        // The seed's "yesterday" Push Day pre-fills this field with 80. It
+        // used to pass by select-all replacing that; the caret now lands at
+        // the end (report 8FF8C6D5), so clear it first. A nil weight must
+        // still render empty, not "0", or this reads "040".
         weightField.tap()
+        let existing = (weightField.value as? String) ?? ""
+        weightField.typeText(String(
+            repeating: XCUIKeyboardKey.delete.rawValue,
+            count: max(existing.count, 3)
+        ))
         weightField.typeText("40")
 
         XCTAssertEqual(weightField.value as? String, "40")

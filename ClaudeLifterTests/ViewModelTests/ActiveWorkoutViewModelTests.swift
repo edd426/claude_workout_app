@@ -1246,8 +1246,8 @@ extension ActiveWorkoutViewModelTests {
         ])
     }
 
-    @Test("select-all scope accepts only UUID-addressed set-entry fields")
-    func selectAllScopeAcceptsOnlySetEntryFields() {
+    @Test("caret-at-end scope accepts only UUID-addressed set-entry fields")
+    func caretAtEndScopeAcceptsOnlySetEntryFields() {
         let exerciseID = UUID()
         let setID = UUID()
 

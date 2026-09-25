@@ -139,7 +139,8 @@ struct HomeView: View {
                 ReportSheetView(
                     vm: ReportSheetViewModel(
                         context: context,
-                        repository: deps.exerciseReportRepository
+                        repository: deps.exerciseReportRepository,
+                        photoStore: deps.reportPhotoStore
                     ),
                     onSaved: { Task { await reportListVM?.load() } }
                 )
@@ -395,27 +396,30 @@ struct HomeView: View {
     /// resumed `ActiveWorkoutViewModel`, so it is the same finish as a Finish
     /// tap, and its receipt is presented over Home saying it was automatic.
     ///
-    /// Bounded, because each pass finishes only the most recent draft; a
-    /// failed save ends the loop rather than retrying the same draft.
+    /// One draft per pass: only one receipt can be on screen, and a second
+    /// would replace the first unseen. Any older idle draft surfaces on the
+    /// Resume card and is finished on the next launch or return to the app.
     private func autoFinishIdleDrafts() async {
         guard let deps, let vm, !isAutoFinishingDrafts else { return }
         isAutoFinishingDrafts = true
         defer { isAutoFinishingDrafts = false }
-        for _ in 0..<5 {
-            guard
-                !appState.isWorkoutActive,
-                let draft = vm.resumableWorkout,
-                WorkoutAutoFinishPolicy.window(for: draft, now: .now) != nil
-            else { return }
-            let finisher = makeResumedWorkoutVM(for: draft, deps: deps)
-            guard
-                await finisher.autoFinishIfIdle(),
-                case .finished(let summary) = finisher.completionState
-            else { return }
-            appState.completedWorkoutSummary = summary
-            await vm.checkForResumableWorkout()
-            await vm.loadTemplates()
-        }
+        guard
+            !appState.isWorkoutActive,
+            let draft = vm.resumableWorkout,
+            WorkoutAutoFinishPolicy.window(for: draft, now: .now) != nil
+        else { return }
+        let finisher = makeResumedWorkoutVM(for: draft, deps: deps)
+        guard
+            await finisher.autoFinishIfIdle(),
+            case .finished(let summary) = finisher.completionState
+        else { return }
+        // The finisher is local, and its post-commit task holds it weakly:
+        // released first, PR detection and template review would silently
+        // not run. Nobody is waiting on a tap here, so wait for them.
+        await finisher.awaitPostCommitWork()
+        appState.completedWorkoutSummary = summary
+        await vm.checkForResumableWorkout()
+        await vm.loadTemplates()
     }
 
     private func startAdHocWorkout() {

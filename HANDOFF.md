@@ -7,8 +7,9 @@ session with no Xcode**. Read the first section before anything else.
 
 Every Swift change and every Swift test here was written blind. The tests were
 written first, per the repo's TDD rule, but **none has been seen to fail or to
-pass**. A read-only review pass looked for compile errors (see §6); that does
-not replace a compiler.
+pass**. A read-only review pass traced every hunk and found no compile
+errors; its other findings are fixed in the "Address review findings" commit.
+That does not replace a compiler.
 
 **First action, before installing anything:**
 
@@ -22,7 +23,9 @@ The baseline on `962c5b0` was exit 0 (791 Swift tests, 99 suites). A non-zero
 exit here is this branch's fault until shown otherwise. New suites to watch:
 `WorkoutAutoFinishPolicyTests`, `AutoFinishTests`, `TemplateNoteEditingTests`,
 `ReportPhotoTests`, `ReportSheetPhotoTests`, the new `ImageUploadServiceTests`
-cases, and the UI test `KeyboardDismissalTests.testTappingFilledRepsFieldPutsCaretAtEnd`.
+cases, and the UI tests `KeyboardDismissalTests.testTappingFilledRepsFieldPutsCaretAtEnd`
+and `testEmptyWeightFieldDoesNotPrefixTypedValueWithZero`. The second is an
+existing test changed here: it relied on select-all.
 
 The TypeScript half **was** run here: Functions jest **230/230**, MCP vitest
 **112/112** (after `npm run build`), both exit 0.
@@ -38,9 +41,10 @@ The TypeScript half **was** run here: Functions jest **230/230**, MCP vitest
 | `42C5E2AF`, `2A40BB7C` (+ `E7A4E5F7`) | Photos on reports | #141 end to end: camera/library on the report sheet; kept offline; uploaded on sync to `reports/{id}.jpg`; `photoURL` set only after upload; MCP `get_report_photo` returns the image | `23c2959`, `a7a6c03`, `1ab4192` |
 | `F1F61A87` | Make an issue for a gym-photo inventory | **#156** filed; also rolls up `02384B15`, `0974E343`, `A21CD30E`, `999E3289`. **Not** added to Reminders — this session has no Reminders access | — |
 
-Also fixed while in there: `SASResponse` required a `blobUrl` field that the
-server has never sent, so every real decode failed. Nothing called the upload
-path before #141, and `MockNetworkService` skips decoding, so no test saw it.
+Also fixed while in there:
+
+- **The post-workout template review (#130) could never Apply.** `runPostCommitWork` bumps `timesPerformed`, and with it the template's `lastModified`, *before* change detection runs. So every template workout's review showed "This template changed somewhere else" and Apply threw `.conflict`. This predates the branch and the E26BBFAA flow depends on it. Detection now re-anchors on the post-bookkeeping revision, but only when nothing else touched the template since the start; a real mid-workout edit is still a conflict. Both cases are pinned in `TemplateNoteEditingTests`.
+- `SASResponse` required a `blobUrl` field that the server has never sent, so every real decode failed. Nothing called the upload path before #141, and `MockNetworkService` skips decoding, so no test saw it.
 
 ## 3. Deploy order for #141
 
@@ -61,6 +65,7 @@ the Info.plist key did not make it into the build.
 | Start a workout, log a set, background the app for 3h+ (or leave it overnight), reopen | The summary appears over Home, headed by "Finished automatically after 3 hours…", with Duration = first set → last set |
 | Force-quit mid-workout, reopen after 3h+ | Same, from the Home path; the Resume card does not linger |
 | Friday Pump → Hammer Curls | The template note is one grey line with a chevron; tap expands; "Edit template note" → fix "barbell" → Finish → the summary offers the cue change for the template → Apply |
+| Finish any template workout you changed (added an exercise, edited a note) | The summary's template review has **no** orange "changed somewhere else" warning, and Apply succeeds. Before this branch it always warned and always failed |
 | ⋯ → Report a problem… → Take Photo | The thumbnail shows; Send works **offline**; after the next sync with signal, the report row shows a 📷 and `get_report_photo` over MCP returns the picture |
 
 ## 5. Needs the workout MCP — not possible from this session
@@ -81,7 +86,9 @@ template was changed.** Each item below needs a Claude Code session on the Mac:
 - **Not done: a single note that both you and the Coach write.** That changes what the MCP write path targets; it belongs with #150/#151.
 - **Auto-finish of a *resumed* draft does not bump the template's `timesPerformed`.** A resumed VM has no `template`. This matches Resume → Finish today.
 - **First launch after install:** any leftover in-progress draft whose last logged set is 3h+ old will auto-finish and show its summary. That is the feature working, but expect it.
-- Only the most recent draft is considered per pass; older ones follow in later passes (bounded to 5 per run).
+- One idle draft is auto-finished per pass (only one receipt can be on screen). Older ones surface on the Resume card and finish on the next launch or return to the app.
+- **If the set-field UI tests report "not hittable":** `FocusWithCaretAtEnd` in `SetRowView.swift` turns off hit testing on the unfocused TextField *and* covers it with a tap overlay. The review expects XCUITest's accessibility hit test to ignore that, but it has not run. The fallback is to delete `.allowsHitTesting(isFocused)`: the overlay alone should still take the first tap. Check on device that the caret still lands at the end if you do.
+- A camera photo is JPEG-encoded at full size, then downscaled, on the main actor. Expect a brief hitch after the shutter. It is a one-off per report, so it was left alone.
 - The view-level triggers (scene phase on Home and the workout screen), the camera and PhotosPicker have **no automated test**.
 
 ---

@@ -894,7 +894,12 @@ final class ActiveWorkoutViewModel {
         for workout: Workout,
         summary: WorkoutCompletionSummary
     ) async {
+        // The template's revision either side of this workout's own usage
+        // bookkeeping, so detection can tell that write apart from an edit
+        // made elsewhere. Nil when there was none, or it failed to save.
+        var ownTemplateEdit: (before: Date, after: Date)?
         if let template, let templateRepository {
+            let revisionBefore = template.lastModified
             template.timesPerformed += 1
             // When the workout ended, which is not "now" for an auto-finished
             // workout noticed hours later (report 07B1AD96).
@@ -902,6 +907,7 @@ final class ActiveWorkoutViewModel {
             template.recordChange()
             do {
                 try await templateRepository.save(template)
+                ownTemplateEdit = (revisionBefore, template.lastModified)
             } catch {
                 // Previously `try?`, so a broken template save was invisible.
                 template.timesPerformed -= 1
@@ -923,7 +929,11 @@ final class ActiveWorkoutViewModel {
             }
         }
 
-        await detectTemplateChanges(for: workout, summary: summary)
+        await detectTemplateChanges(
+            for: workout,
+            summary: summary,
+            ownTemplateEdit: ownTemplateEdit
+        )
     }
 
     /// Compares the finished workout to the plan it started from (#129).
@@ -935,7 +945,8 @@ final class ActiveWorkoutViewModel {
     /// already on screen.
     private func detectTemplateChanges(
         for workout: Workout,
-        summary: WorkoutCompletionSummary
+        summary: WorkoutCompletionSummary,
+        ownTemplateEdit: (before: Date, after: Date)? = nil
     ) async {
         guard let baselineRepository, let templateRepository else { return }
         do {
@@ -950,12 +961,28 @@ final class ActiveWorkoutViewModel {
             let entries = try await baselineRepository.fetchEntries(
                 workoutId: workout.id
             )
-            let changeSet = TemplateChangeDetector().detect(
+            var changeSet = TemplateChangeDetector().detect(
                 workout: workout,
                 baseline: baseline,
                 entries: entries,
                 template: currentTemplate
             )
+            // `runPostCommitWork` bumps timesPerformed, and with it the
+            // template's revision, before this runs. That write is this
+            // workout's own, so when nothing else touched the template since
+            // the start it must not read as a conflict: it did, for every
+            // template workout, and Apply was always refused. Re-anchor on the
+            // revision after the bookkeeping so Apply's own check agrees.
+            if let ownTemplateEdit,
+               baseline.templateRevision == ownTemplateEdit.before {
+                changeSet = TemplateChangeSet(
+                    templateId: changeSet.templateId,
+                    templateName: changeSet.templateName,
+                    changes: changeSet.changes,
+                    capturedRevision: ownTemplateEdit.after,
+                    hasConflict: false
+                )
+            }
             // Nil rather than an empty set, so the review card has one simple
             // condition to test and cannot appear with nothing in it.
             summary.templateChangeSet = changeSet.isEmpty ? nil : changeSet

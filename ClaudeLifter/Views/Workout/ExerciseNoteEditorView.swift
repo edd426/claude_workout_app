@@ -107,7 +107,7 @@ struct ExerciseNoteEditorView: View {
         case .exercise:
             return "Machine settings and cues. Shown every time this exercise comes up, in any workout."
         case .template:
-            return "Changes this workout's copy. When you finish, the summary offers to save it to the template."
+            return "Changes this workout's copy. When you finish, the summary offers to save new wording to the template. Clearing the note is not offered."
         }
     }
 }

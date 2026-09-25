@@ -195,6 +195,6 @@ struct AutoFinishTests {
         await vm.awaitPostCommitWork()
 
         #expect(template.lastPerformedAt == lastSetAt)
-        _ = container
+        withExtendedLifetime(container) {}
     }
 }

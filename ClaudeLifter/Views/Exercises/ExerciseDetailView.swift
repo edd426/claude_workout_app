@@ -41,7 +41,8 @@ struct ExerciseDetailView: View {
                 ReportSheetView(
                     vm: ReportSheetViewModel(
                         context: context,
-                        repository: dependencies.exerciseReportRepository
+                        repository: dependencies.exerciseReportRepository,
+                        photoStore: dependencies.reportPhotoStore
                     )
                 )
             }

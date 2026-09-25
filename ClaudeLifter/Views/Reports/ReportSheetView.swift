@@ -12,6 +12,7 @@ struct ReportSheetView: View {
     @FocusState private var detailFocused: Bool
     @State private var pickerItem: PhotosPickerItem?
     @State private var showCamera = false
+    @State private var showPhotoLost = false
 
     var body: some View {
         NavigationStack {
@@ -89,7 +90,13 @@ struct ReportSheetView: View {
                         Task {
                             if await vm.submit() {
                                 onSaved()
-                                dismiss()
+                                // Filed, but say so if the photo didn't make
+                                // it rather than implying it went along.
+                                if vm.photoWasLost {
+                                    showPhotoLost = true
+                                } else {
+                                    dismiss()
+                                }
                             }
                         }
                     }
@@ -116,6 +123,11 @@ struct ReportSheetView: View {
                     pickerItem = nil
                 }
             }
+            .alert("Report sent without its photo", isPresented: $showPhotoLost) {
+                Button("OK") { dismiss() }
+            } message: {
+                Text(vm.photoError ?? "The photo couldn't be kept on this phone.")
+            }
             .fullScreenCover(isPresented: $showCamera) {
                 CameraPicker { data in
                     vm.attachPhoto(data)
@@ -130,7 +142,7 @@ struct ReportSheetView: View {
     /// for a photo taken earlier.
     @ViewBuilder
     private var photoRow: some View {
-        if let data = vm.photoData, let image = UIImage(data: data) {
+        if let image = vm.photoPreview {
             HStack(spacing: 12) {
                 Image(uiImage: image)
                     .resizable()

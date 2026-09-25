@@ -1,4 +1,92 @@
-# NEXT PRIORITY: #141 — photo attachments on exercise reports
+# HANDOFF — 2026-09-25: the 13-report batch (branch `claude/clever-mayer-sb25i3`)
+
+Built from `feat/exercise-reports` @ `962c5b0` (1.6.0 (8)) in a **Linux cloud
+session with no Xcode**. Read the first section before anything else.
+
+## 1. Nothing Swift in this branch has been compiled or run
+
+Every Swift change and every Swift test here was written blind. The tests were
+written first, per the repo's TDD rule, but **none has been seen to fail or to
+pass**. A read-only review pass looked for compile errors (see §6); that does
+not replace a compiler.
+
+**First action, before installing anything:**
+
+```bash
+set -o pipefail
+xcodebuild -scheme ClaudeLifter \
+  -destination 'platform=iOS Simulator,name=iPhone 13 Pro Max' test 2>&1 | tee /tmp/test.log
+```
+
+The baseline on `962c5b0` was exit 0 (791 Swift tests, 99 suites). A non-zero
+exit here is this branch's fault until shown otherwise. New suites to watch:
+`WorkoutAutoFinishPolicyTests`, `AutoFinishTests`, `TemplateNoteEditingTests`,
+`ReportPhotoTests`, `ReportSheetPhotoTests`, the new `ImageUploadServiceTests`
+cases, and the UI test `KeyboardDismissalTests.testTappingFilledRepsFieldPutsCaretAtEnd`.
+
+The TypeScript half **was** run here: Functions jest **230/230**, MCP vitest
+**112/112** (after `npm run build`), both exit 0.
+
+## 2. What changed, by report
+
+| Report | What it asked | What this branch does | Commit |
+|---|---|---|---|
+| `07B1AD96` | Auto-finish a forgotten workout after ~3h; tell me when I'm back; duration = first set → last set | `WorkoutAutoFinishPolicy`: 3h after the **last logged set**. The recorded window is trimmed to first→last logged set. It runs when the app returns to the foreground (active workout screen) and on Home for leftover drafts. The receipt says it was automatic. A workout with nothing logged is never auto-finished (#69/#75) | `d5a3fde` |
+| `8FF8C6D5` | Cursor at the end of the reps box on tap | The first tap on an unfocused set field focuses it programmatically, so UIKit leaves the caret at the end. Replaces select-all. **Trade-off chosen: typing now appends** (15 + "2" = 152). Applies to weight too | `e7850e8` |
+| `31A4983B` | AI notes take space, aren't editable | The template (Coach) note is collapsed to one line; tap to expand; "Edit template note" there and in the ⋯ menu | `16a79cc` |
+| `E26BBFAA` | Hammer Curls note says barbell | The bundled library has Hammer Curls as **dumbbell**; the barbell wording is in the Friday Pump **template note**. It is now editable in-app. The edit goes to this workout's copy, and the finish summary offers it for the template (#129/#130 review, behind its revision check) | `16a79cc` |
+| `42C5E2AF`, `2A40BB7C` (+ `E7A4E5F7`) | Photos on reports | #141 end to end: camera/library on the report sheet; kept offline; uploaded on sync to `reports/{id}.jpg`; `photoURL` set only after upload; MCP `get_report_photo` returns the image | `23c2959`, `a7a6c03`, `1ab4192` |
+| `F1F61A87` | Make an issue for a gym-photo inventory | **#156** filed; also rolls up `02384B15`, `0974E343`, `A21CD30E`, `999E3289`. **Not** added to Reminders — this session has no Reminders access | — |
+
+Also fixed while in there: `SASResponse` required a `blobUrl` field that the
+server has never sent, so every real decode failed. Nothing called the upload
+path before #141, and `MockNetworkService` skips decoding, so no test saw it.
+
+## 3. Deploy order for #141
+
+1. **Functions:** `cd infra/functions && npm run clean && npm run build && func publish <app> --typescript`, then `az functionapp restart` (see the 2026-08-31 gotchas below). Until this is live the SAS endpoint answers `reports/…` with 400.
+2. **MCP:** `cd infra/mcp && npm run build`, then restart the MCP client so it picks up `get_report_photo`.
+3. **Phone:** already bumped to **1.7.0 (9)** in `generate_project.py` and the regenerated project; build and install. The Settings footer should read `1.7.0 (9)`.
+
+The order is not critical. A phone that ships first keeps its photos locally
+and retries every sync; `photoURL` stays nil until an upload succeeds.
+**NSCameraUsageDescription is new.** If the camera kills the app on first use,
+the Info.plist key did not make it into the build.
+
+## 4. Gym probes
+
+| Probe | Expected |
+|---|---|
+| Tap a filled reps box on its **left** edge, press ⌫ once | The last digit goes. No second tap needed |
+| Start a workout, log a set, background the app for 3h+ (or leave it overnight), reopen | The summary appears over Home, headed by "Finished automatically after 3 hours…", with Duration = first set → last set |
+| Force-quit mid-workout, reopen after 3h+ | Same, from the Home path; the Resume card does not linger |
+| Friday Pump → Hammer Curls | The template note is one grey line with a chevron; tap expands; "Edit template note" → fix "barbell" → Finish → the summary offers the cue change for the template → Apply |
+| ⋯ → Report a problem… → Take Photo | The thumbnail shows; Send works **offline**; after the next sync with signal, the report row shows a 📷 and `get_report_photo` over MCP returns the picture |
+
+## 5. Needs the workout MCP — not possible from this session
+
+This session had no workout MCP connection, so **no report was resolved and no
+template was changed.** Each item below needs a Claude Code session on the Mac:
+
+- `0537E988` **Trap Bar Deadlift → 10 reps** in Lower B (default reps; "high reps to avoid straps").
+- `0974E343` **Wide-Grip Lat Pulldown → a leverage pulldown.** free-exercise-db has none (checked: only cable variants), so create a custom "Wide-Grip Leverage Lat Pulldown" and swap it into Upper A. Tracked in #156.
+- `E26BBFAA` **Friday Pump Hammer Curls note:** fix "barbell" → dumbbells. Either over MCP or in-app with the new editor + finish-summary Apply.
+- `744C6C83` **Answer, no change:** rest is per exercise per template (`TemplateExercise.defaultRestSeconds`, default 90s). The Coach-built templates set 60s on some isolation moves, which is why some rests are 1:00 and others 1:30. There is no global setting. The #144 target line on each card shows it (`Target 3 × 12 · 60s rest`). Resolve with that explanation, or acknowledge if a global default is wanted.
+- `02384B15`, `F1F61A87`, `42C5E2AF`, `999E3289`, `A21CD30E` → acknowledge against **#156**. `999E3289` (grip past ~70 kg) and `A21CD30E` (one squat rack) are also worth saving as training preferences.
+- After install and the probes pass: resolve `07B1AD96`, `8FF8C6D5`, `31A4983B`, `2A40BB7C`, `42C5E2AF` (photo half), and `E7A4E5F7` (#141 half; #142 is still open). `D82C516F` stays acknowledged (#152).
+
+## 6. Known gaps and deliberate choices
+
+- **Your own note still overwrites the session copy.** `updateExerciseNotes` stamps the user's machine note onto `WorkoutExercise.notes` (pinned by an existing test). Editing your note therefore hides that session's template note, and the finish summary then proposes your note as the template cue. This predates the branch and was left alone because #150/#151 are redesigning notes. It is the next thing to settle there.
+- **Not done: a single note that both you and the Coach write.** That changes what the MCP write path targets; it belongs with #150/#151.
+- **Auto-finish of a *resumed* draft does not bump the template's `timesPerformed`.** A resumed VM has no `template`. This matches Resume → Finish today.
+- **First launch after install:** any leftover in-progress draft whose last logged set is 3h+ old will auto-finish and show its summary. That is the feature working, but expect it.
+- Only the most recent draft is considered per pass; older ones follow in later passes (bounded to 5 per run).
+- The view-level triggers (scene phase on Home and the workout screen), the camera and PhotosPicker have **no automated test**.
+
+---
+
+# (2026-08-31) NEXT PRIORITY WAS #141 — now implemented on `claude/clever-mayer-sb25i3`, see above
 
 Evan, end of 2026-08-31: "It's easier to show you what's wrong as an image."
 Labeled P1-high, design pointers commented on the issue. Watch the #91 SAS

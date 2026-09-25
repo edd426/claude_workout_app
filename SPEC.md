@@ -456,7 +456,7 @@ Generated periodically (e.g., when the app is opened after >24h since last open)
 
 **Container:** `workout-images`
 
-**Path convention:** `exercises/{exerciseId}.jpg`
+**Path convention:** `exercises/{exerciseId}.jpg`, and `reports/{reportId}.jpg` for a photo attached to an exercise report (#141). The SAS endpoint accepts exactly these two families; any other path is a 400.
 
 **Access pattern:**
 1. App requests a SAS token from Azure Function (`GET /api/images/sas?path=exercises/{id}.jpg`)
@@ -522,6 +522,7 @@ Write tools (`create_template`, `update_template`, `delete_template`, `create_pr
 | `get_exercise_history` | Get historical data for a specific exercise |
 | `get_stats` | Get summary statistics (PRs, volume trends, frequency) |
 | `get_calendar` | Get workout frequency data for a date range |
+| `get_report_photo` | View the photo attached to an exercise report (#141) — returns the JPEG as image content |
 | `list_exercise_reports` | Read the complaint backlog filed from the app (#135) |
 | `resolve_exercise_report` | Close a report out through the inbox (#135) |
 | `health` | Connectivity + auth diagnostic against the Functions API |

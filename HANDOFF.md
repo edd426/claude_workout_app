@@ -1,3 +1,33 @@
+# ▶ 2026-09-26, later: 1.8.0 (10) INSTALLED — #153 pending-changes screen
+
+Evan saw the two approvals from this morning on 1.7.0 and asked for the diff
+("This doesn't actually let me see what's getting changed?"), then said to
+implement it now. PR #160 (branch `feat/153-pending-changes-diff`) closes
+#153 and #147:
+
+- **Home** shows one card per queue, not per operation, with a line per change
+  (`Update “Lower B” — Trap Bar Deadlift: 3 × 5 → 3 × 10`). "Review Changes"
+  opens `PendingChangesView`.
+- **The sheet** lists every awaiting operation with its diff lines
+  (`InboxChangePreview.swift`: reps/sets, weight, rest, note, add, remove,
+  rename, reorder, template note; matched by externalId slot by slot; nil rest
+  = 90 s default; a no-op says so; deletes count what goes). Approve/Decline
+  are staged per row; Approve All / Decline All in the toolbar; "Apply N"
+  closes the sheet.
+- **One batch**: `SyncManager.decide(_:)` applies locally, acks in one request,
+  pushes one snapshot. `approve`/`decline` wrap it. Commit happens on sheet
+  dismiss; a `syncInProgress` collision waits 2 s and retries once.
+
+Verified: unit suite 857/857 on the branch before the last test was added, and
+the five touched suites green after (29 new tests). UI suite not run. **Not yet
+seen on the device**: the two live approvals (Trap Bar 3×10, Hammer Curls
+note) are still queued and are the first real probe — open Home on 1.8.0 (10),
+the card should name both changes, the sheet should show one line each.
+
+Functions and MCP unchanged; nothing to deploy for this release.
+
+---
+
 # ▶ START HERE — 2026-09-26: 1.7.0 (9) is INSTALLED, Functions DEPLOYED, PR #157 MERGED
 
 Branch state: everything is on **`main`** (`76e4042`, merge of PR #157; #145 shows

@@ -26,11 +26,26 @@ enum SyncState: Equatable {
     case pending
 }
 
+/// A user's verdict on one awaiting-approval inbox operation (#153).
+struct InboxDecision: Equatable, Sendable {
+    enum Verdict: Equatable, Sendable {
+        case approve
+        case decline
+    }
+
+    let operation: InboxOperationDTO
+    let verdict: Verdict
+}
+
 @MainActor
 protocol InboxApprovalManaging: AnyObject {
     func fetchPendingApprovals() async throws -> [InboxOperationDTO]
     func approve(_ operation: InboxOperationDTO) async throws
     func decline(_ operation: InboxOperationDTO) async throws
+    /// Applies every decision locally, acknowledges them to the server in ONE
+    /// request, and pushes ONE snapshot if anything was applied. N decisions
+    /// used to mean N serial syncs (#153).
+    func decide(_ decisions: [InboxDecision]) async throws
 }
 
 /// Per-collection outcome of a cloud restore, surfaced in the Settings alert.
@@ -275,33 +290,37 @@ final class SyncManager: InboxApprovalManaging {
     }
 
     func approve(_ operation: InboxOperationDTO) async throws {
-        try await performApprovalDecision(operation, approving: true)
+        try await decide([InboxDecision(operation: operation, verdict: .approve)])
     }
 
     func decline(_ operation: InboxOperationDTO) async throws {
-        try await performApprovalDecision(operation, approving: false)
+        try await decide([InboxDecision(operation: operation, verdict: .decline)])
     }
 
-    private func performApprovalDecision(
-        _ operation: InboxOperationDTO,
-        approving: Bool
-    ) async throws {
+    func decide(_ decisions: [InboxDecision]) async throws {
+        guard !decisions.isEmpty else { return }
         guard !isSyncing else { throw SyncError.syncInProgress }
         isSyncing = true
         syncError = nil
         defer { isSyncing = false }
 
         do {
-            let result = approving
-                ? await inboxApplier.approve(operation)
-                : inboxApplier.decline(operation)
-            if result.status == .applied {
+            var results: [InboxAckResult] = []
+            results.reserveCapacity(decisions.count)
+            for decision in decisions {
+                switch decision.verdict {
+                case .approve:
+                    results.append(await inboxApplier.approve(decision.operation))
+                case .decline:
+                    results.append(inboxApplier.decline(decision.operation))
+                }
+            }
+            let anyApplied = results.contains { $0.status == .applied }
+            if anyApplied {
                 settings.markSnapshotDirty()
             }
-            let request = InboxAckRequest(results: [result])
-            let response = try await networkService.ackInbox(
-                request
-            )
+            let request = InboxAckRequest(results: results)
+            let response = try await networkService.ackInbox(request)
             var ackValidationError: Error?
             do {
                 try validateInboxAck(request: request, response: response)
@@ -309,19 +328,25 @@ final class SyncManager: InboxApprovalManaging {
                 ackValidationError = error
             }
             if ackValidationError == nil {
-                pendingApprovals.removeAll { $0.id == operation.id }
+                let decided = Set(decisions.map(\.operation.id))
+                pendingApprovals.removeAll { decided.contains($0.id) }
             }
 
-            if result.status == .failed {
-                throw SyncError.inboxApplyFailed(
-                    result.error ?? "Unknown local apply error"
-                )
-            }
-            if result.status == .applied {
+            // Applied batch-mates are pushed before a failure is reported, so
+            // one bad operation never strands the others locally.
+            if anyApplied {
                 try await pushSnapshot()
             }
             if let ackValidationError {
                 throw ackValidationError
+            }
+            let failures = results.filter { $0.status == .failed }
+            if !failures.isEmpty {
+                throw SyncError.inboxApplyFailed(
+                    failures
+                        .map { $0.error ?? "Unknown local apply error" }
+                        .joined(separator: "\n")
+                )
             }
         } catch {
             syncError = error.localizedDescription

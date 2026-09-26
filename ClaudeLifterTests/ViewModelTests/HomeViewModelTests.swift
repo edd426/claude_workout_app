@@ -20,6 +20,39 @@ private final class MockInboxApprovalManager: InboxApprovalManaging {
     func decline(_ operation: InboxOperationDTO) async throws {
         declinedIDs.append(operation.id)
     }
+
+    var decidedBatches: [[InboxDecision]] = []
+    var decideError: Error?
+    /// Consumed one per call, before `decideError`. nil means succeed.
+    var decideErrorQueue: [Error?] = []
+
+    func decide(_ decisions: [InboxDecision]) async throws {
+        if !decideErrorQueue.isEmpty {
+            if let queued = decideErrorQueue.removeFirst() { throw queued }
+        } else if let decideError {
+            throw decideError
+        }
+        decidedBatches.append(decisions)
+    }
+}
+
+@MainActor
+private final class MockPreviewBuilder: InboxChangePreviewBuilding {
+    var previewedIDs: [String] = []
+
+    func preview(for operation: InboxOperationDTO) async -> InboxChangePreview {
+        previewedIDs.append(operation.id)
+        return InboxChangePreview(
+            title: "Preview \(operation.id)",
+            summary: "summary",
+            lines: [],
+            isDestructive: false
+        )
+    }
+}
+
+private struct StubError: LocalizedError {
+    var errorDescription: String? { "network down" }
 }
 
 private func approvalOperation(id: String = "approval") -> InboxOperationDTO {
@@ -165,5 +198,130 @@ struct InboxApprovalViewModelTests {
 
         #expect(manager.declinedIDs == ["second"])
         #expect(vm.approvals.map(\.id) == ["first"])
+    }
+}
+
+@Suite("InboxApprovalViewModel batch decisions (#153)")
+@MainActor
+struct InboxApprovalBatchTests {
+    @Test("load builds a preview for every awaiting approval")
+    func loadsPreviews() async {
+        let manager = MockInboxApprovalManager()
+        manager.approvals = [approvalOperation(id: "a"), approvalOperation(id: "b")]
+        let previews = MockPreviewBuilder()
+        let vm = InboxApprovalViewModel(manager: manager, previewBuilder: previews)
+
+        await vm.load()
+
+        #expect(previews.previewedIDs == ["a", "b"])
+        #expect(vm.preview(for: manager.approvals[0])?.title == "Preview a")
+    }
+
+    @Test("staging does not touch the manager; commit sends one batch in list order")
+    func commitSendsOneBatch() async {
+        let manager = MockInboxApprovalManager()
+        let a = approvalOperation(id: "a")
+        let b = approvalOperation(id: "b")
+        let c = approvalOperation(id: "c")
+        manager.approvals = [a, b, c]
+        let vm = InboxApprovalViewModel(manager: manager)
+        await vm.load()
+
+        vm.stage(c, .decline)
+        vm.stage(a, .approve)
+        #expect(manager.decidedBatches.isEmpty)
+        #expect(vm.stagedCount == 2)
+        #expect(vm.hasUndecided)
+
+        await vm.commit()
+
+        #expect(manager.decidedBatches.count == 1)
+        #expect(manager.decidedBatches[0].map(\.operation.id) == ["a", "c"])
+        #expect(manager.decidedBatches[0].map(\.verdict) == [.approve, .decline])
+        #expect(vm.approvals.map(\.id) == ["b"])
+        #expect(vm.stagedCount == 0)
+        #expect(manager.approvedIDs.isEmpty && manager.declinedIDs.isEmpty)
+    }
+
+    @Test("stageAll then commit decides everything at once")
+    func approveAll() async {
+        let manager = MockInboxApprovalManager()
+        manager.approvals = [approvalOperation(id: "a"), approvalOperation(id: "b")]
+        let vm = InboxApprovalViewModel(manager: manager)
+        await vm.load()
+
+        vm.stageAll(.approve)
+        await vm.commit()
+
+        #expect(manager.decidedBatches.count == 1)
+        #expect(manager.decidedBatches[0].map(\.verdict) == [.approve, .approve])
+        #expect(vm.approvals.isEmpty)
+        #expect(!vm.hasUndecided)
+    }
+
+    @Test("commit with nothing staged is a no-op")
+    func commitNothing() async {
+        let manager = MockInboxApprovalManager()
+        manager.approvals = [approvalOperation(id: "a")]
+        let vm = InboxApprovalViewModel(manager: manager)
+        await vm.load()
+
+        await vm.commit()
+
+        #expect(manager.decidedBatches.isEmpty)
+        #expect(vm.approvals.count == 1)
+    }
+
+    @Test("a failed commit keeps the verdicts staged and the operations listed")
+    func failedCommitKeepsState() async {
+        let manager = MockInboxApprovalManager()
+        let a = approvalOperation(id: "a")
+        manager.approvals = [a]
+        manager.decideError = StubError()
+        let vm = InboxApprovalViewModel(manager: manager)
+        await vm.load()
+
+        vm.stage(a, .approve)
+        await vm.commit()
+
+        #expect(vm.errorMessage == "network down")
+        #expect(vm.approvals.map(\.id) == ["a"])
+        #expect(vm.verdict(for: a) == .approve)
+    }
+
+    @Test("a commit that collides with a background sync retries once")
+    func retriesWhenSyncInProgress() async {
+        let manager = MockInboxApprovalManager()
+        let a = approvalOperation(id: "a")
+        manager.approvals = [a]
+        manager.decideErrorQueue = [SyncError.syncInProgress, nil]
+        let vm = InboxApprovalViewModel(manager: manager)
+        await vm.load()
+
+        vm.stage(a, .approve)
+        await vm.commit()
+
+        #expect(vm.errorMessage == nil)
+        #expect(manager.decidedBatches.count == 1)
+        #expect(vm.approvals.isEmpty)
+    }
+
+    @Test("unstage clears a verdict; a server refresh drops verdicts for vanished operations")
+    func unstageAndRefresh() async {
+        let manager = MockInboxApprovalManager()
+        let a = approvalOperation(id: "a")
+        let b = approvalOperation(id: "b")
+        manager.approvals = [a, b]
+        let vm = InboxApprovalViewModel(manager: manager)
+        await vm.load()
+
+        vm.stage(a, .approve)
+        vm.stage(b, .decline)
+        vm.unstage(a)
+        #expect(vm.verdict(for: a) == nil)
+
+        vm.replaceApprovals([a])
+        #expect(vm.verdict(for: b) == nil)
+        #expect(vm.stagedCount == 0)
     }
 }

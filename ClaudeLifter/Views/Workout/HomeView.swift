@@ -3,12 +3,20 @@ import SwiftUI
 struct HomeView: View {
     @Environment(\.dependencies) private var deps
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var vm: HomeViewModel?
     @State private var bodyWeightVM: BodyWeightViewModel?
     @State private var approvalVM: InboxApprovalViewModel?
     @State private var showTemplateEditor = false
+    @State private var reportListVM: ReportListViewModel?
+    @State private var showReports = false
+    /// Non-nil while the general (no-exercise) report sheet is up (A590AD71).
+    @State private var generalReportContext: ReportContext?
     @State private var unreadInsights: [ProactiveInsight] = []
     @State private var path = NavigationPath()
+    /// Launch runs both `.task` and the scene-phase handler; two finishers on
+    /// one draft would each run PR detection on it.
+    @State private var isAutoFinishingDrafts = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -25,18 +33,25 @@ struct HomeView: View {
                 }
             }
             .navigationTitle("ClaudeLifter")
+            .toolbar {
+                if appState.activeWorkoutVM == nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            generalReportContext = .general()
+                        } label: {
+                            Label("Report a problem…", systemImage: "flag")
+                        }
+                        .accessibilityIdentifier("reportFromHome")
+                    }
+                }
+            }
         }
         // The completion summary is presented here, not inside
         // ActiveWorkoutView, because ending the workout tears that view down.
         // Presenting it over Home means the workout is already safely closed by
         // the time this appears, so any way of dismissing it is harmless (#123).
         .sheet(item: $appState.completedWorkoutSummary) { summary in
-            WorkoutSummaryView(
-                workout: summary.workout,
-                personalRecords: summary.personalRecords
-            ) {
-                appState.completedWorkoutSummary = nil
-            }
+            summarySheet(for: summary)
         }
         .task {
             guard let deps else { return }
@@ -51,6 +66,7 @@ struct HomeView: View {
             // behind by a crash, force-quit, or explicit draft save.
             if !appState.isWorkoutActive {
                 await vm?.checkForResumableWorkout()
+                await autoFinishIdleDrafts()
             }
             if bodyWeightVM == nil {
                 bodyWeightVM = BodyWeightViewModel(
@@ -59,6 +75,12 @@ struct HomeView: View {
                     settings: deps.settings
                 )
             }
+            if reportListVM == nil {
+                reportListVM = ReportListViewModel(
+                    repository: deps.exerciseReportRepository
+                )
+            }
+            await reportListVM?.load()
             if approvalVM == nil {
                 approvalVM = InboxApprovalViewModel(
                     manager: deps.syncManager
@@ -87,6 +109,15 @@ struct HomeView: View {
                 }
             }
         }
+        // A draft can cross the idle threshold while the app sits in the
+        // background on Home (report 07B1AD96).
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, !appState.isWorkoutActive else { return }
+            Task {
+                await vm?.checkForResumableWorkout()
+                await autoFinishIdleDrafts()
+            }
+        }
         .onChange(of: deps?.syncManager.pendingApprovals ?? []) { _, approvals in
             approvalVM?.replaceApprovals(approvals)
         }
@@ -102,6 +133,28 @@ struct HomeView: View {
             }
         } message: {
             Text(approvalVM?.errorMessage ?? "")
+        }
+        .sheet(item: $generalReportContext) { context in
+            if let deps {
+                ReportSheetView(
+                    vm: ReportSheetViewModel(
+                        context: context,
+                        repository: deps.exerciseReportRepository,
+                        photoStore: deps.reportPhotoStore
+                    ),
+                    onSaved: { Task { await reportListVM?.load() } }
+                )
+            }
+        }
+        .sheet(isPresented: $showReports) {
+            if let reportListVM {
+                NavigationStack {
+                    ReportListView(vm: reportListVM)
+                }
+                // Reports are also closed out by the AI over MCP, so the
+                // count can be stale by the time this closes.
+                .onDisappear { Task { await reportListVM.load() } }
+            }
         }
         .sheet(isPresented: $showTemplateEditor) {
             if let deps {
@@ -143,6 +196,14 @@ struct HomeView: View {
                             Task { await approvalVM.decline(operation) }
                         }
                     )
+                }
+            }
+            if let reportListVM {
+                OpenReportsCard(
+                    count: reportListVM.openCount,
+                    acknowledgedCount: reportListVM.acknowledgedCount
+                ) {
+                    showReports = true
                 }
             }
             if let bodyWeightVM {
@@ -240,13 +301,58 @@ struct HomeView: View {
         .refreshable { await vm.loadTemplates() }
     }
 
+    /// `summary` is @Observable, so both personalRecords and templateChangeSet
+    /// appear when their post-commit work lands, even though the sheet is
+    /// already on screen (#125, #130). Extracted from `body` because inlining
+    /// it pushed the expression past the type-checker's budget.
+    private func summarySheet(for summary: WorkoutCompletionSummary) -> some View {
+        WorkoutSummaryView(
+            workout: summary.workout,
+            personalRecords: summary.personalRecords,
+            onDismiss: { appState.completedWorkoutSummary = nil },
+            templateChangeSet: summary.templateChangeSet,
+            onApplyTemplateChanges: { changes in
+                await applyTemplateChanges(changes, from: summary)
+            },
+            finishedAutomatically: summary.finishedAutomatically
+        )
+    }
+
+    /// Applies the reviewed template changes (#130). Returns an error message
+    /// to display, or nil on success — the workout is already saved, so a
+    /// failure here costs a template update and nothing more.
+    private func applyTemplateChanges(
+        _ changes: [TemplateChange],
+        from summary: WorkoutCompletionSummary
+    ) async -> String? {
+        guard let deps, let changeSet = summary.templateChangeSet else {
+            return "Couldn't update the template. Your workout is saved."
+        }
+        do {
+            try await TemplateChangeApplier(
+                templateRepository: deps.templateRepository,
+                exerciseRepository: deps.exerciseRepository
+            ).apply(
+                changes,
+                from: changeSet,
+                capturedRevision: changeSet.capturedRevision
+            )
+            await vm?.loadTemplates()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     private func startWorkout(from template: WorkoutTemplate) {
         guard let deps else { return }
         let workoutVM = ActiveWorkoutViewModel(
             template: template,
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
+            exerciseRepository: deps.exerciseRepository,
             templateRepository: deps.templateRepository,
+            baselineRepository: deps.baselineRepository,
             prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )
@@ -262,17 +368,58 @@ struct HomeView: View {
     /// session with all logged sets intact.
     private func resumeWorkout(_ workout: Workout) {
         guard let deps else { return }
-        let workoutVM = ActiveWorkoutViewModel(
-            resuming: workout,
-            workoutRepository: deps.workoutRepository,
-            autoFillService: deps.autoFillService,
-            templateRepository: deps.templateRepository,
-            prDetectionService: deps.prDetectionService,
-            settings: deps.settings
-        )
+        let workoutVM = makeResumedWorkoutVM(for: workout, deps: deps)
         path = NavigationPath()
         vm?.resumableWorkout = nil
         appState.startWorkout(id: workout.id, vm: workoutVM)
+    }
+
+    private func makeResumedWorkoutVM(
+        for workout: Workout,
+        deps: DependencyContainer
+    ) -> ActiveWorkoutViewModel {
+        ActiveWorkoutViewModel(
+            resuming: workout,
+            workoutRepository: deps.workoutRepository,
+            autoFillService: deps.autoFillService,
+            exerciseRepository: deps.exerciseRepository,
+            templateRepository: deps.templateRepository,
+            baselineRepository: deps.baselineRepository,
+            prDetectionService: deps.prDetectionService,
+            settings: deps.settings
+        )
+    }
+
+    /// A draft left open past the idle threshold — force-quit mid-workout, or
+    /// "Save progress as draft" and never resumed — is finished instead of
+    /// being offered for Resume (report 07B1AD96). It is finished through a
+    /// resumed `ActiveWorkoutViewModel`, so it is the same finish as a Finish
+    /// tap, and its receipt is presented over Home saying it was automatic.
+    ///
+    /// One draft per pass: only one receipt can be on screen, and a second
+    /// would replace the first unseen. Any older idle draft surfaces on the
+    /// Resume card and is finished on the next launch or return to the app.
+    private func autoFinishIdleDrafts() async {
+        guard let deps, let vm, !isAutoFinishingDrafts else { return }
+        isAutoFinishingDrafts = true
+        defer { isAutoFinishingDrafts = false }
+        guard
+            !appState.isWorkoutActive,
+            let draft = vm.resumableWorkout,
+            WorkoutAutoFinishPolicy.window(for: draft, now: .now) != nil
+        else { return }
+        let finisher = makeResumedWorkoutVM(for: draft, deps: deps)
+        guard
+            await finisher.autoFinishIfIdle(),
+            case .finished(let summary) = finisher.completionState
+        else { return }
+        // The finisher is local, and its post-commit task holds it weakly:
+        // released first, PR detection and template review would silently
+        // not run. Nobody is waiting on a tap here, so wait for them.
+        await finisher.awaitPostCommitWork()
+        appState.completedWorkoutSummary = summary
+        await vm.checkForResumableWorkout()
+        await vm.loadTemplates()
     }
 
     private func startAdHocWorkout() {
@@ -281,6 +428,7 @@ struct HomeView: View {
             adHocName: "Quick Workout",
             workoutRepository: deps.workoutRepository,
             autoFillService: deps.autoFillService,
+            exerciseRepository: deps.exerciseRepository,
             prDetectionService: deps.prDetectionService,
             settings: deps.settings
         )

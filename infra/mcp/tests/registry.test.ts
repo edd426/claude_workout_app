@@ -1,13 +1,19 @@
 /** Tests for the MCP tool registry and inbox write path — issue #88. */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockApiGet = vi.fn();
 const mockApiPost = vi.fn();
+const mockApiDelete = vi.fn();
 
 vi.mock("../src/shared/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/shared/http.js")>();
-  return { ...actual, apiGet: mockApiGet, apiPost: mockApiPost };
+  return {
+    ...actual,
+    apiGet: mockApiGet,
+    apiPost: mockApiPost,
+    apiDelete: mockApiDelete,
+  };
 });
 
 const { ApiError } = await import("../src/shared/http.js");
@@ -16,6 +22,7 @@ const { TOOLS, handleToolCall } = await import("../src/registry.js");
 beforeEach(() => {
   mockApiGet.mockReset();
   mockApiPost.mockReset();
+  mockApiDelete.mockReset();
 });
 
 describe("tool listing", () => {
@@ -26,16 +33,20 @@ describe("tool listing", () => {
         "create_custom_exercise",
         "create_program",
         "create_template",
+        "delete_inbox_operation",
         "delete_template",
         "get_calendar",
         "get_exercise_history",
+        "get_report_photo",
         "get_stats",
         "get_template",
         "get_workout",
         "health",
+        "list_exercise_reports",
         "list_pending_writes",
         "list_templates",
         "list_workouts",
+        "resolve_exercise_report",
         "search_exercises",
         "update_template",
       ].sort()
@@ -382,6 +393,167 @@ describe("inbox write dispatch", () => {
     const operations = JSON.parse(result.content[0].text);
     expect(operations[0].status).toBe("failed");
     expect(operations[0].error).toContain("Missing_Lift");
+  });
+
+  it("delete_inbox_operation deletes a single terminal operation", async () => {
+    mockApiDelete.mockResolvedValue(undefined);
+
+    const result = await handleToolCall("delete_inbox_operation", {
+      id: "f4c9187b",
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiDelete).toHaveBeenCalledWith("inbox/f4c9187b");
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      deleted: ["f4c9187b"],
+    });
+  });
+
+  it("delete_inbox_operation deletes a batch of ids", async () => {
+    mockApiDelete.mockResolvedValue(undefined);
+
+    const result = await handleToolCall("delete_inbox_operation", {
+      ids: ["ff69a245", "b365dd1b", "d26f588a"],
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiDelete).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      deleted: ["ff69a245", "b365dd1b", "d26f588a"],
+    });
+  });
+
+  it("delete_inbox_operation surfaces the Functions API's 409 for a pending operation", async () => {
+    mockApiDelete.mockRejectedValue(
+      new ApiError(409, "Cannot delete pending createTemplate operation op-1")
+    );
+
+    const result = await handleToolCall("delete_inbox_operation", {
+      id: "op-1",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Cannot delete pending");
+  });
+
+  it("delete_inbox_operation surfaces an unknown id as a tool error", async () => {
+    mockApiDelete.mockRejectedValue(
+      new ApiError(404, "Inbox operation not found: nope")
+    );
+
+    const result = await handleToolCall("delete_inbox_operation", {
+      id: "nope",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not found");
+  });
+
+  it("delete_inbox_operation rejects an empty batch without calling the API", async () => {
+    const result = await handleToolCall("delete_inbox_operation", {
+      ids: [],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(mockApiDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe("get_report_photo (issue #141)", () => {
+  const REPORT_ID = "6E4B1C2A-9D3F-4E21-8A7B-0C1D2E3F4A5B";
+  const PHOTO_PATH = `reports/${REPORT_ID}.jpg`;
+  const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const report = {
+    id: REPORT_ID,
+    createdAt: "2026-09-20T18:00:00Z",
+    category: "wrongExercise",
+    detail: "This machine is the iso-lateral press, not a bench",
+    exerciseName: "Barbell Bench Press",
+    status: "open",
+    photoURL: PHOTO_PATH,
+    lastModified: "2026-09-20T18:00:00Z",
+  };
+  const mockFetch = vi.fn();
+
+  function serve(reports: unknown[]) {
+    mockApiGet.mockImplementation(async (path: string) => {
+      if (path === "reports") return { reports };
+      if (path === "images/sas") {
+        return {
+          sasUrl: `https://teststorage.blob.core.windows.net/workout-images/${PHOTO_PATH}?sig=x`,
+          expiresAt: "2026-09-25T07:00:00Z",
+        };
+      }
+      throw new Error(`unexpected apiGet(${path})`);
+    });
+  }
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    mockFetch.mockImplementation(async () => new Response(JPEG));
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns a caption naming the report, then the photo as MCP image content", async () => {
+    serve([report]);
+
+    const result = await handleToolCall("get_report_photo", { id: REPORT_ID });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    const [caption, image] = result.content;
+    expect(caption.type).toBe("text");
+    expect(caption.type === "text" && caption.text).toContain(
+      "Barbell Bench Press"
+    );
+    expect(image).toEqual({
+      type: "image",
+      data: Buffer.from(JPEG).toString("base64"),
+      mimeType: "image/jpeg",
+    });
+  });
+
+  it("a report without a photo is an informational text result, not an error", async () => {
+    serve([{ ...report, photoURL: null }]);
+
+    const result = await handleToolCall("get_report_photo", { id: REPORT_ID });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(1);
+    const [only] = result.content;
+    expect(only.type).toBe("text");
+    // Plain prose, not a JSON-quoted string.
+    expect(only.type === "text" && only.text).toMatch(/^Report /);
+    expect(only.type === "text" && only.text).toMatch(/not uploaded yet/);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an unknown report as a tool error", async () => {
+    serve([]);
+
+    const result = await handleToolCall("get_report_photo", { id: REPORT_ID });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].type === "text" && result.content[0].text).toContain(
+      "Report not found"
+    );
+  });
+
+  it("requires an id argument", async () => {
+    const result = await handleToolCall("get_report_photo", {});
+
+    expect(result.isError).toBe(true);
+    expect(mockApiGet).not.toHaveBeenCalled();
+  });
+
+  it("list_exercise_reports tells the model how to view an attached photo", () => {
+    const list = TOOLS.find((t) => t.name === "list_exercise_reports");
+    expect(list?.description).toContain("photoURL");
+    expect(list?.description).toContain("get_report_photo");
   });
 });
 

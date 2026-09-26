@@ -119,7 +119,8 @@ struct BackupServiceTests {
         let doc = try JSONDecoder().decode(BackupDocument.self, from: data)
 
         // Assert
-        #expect(doc.formatVersion == 1)
+        // 2 since #140 — the file now also carries bundled-exercise user data.
+        #expect(doc.formatVersion == 2)
         #expect(doc.workouts.count == 1)
         #expect(doc.templates.count == 1)
         #expect(doc.preferences.count == 1)
@@ -317,5 +318,143 @@ struct BackupServiceTests {
         let all = try await SwiftDataTrainingPreferenceRepository(context: contextB).fetchAll()
         #expect(all.filter { $0.key == ids.preferenceKey }.count == 1)
         #expect(all.first { $0.key == ids.preferenceKey }?.value == "strength")
+    }
+
+    // MARK: - Bundled-exercise user data (#140)
+    //
+    // Notes written on a bundled exercise — machine settings, per #136 — are
+    // the one thing a bundled exercise carries that the app bundle cannot
+    // restore. Excluding them from backup meant a reinstall silently lost
+    // "Ankle 4; Seat 4; Pivot 1" with no way to get it back.
+    //
+    // Carried as an overlay keyed by `externalId`, never by `id`: a fresh
+    // store re-imports the catalog with brand-new random UUIDs, so a
+    // UUID-keyed overlay would attach to nothing.
+
+    @Test("Export carries notes on bundled exercises as an externalId-keyed overlay")
+    func exportCarriesBundledExerciseOverlay() async throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        try seed(into: context)
+        let bundled = Exercise(
+            name: "Seated Leg Curl",
+            isCustom: false,
+            externalId: "Seated_Leg_Curl",
+            notes: "Ankle 4; Seat 4; Pivot 1"
+        )
+        context.insert(bundled)
+        // A bundled exercise with no user data must not bloat the file.
+        context.insert(Exercise(name: "Plain", isCustom: false, externalId: "Plain"))
+        try context.save()
+
+        let dir = try tempDirectory()
+        let service = makeService(context: context, documentsDirectory: dir)
+        let url = try await service.exportBackup()
+
+        let document = try JSONDecoder().decode(
+            BackupDocument.self,
+            from: try Data(contentsOf: url)
+        )
+        #expect(document.formatVersion == 2)
+        #expect(document.exerciseOverlays.count == 1)
+        let overlay = try #require(document.exerciseOverlays.first)
+        #expect(overlay.externalId == "Seated_Leg_Curl")
+        #expect(overlay.notes == "Ankle 4; Seat 4; Pivot 1")
+        // Custom exercises travel in full and must not be duplicated here.
+        #expect(document.exerciseOverlays.allSatisfy { $0.externalId != nil })
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Import re-attaches an overlay by externalId even though the UUID differs")
+    func importReattachesOverlayByExternalId() async throws {
+        // Export from one store…
+        let source = try makeTestContainer()
+        let sourceContext = source.mainContext
+        try seed(into: sourceContext)
+        let bundled = Exercise(
+            name: "Seated Leg Curl",
+            isCustom: false,
+            externalId: "Seated_Leg_Curl",
+            notes: "Ankle 4; Seat 4; Pivot 1"
+        )
+        sourceContext.insert(bundled)
+        try sourceContext.save()
+        let dir = try tempDirectory()
+        let url = try await makeService(context: sourceContext, documentsDirectory: dir)
+            .exportBackup()
+
+        // …into a fresh store where the catalog has been re-imported with a
+        // different UUID for the same exercise. This is the reinstall case.
+        let destination = try makeTestContainer()
+        let destContext = destination.mainContext
+        let reimported = Exercise(
+            name: "Seated Leg Curl",
+            isCustom: false,
+            externalId: "Seated_Leg_Curl"
+        )
+        destContext.insert(reimported)
+        try destContext.save()
+        #expect(reimported.id != bundled.id, "a re-import mints a new UUID")
+
+        let summary = try await makeService(context: destContext, documentsDirectory: dir)
+            .importBackup(from: url)
+
+        #expect(reimported.notes == "Ankle 4; Seat 4; Pivot 1")
+        #expect(summary.exerciseOverlays.imported == 1)
+        withExtendedLifetime(source) {}
+        withExtendedLifetime(destination) {}
+    }
+
+    @Test("An overlay for an exercise that is not present is skipped, not invented")
+    func importSkipsOverlayWithNoMatchingExercise() async throws {
+        let source = try makeTestContainer()
+        let sourceContext = source.mainContext
+        try seed(into: sourceContext)
+        sourceContext.insert(Exercise(
+            name: "Obscure Machine",
+            isCustom: false,
+            externalId: "Obscure_Machine",
+            notes: "Seat 2"
+        ))
+        try sourceContext.save()
+        let dir = try tempDirectory()
+        let url = try await makeService(context: sourceContext, documentsDirectory: dir)
+            .exportBackup()
+
+        let destination = try makeTestContainer()
+        let destContext = destination.mainContext
+        let summary = try await makeService(context: destContext, documentsDirectory: dir)
+            .importBackup(from: url)
+
+        #expect(summary.exerciseOverlays.imported == 0)
+        #expect(summary.exerciseOverlays.skipped == 1)
+        withExtendedLifetime(source) {}
+        withExtendedLifetime(destination) {}
+    }
+
+    @Test("A v1 backup written before overlays existed still imports")
+    func importAcceptsV1BackupWithoutOverlays() async throws {
+        let dir = try tempDirectory()
+        let legacy = """
+        {
+          "formatVersion": 1,
+          "exportedAt": 776000000,
+          "workouts": [],
+          "templates": [],
+          "customExercises": [],
+          "preferences": []
+        }
+        """
+        let url = dir.appending(path: "legacy.json")
+        try Data(legacy.utf8).write(to: url)
+
+        let container = try makeTestContainer()
+        let summary = try await makeService(
+            context: container.mainContext,
+            documentsDirectory: dir
+        ).importBackup(from: url)
+
+        #expect(summary.exerciseOverlays == BackupImportSummary.CollectionResult())
+        withExtendedLifetime(container) {}
     }
 }

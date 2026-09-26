@@ -34,10 +34,54 @@ final class KeyboardDismissalTests: XCTestCase {
         ).element(boundBy: 0)
         XCTAssertTrue(weightField.waitForExistence(timeout: 5))
 
+        // The seed's "yesterday" Push Day pre-fills this field with 80. It
+        // used to pass by select-all replacing that; the caret now lands at
+        // the end (report 8FF8C6D5), so clear it first. A nil weight must
+        // still render empty, not "0", or this reads "040".
         weightField.tap()
+        let existing = (weightField.value as? String) ?? ""
+        weightField.typeText(String(
+            repeating: XCUIKeyboardKey.delete.rawValue,
+            count: max(existing.count, 3)
+        ))
         weightField.typeText("40")
 
         XCTAssertEqual(weightField.value as? String, "40")
+    }
+
+    /// Report 8FF8C6D5 (Seated Calf Raise, 2026-09-14): tapping a filled reps
+    /// box should leave the caret at the END, so one backspace corrects the
+    /// last digit without a second tap to reposition it.
+    ///
+    /// The tap lands on the field's left edge on purpose — the value is
+    /// centred, so that is where UIKit's own tap placement puts the caret at
+    /// the start. Typing one digit tells all three behaviours apart: caret at
+    /// end gives "123", caret at start "312", select-all "3".
+    func testTappingFilledRepsFieldPutsCaretAtEnd() throws {
+        app.startWorkoutFromTemplate("Push Day")
+        let repsField = app.textFields.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'reps_'")
+        ).element(boundBy: 0)
+        XCTAssertTrue(repsField.waitForExistence(timeout: 5))
+
+        repsField.tap()
+        let existing = (repsField.value as? String) ?? ""
+        repsField.typeText(String(
+            repeating: XCUIKeyboardKey.delete.rawValue,
+            count: max(existing.count, 3)
+        ))
+        repsField.typeText("12")
+        app.toolbars.buttons.matching(identifier: "Done").firstMatch.tap()
+        XCTAssertTrue(app.waitForKeyboardToDisappear())
+        XCTAssertEqual(repsField.value as? String, "12")
+
+        repsField.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)
+        ).tap()
+        XCTAssertTrue(app.isSoftwareKeyboardVisible)
+        repsField.typeText("3")
+
+        XCTAssertEqual(repsField.value as? String, "123")
     }
 
     func testKeyboardDismissesInChat() throws {

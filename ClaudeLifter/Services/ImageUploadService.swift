@@ -27,6 +27,21 @@ final class ImageUploadService: ImageUploadServiceProtocol {
         return sasResponse.blobUrl
     }
 
+    func uploadReportPhoto(reportId: UUID, jpegData: Data) async throws -> String {
+        let path = ReportPhotoPath.blobPath(for: reportId)
+        let items = [URLQueryItem(name: "path", value: path), URLQueryItem(name: "mode", value: "upload")]
+        let sasResponse: SASResponse = try await networkService.get(endpoint: "/api/images/sas", queryItems: items)
+
+        guard let sasURL = URL(string: sasResponse.sasUrl) else {
+            throw ImageUploadError.invalidSASResponse
+        }
+
+        // Uploaded as given: the report sheet already produced a ≤1024px JPEG
+        // (`JPEGEncoding`), and re-encoding would only lose quality.
+        try await networkService.uploadBlob(url: sasURL, data: jpegData, contentType: "image/jpeg")
+        return path
+    }
+
     func downloadPhoto(path: String) async throws -> Data? {
         let items = [URLQueryItem(name: "path", value: path), URLQueryItem(name: "mode", value: "download")]
         let sasResponse: SASResponse = try await networkService.get(endpoint: "/api/images/sas", queryItems: items)

@@ -14,6 +14,7 @@ private struct InboxTestEnv {
     let templateRepository: SwiftDataTemplateRepository
     let exerciseRepository: SwiftDataExerciseRepository
     let bodyWeightRepository: SwiftDataBodyWeightRepository
+    let reportRepository: SwiftDataExerciseReportRepository
     let applier: InboxApplier
     let network: MockNetworkService
     let settings: SettingsManager
@@ -26,9 +27,11 @@ private struct InboxTestEnv {
         templateRepository = SwiftDataTemplateRepository(context: context)
         exerciseRepository = SwiftDataExerciseRepository(context: context)
         bodyWeightRepository = SwiftDataBodyWeightRepository(context: context)
+        reportRepository = SwiftDataExerciseReportRepository(context: context)
         applier = InboxApplier(
             templateRepository: templateRepository,
-            exerciseRepository: exerciseRepository
+            exerciseRepository: exerciseRepository,
+            reportRepository: reportRepository
         )
         network = MockNetworkService()
         settings = SettingsManager(
@@ -40,6 +43,7 @@ private struct InboxTestEnv {
             templateRepository: templateRepository,
             exerciseRepository: exerciseRepository,
             bodyWeightRepository: bodyWeightRepository,
+            exerciseReportRepository: reportRepository,
             networkService: network,
             settings: settings,
             inboxApplier: applier
@@ -1049,4 +1053,155 @@ struct InboxApplierTests {
         )
     }
 
+}
+
+@Suite("InboxApplier — resolveExerciseReport (#135)")
+@MainActor
+struct InboxApplierReportTests {
+
+    @Test("Resolving a report closes it out and re-queues it for the mirror")
+    func resolvesReport() async throws {
+        // Arrange
+        let env = try InboxTestEnv()
+        let report = ExerciseReport(
+            category: .bug,
+            detail: "Rest timer fired twice",
+            syncStatus: .synced
+        )
+        try await env.reportRepository.save(report)
+        let operation = try makeOperation(
+            op: "resolveExerciseReport",
+            payload: ResolveExerciseReportPayload(
+                id: report.id.uuidString,
+                status: nil,
+                resolution: "Filed as #140, fixed in 1.4.2"
+            )
+        )
+
+        // Act
+        let results = await env.applier.process([operation])
+
+        // Assert
+        #expect(results.map(\.status) == [.applied])
+        let stored = try #require(try await env.reportRepository.fetch(id: report.id))
+        #expect(stored.status == .resolved)
+        #expect(stored.resolution == "Filed as #140, fixed in 1.4.2")
+        // The mirror is a projection of the phone: an applied write is only
+        // real once the next snapshot push carries it.
+        #expect(stored.syncStatus == .pending)
+    }
+
+    @Test("acknowledged keeps the report in the backlog")
+    func acknowledgeKeepsItOpen() async throws {
+        let env = try InboxTestEnv()
+        let report = ExerciseReport(category: .swapRequest, detail: "swap this")
+        try await env.reportRepository.save(report)
+        let operation = try makeOperation(
+            op: "resolveExerciseReport",
+            payload: ResolveExerciseReportPayload(
+                id: report.id.uuidString,
+                status: "acknowledged",
+                resolution: "Looking for a replacement"
+            )
+        )
+
+        _ = await env.applier.process([operation])
+
+        let stored = try #require(try await env.reportRepository.fetch(id: report.id))
+        #expect(stored.status == .acknowledged)
+        #expect(try await env.reportRepository.fetchOpen().count == 1)
+    }
+
+    /// Inverted by #146. This asserted the opposite — the inbox existed to
+    /// close reports, never to reopen one behind the user. What changed it:
+    /// #136 was acknowledged, its fix shipped, and the fix turned out to be
+    /// inert. A real complaint had left the backlog with no route back, and
+    /// the guardrail was protecting the wrong thing — reopening SURFACES a
+    /// complaint, which is the safe direction.
+    @Test("A report closed too early can be reopened from the inbox")
+    func canReopenAReport() async throws {
+        let env = try InboxTestEnv()
+        let report = ExerciseReport(category: .bug, detail: "x", status: .resolved)
+        try await env.reportRepository.save(report)
+        let operation = try makeOperation(
+            op: "resolveExerciseReport",
+            payload: ResolveExerciseReportPayload(
+                id: report.id.uuidString,
+                status: "open",
+                resolution: "The fix did not touch this case"
+            )
+        )
+
+        let results = await env.applier.process([operation])
+
+        #expect(results.map(\.status) == [.applied])
+        let stored = try #require(try await env.reportRepository.fetch(id: report.id))
+        #expect(stored.status == .open)
+        #expect(stored.resolution == "The fix did not touch this case")
+    }
+
+    @Test("A status outside the lifecycle still fails that operation")
+    func unknownReportStatusStillFails() async throws {
+        let env = try InboxTestEnv()
+        let report = ExerciseReport(category: .bug, detail: "x", status: .resolved)
+        try await env.reportRepository.save(report)
+        let operation = try makeOperation(
+            op: "resolveExerciseReport",
+            payload: ResolveExerciseReportPayload(
+                id: report.id.uuidString, status: "wontfix", resolution: nil
+            )
+        )
+
+        let results = await env.applier.process([operation])
+
+        #expect(results.map(\.status) == [.failed])
+        let stored = try #require(try await env.reportRepository.fetch(id: report.id))
+        #expect(stored.status == .resolved)
+    }
+
+    @Test("An unknown report id fails that operation alone")
+    func unknownReportFailsInIsolation() async throws {
+        let env = try InboxTestEnv()
+        let report = ExerciseReport(category: .bug, detail: "real one")
+        try await env.reportRepository.save(report)
+        let operations = [
+            try makeOperation(
+                op: "resolveExerciseReport",
+                payload: ResolveExerciseReportPayload(
+                    id: UUID().uuidString, status: nil, resolution: nil
+                )
+            ),
+            try makeOperation(
+                op: "resolveExerciseReport",
+                payload: ResolveExerciseReportPayload(
+                    id: report.id.uuidString, status: nil, resolution: "done"
+                )
+            )
+        ]
+
+        let results = await env.applier.process(operations)
+
+        #expect(results.map(\.status) == [.failed, .applied])
+        #expect(results[0].error?.contains("Report not found") == true)
+    }
+
+    @Test("Resolving needs no user approval")
+    func resolveDoesNotRequireApproval() async throws {
+        let env = try InboxTestEnv()
+        let report = ExerciseReport(category: .bug, detail: "x")
+        try await env.reportRepository.save(report)
+        let operation = try makeOperation(
+            op: "resolveExerciseReport",
+            payload: ResolveExerciseReportPayload(
+                id: report.id.uuidString, status: nil, resolution: nil
+            ),
+            requiresApproval: true
+        )
+
+        let results = await env.applier.process([operation])
+
+        // The applier must reject the mismatched envelope rather than trust it.
+        #expect(results.map(\.status) == [.failed])
+        #expect(results[0].error?.contains("approval flag mismatch") == true)
+    }
 }

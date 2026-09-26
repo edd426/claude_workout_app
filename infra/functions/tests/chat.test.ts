@@ -119,3 +119,111 @@ describe("chat — issue #48: thinking_budget forwarded to Anthropic", () => {
     expect(callArgs.thinking).toBeUndefined();
   });
 });
+
+// ─── Issue #90: model / max_tokens guardrails ──────────────────────────────
+
+describe("chat — issue #90: model and max_tokens guardrails", () => {
+  beforeEach(() => {
+    mockMessagesCreate.mockClear();
+    mockMessagesStream.mockClear();
+    delete process.env.ALLOWED_MODELS;
+    delete process.env.MAX_TOKENS_CAP;
+  });
+
+  test("rejects a disallowed model with 400 before calling Anthropic", async () => {
+    const req = makeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      model: "claude-opus-4-1-most-expensive",
+      stream: false,
+    });
+    const result = await handler(req, makeContext());
+
+    expect(result.status).toBe(400);
+    expect(mockMessagesCreate).not.toHaveBeenCalled();
+  });
+
+  test("allows a known model", async () => {
+    const req = makeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      model: "claude-sonnet-4-6",
+      stream: false,
+    });
+    const result = await handler(req, makeContext());
+
+    expect(result.status).toBeUndefined();
+    expect(mockMessagesCreate).toHaveBeenCalled();
+  });
+
+  test("rejects oversize max_tokens with 400 before calling Anthropic", async () => {
+    const req = makeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 999999,
+      stream: false,
+    });
+    const result = await handler(req, makeContext());
+
+    expect(result.status).toBe(400);
+    expect(mockMessagesCreate).not.toHaveBeenCalled();
+  });
+
+  test("allows max_tokens within the default cap", async () => {
+    const req = makeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 4096,
+      stream: false,
+    });
+    const result = await handler(req, makeContext());
+
+    expect(result.status).toBeUndefined();
+    expect(mockMessagesCreate).toHaveBeenCalled();
+  });
+
+  test("rejects a thinking_budget that would push max_tokens past the cap", async () => {
+    const req = makeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      thinking_budget: 100000,
+      stream: false,
+    });
+    const result = await handler(req, makeContext());
+
+    expect(result.status).toBe(400);
+    expect(mockMessagesCreate).not.toHaveBeenCalled();
+  });
+
+  test("MAX_TOKENS_CAP env var overrides the default cap", async () => {
+    process.env.MAX_TOKENS_CAP = "1000";
+    const req = makeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 2000,
+      stream: false,
+    });
+    const result = await handler(req, makeContext());
+
+    expect(result.status).toBe(400);
+    expect(mockMessagesCreate).not.toHaveBeenCalled();
+  });
+
+  test("ALLOWED_MODELS env var overrides the default allowlist", async () => {
+    process.env.ALLOWED_MODELS = "custom-model-a,custom-model-b";
+    const req = makeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      model: "custom-model-a",
+      stream: false,
+    });
+    const result = await handler(req, makeContext());
+
+    expect(result.status).toBeUndefined();
+    expect(mockMessagesCreate).toHaveBeenCalled();
+
+    // and the previously-default model is now rejected
+    mockMessagesCreate.mockClear();
+    const req2 = makeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      model: "claude-sonnet-4-6",
+      stream: false,
+    });
+    const result2 = await handler(req2, makeContext());
+    expect(result2.status).toBe(400);
+    expect(mockMessagesCreate).not.toHaveBeenCalled();
+  });
+});

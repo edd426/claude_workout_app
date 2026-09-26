@@ -44,12 +44,40 @@ final class ActiveWorkoutViewModel {
     var detectedPRs: [PersonalRecord] = []
     private(set) var previousValues: [UUID: AutoFillResult] = [:]
 
+    /// The planned target per workout exercise (#144), from the provenance
+    /// baseline captured at start. Keyed by `WorkoutExercise.id`; an exercise
+    /// added mid-workout is simply absent, because it has no plan.
+    private(set) var plannedTargets: [UUID: PlannedTarget] = [:]
+    private(set) var pendingPlannedTargetsLoad: Task<Void, Never>?
+
+    /// Set IDs whose reps field the user has decided about — typed a value or
+    /// deliberately cleared it (#137). This is the third state that makes
+    /// adoption safe: *unset* (adopt the previous session), *decided-empty*
+    /// (persist nil), *entered* (leave alone). Without it, "not filled in yet"
+    /// and "I mean blank" are the same nil and adoption overwrites intent.
+    ///
+    /// Transient by design. It is lost across a crash/resume, where the
+    /// conservative outcome is that an untouched empty set gets its previous
+    /// reps back — harmless, because nil reps on an unlogged set carry no
+    /// meaning. The same reasoning does NOT hold for weight, which is why
+    /// weight is never adopted.
+    private var repsDecidedByUser: Set<UUID> = []
+
     private let template: WorkoutTemplate?
     private let adHocName: String?
     private let workoutRepository: any WorkoutRepository
     private let autoFillService: any AutoFillServiceProtocol
     private let prDetectionService: (any PRDetectionServiceProtocol)?
     private let templateRepository: (any TemplateRepository)?
+    /// Needed to persist per-exercise notes (#136). Optional so existing
+    /// construction sites keep compiling; when nil the note is written to the
+    /// in-memory model but not saved.
+    private let exerciseRepository: (any ExerciseRepository)?
+    /// Records the template plan a workout started from (#128). Optional so
+    /// existing construction sites keep compiling; when nil, provenance is
+    /// simply not captured and post-workout reconciliation has nothing to
+    /// offer — the workout itself is unaffected.
+    private let baselineRepository: (any TemplateBaselineRepository)?
     /// Global user preferences. Optional so existing construction sites keep
     /// compiling; when nil, newly created sets fall back to kg (#83).
     private let settings: SettingsManager?
@@ -73,6 +101,9 @@ final class ActiveWorkoutViewModel {
     /// The in-flight finish attempt, so duplicate taps join it rather than
     /// racing it (#124).
     private var finishTask: Task<Void, Never>?
+    /// Set only for the duration of an idle auto-finish, so the receipt can
+    /// say the app finished the workout rather than the user (report 07B1AD96).
+    private var finishingAutomatically = false
     /// Follow-up work that runs after the critical save has committed.
     private var postCommitTask: Task<Void, Never>?
 
@@ -81,6 +112,10 @@ final class ActiveWorkoutViewModel {
     /// next action.
     func awaitPendingSave() async {
         await pendingSave?.value
+    }
+
+    func awaitPlannedTargetsLoad() async {
+        await pendingPlannedTargetsLoad?.value
     }
 
     func awaitPreviousValuesLoad() async {
@@ -107,6 +142,56 @@ final class ActiveWorkoutViewModel {
     /// way the previous `try?` calls dropped them (#125).
     private(set) var postCommitWarnings: [String] = []
 
+    /// The plan for this exercise, or nil when there is none — an ad-hoc
+    /// workout, or an exercise added mid-session. Nil means "show nothing";
+    /// inventing a target would be worse than an empty line.
+    func plannedTarget(for workoutExercise: WorkoutExercise) -> PlannedTarget? {
+        plannedTargets[workoutExercise.id]
+    }
+
+    /// Whether **last session's** reps for this set missed the template target
+    /// (#144).
+    ///
+    /// Deliberately about the previous session, not the current one: this sits
+    /// next to the field the user is about to fill in, while there is still
+    /// time to correct course. Flagging what they just typed would be a
+    /// reprimand after the fact — "in the current session it's too late to do
+    /// anything about the drift once you enter the weight."
+    func previousDriftedFromTarget(
+        _ set: WorkoutSet,
+        in workoutExercise: WorkoutExercise
+    ) -> Bool {
+        guard
+            let target = plannedTargets[workoutExercise.id],
+            let previousReps = previous(for: set)?.reps
+        else {
+            // No plan, or no previous session — absence is not disagreement.
+            return false
+        }
+        return previousReps != target.reps
+    }
+
+    private func loadPlannedTargets(for workout: Workout) {
+        guard let baselineRepository else { return }
+        pendingPlannedTargetsLoad = Task { [weak self] in
+            guard let self else { return }
+            guard let entries = try? await baselineRepository.fetchEntries(
+                workoutId: workout.id
+            ) else { return }
+            var targets: [UUID: PlannedTarget] = [:]
+            for entry in entries {
+                guard let workoutExerciseId = entry.workoutExerciseId else { continue }
+                targets[workoutExerciseId] = PlannedTarget(
+                    sets: entry.plannedSets,
+                    reps: entry.plannedReps,
+                    restSeconds: entry.plannedRestSeconds,
+                    notes: entry.plannedNotes
+                )
+            }
+            self.plannedTargets = targets
+        }
+    }
+
     func previous(for set: WorkoutSet) -> AutoFillResult? {
         previousValues[set.id]
     }
@@ -127,7 +212,9 @@ final class ActiveWorkoutViewModel {
         template: WorkoutTemplate,
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
+        exerciseRepository: (any ExerciseRepository)? = nil,
         templateRepository: (any TemplateRepository)? = nil,
+        baselineRepository: (any TemplateBaselineRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
     ) {
@@ -135,6 +222,8 @@ final class ActiveWorkoutViewModel {
         self.adHocName = nil
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.exerciseRepository = exerciseRepository
+        self.baselineRepository = baselineRepository
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -144,6 +233,8 @@ final class ActiveWorkoutViewModel {
         adHocName: String,
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
+        exerciseRepository: (any ExerciseRepository)? = nil,
+        baselineRepository: (any TemplateBaselineRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
     ) {
@@ -151,6 +242,8 @@ final class ActiveWorkoutViewModel {
         self.adHocName = adHocName
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.exerciseRepository = exerciseRepository
+        self.baselineRepository = baselineRepository
         self.templateRepository = nil
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -163,7 +256,9 @@ final class ActiveWorkoutViewModel {
         resuming workout: Workout,
         workoutRepository: any WorkoutRepository,
         autoFillService: any AutoFillServiceProtocol,
+        exerciseRepository: (any ExerciseRepository)? = nil,
         templateRepository: (any TemplateRepository)? = nil,
+        baselineRepository: (any TemplateBaselineRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
         settings: SettingsManager? = nil
     ) {
@@ -171,6 +266,8 @@ final class ActiveWorkoutViewModel {
         self.adHocName = nil
         self.workoutRepository = workoutRepository
         self.autoFillService = autoFillService
+        self.exerciseRepository = exerciseRepository
+        self.baselineRepository = baselineRepository
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
         self.settings = settings
@@ -188,6 +285,9 @@ final class ActiveWorkoutViewModel {
                 in: workout,
                 sourceTemplate: sourceTemplate
             )
+            // A resumed session keeps its targets: the baseline is stored, so
+            // crash recovery reads back the same plan it started with (#144).
+            loadPlannedTargets(for: workout)
             didLoadInitialPreviousValues = true
             return
         }
@@ -242,11 +342,19 @@ final class ActiveWorkoutViewModel {
             startedAt: .now,
             templateId: template.id
         )
+        // Pairs each planned exercise with the session exercise created from
+        // it, so the baseline can be linked without a stored property on
+        // WorkoutExercise — which would change every VersionedSchema's
+        // checksum. See the note on ClaudeLifterSchemaV4.
+        var workoutExerciseIdByTemplateExerciseId: [UUID: UUID] = [:]
         for templateExercise in template.exercises.sorted(by: { $0.order < $1.order }) {
             guard let exercise = templateExercise.exercise else { continue }
             let we = WorkoutExercise(
                 order: templateExercise.order,
                 exercise: exercise,
+                // Machine settings live here — seat/pin/pivot numbers the user
+                // needs standing at the machine. Never copied until #136.
+                notes: templateExercise.notes,
                 restSeconds: templateExercise.defaultRestSeconds
             )
             // Per-set-index auto-fill from the previous session (#82):
@@ -274,13 +382,65 @@ final class ActiveWorkoutViewModel {
                 }
             }
             newWorkout.exercises.append(we)
+            workoutExerciseIdByTemplateExerciseId[templateExercise.id] = we.id
         }
         do {
             try await saveWorkout(newWorkout)
             workout = newWorkout
             didLoadInitialPreviousValues = true
+            loadPlannedTargets(for: newWorkout)
+            await captureBaseline(
+                for: newWorkout,
+                from: template,
+                workoutExerciseIds: workoutExerciseIdByTemplateExerciseId
+            )
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Freezes the template plan this workout started from (#128).
+    ///
+    /// Written once, after the workout is saved, and never updated — an
+    /// exercise added later deliberately has no entry, and that absence is how
+    /// #129 tells a genuine addition from a planned one.
+    ///
+    /// A failure here is swallowed on purpose. Provenance buys a post-workout
+    /// suggestion; being able to train is not worth risking for it.
+    private func captureBaseline(
+        for workout: Workout,
+        from template: WorkoutTemplate,
+        workoutExerciseIds: [UUID: UUID]
+    ) async {
+        guard let baselineRepository else { return }
+        let baseline = WorkoutTemplateBaseline(
+            workoutId: workout.id,
+            templateId: template.id,
+            templateRevision: template.lastModified,
+            templateName: template.name
+        )
+        let entries = template.exercises
+            .sorted(by: { $0.order < $1.order })
+            .compactMap { te -> WorkoutExerciseBaseline? in
+                guard let exercise = te.exercise else { return nil }
+                return WorkoutExerciseBaseline(
+                    workoutId: workout.id,
+                    workoutExerciseId: workoutExerciseIds[te.id],
+                    sourceTemplateExerciseId: te.id,
+                    exerciseId: exercise.id,
+                    exerciseExternalId: exercise.externalId,
+                    exerciseName: exercise.name,
+                    plannedOrder: te.order,
+                    plannedSets: te.defaultSets,
+                    plannedReps: te.defaultReps,
+                    plannedRestSeconds: te.defaultRestSeconds,
+                    plannedNotes: te.notes
+                )
+            }
+        do {
+            try await baselineRepository.save(baseline, entries: entries)
+        } catch {
+            print("⚠️ captureBaseline failed: \(error)")
         }
     }
 
@@ -324,7 +484,73 @@ final class ActiveWorkoutViewModel {
         persistMutation()
     }
 
+    /// Per-exercise notes — machine settings, cues (#136).
+    ///
+    /// The note is written to the **library `Exercise`**, not to the session
+    /// or the template: "Ankle 4; Seat 4; Pivot 1" describes the machine, so
+    /// it must appear in every future workout that uses Seated Leg Curl,
+    /// whichever template that workout came from.
+    ///
+    /// Whitespace-only input clears the note, so an emptied field does not
+    /// leave a blank note rendering as an empty row.
+    ///
+    /// Note this deliberately does not go through `persistMutation()` — the
+    /// workout record is unchanged, so a note edit must not re-stamp its
+    /// `lastModified` or re-open a finished session (#124).
+    func updateExerciseNotes(
+        _ workoutExercise: WorkoutExercise,
+        notes: String?
+    ) async {
+        guard let exercise = workoutExercise.exercise else { return }
+        let trimmed = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        guard exercise.notes != normalized
+            || workoutExercise.notes != normalized else { return }
+
+        exercise.notes = normalized
+
+        // Also stamp the session copy. Two reasons, both real: bundled
+        // exercises are excluded from sync *and* from backup (BackupService
+        // carries only `isCustom`), so the library note is device-local and
+        // invisible to the Coach and MCP — the workout is the copy that
+        // travels. And what settings were used on a given day is genuinely
+        // session data. `persistMutation` handles the sync bookkeeping and
+        // already declines to re-open a finished workout (#124).
+        if workoutExercise.notes != normalized {
+            workoutExercise.notes = normalized
+            persistMutation()
+        }
+
+        do {
+            try await exerciseRepository?.save(exercise)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Edits this workout's copy of the template's note for an exercise — the
+    /// cue the Coach writes over MCP (reports 31A4983B, E26BBFAA). It used to
+    /// be read-only, so a wrong one ("with barbells" on a dumbbell curl) could
+    /// only be reported.
+    ///
+    /// Deliberately NOT written to the template here. The post-workout review
+    /// already turns a changed cue into an offer for the template (#129/#130),
+    /// behind a revision check; a direct write would move the template's
+    /// revision and make that review report a conflict with the user's own
+    /// edit. The library note (`updateExerciseNotes`) is untouched: it is a
+    /// different note, about the machine.
+    func updateTemplateNote(_ workoutExercise: WorkoutExercise, notes: String?) {
+        let trimmed = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        guard workoutExercise.notes != normalized else { return }
+        workoutExercise.notes = normalized
+        persistMutation()
+    }
+
     func updateSetReps(_ set: WorkoutSet, reps: Int?) {
+        // Recorded even when the value is unchanged: clearing a field that is
+        // already nil is still the user saying "blank is what I meant" (#137).
+        repsDecidedByUser.insert(set.id)
         guard set.reps != reps else { return }
         set.reps = reps
         persistMutation()
@@ -464,6 +690,7 @@ final class ActiveWorkoutViewModel {
             excludingWorkoutId: workout?.id
         )) ?? []
 
+        var didAdopt = false
         for (index, set) in sortedSets.enumerated() {
             guard let previous = previousValue(
                 at: index,
@@ -473,7 +700,33 @@ final class ActiveWorkoutViewModel {
                 continue
             }
             previousValues[set.id] = previous
+            if adoptPreviousReps(into: set, from: previous) {
+                didAdopt = true
+            }
         }
+        if didAdopt {
+            persistMutation()
+        }
+    }
+
+    /// Writes the previous session's reps into a set the user has not decided
+    /// about yet (#137). Returns whether anything changed.
+    ///
+    /// Reps only. `WorkoutSet.weight == nil` already means bodyweight, so
+    /// adopting a previous weight would log 80kg for a bodyweight set — the
+    /// exact data-corruption bug that got ghost adoption cut the first time.
+    /// A nil rep count has no such second meaning.
+    @discardableResult
+    private func adoptPreviousReps(
+        into set: WorkoutSet,
+        from previous: AutoFillResult
+    ) -> Bool {
+        // A logged set is a record, not a draft.
+        guard !set.isCompleted else { return false }
+        guard !repsDecidedByUser.contains(set.id) else { return false }
+        guard set.reps == nil, let reps = previous.reps else { return false }
+        set.reps = reps
+        return true
     }
 
     private func queuePreviousValuesLoad(for workoutExercise: WorkoutExercise) {
@@ -541,6 +794,46 @@ final class ActiveWorkoutViewModel {
         finishTask = nil
     }
 
+    /// Finishes the workout if it has sat idle past
+    /// `WorkoutAutoFinishPolicy.idleThreshold` since its last logged set, and
+    /// returns whether it did (report 07B1AD96).
+    ///
+    /// The recorded window is first logged set → last logged set, stamped
+    /// before the ordinary finish runs; `performFinish` keeps a `completedAt`
+    /// that is already set, so everything else — idempotency (#124), the
+    /// post-commit work (#125), the receipt (#123) — is the same path as a
+    /// Finish tap. Called when the app comes back to the foreground, which is
+    /// the "when I come back on" in the report.
+    @discardableResult
+    func autoFinishIfIdle(now: Date = .now) async -> Bool {
+        switch completionState {
+        case .active, .failed:
+            break
+        case .finishing, .finished:
+            return false
+        }
+        guard
+            finishTask == nil,
+            let workout,
+            let window = WorkoutAutoFinishPolicy.window(for: workout, now: now)
+        else { return false }
+
+        let originalStart = workout.startedAt
+        workout.startedAt = window.start
+        workout.completedAt = window.end
+        finishingAutomatically = true
+        defer { finishingAutomatically = false }
+
+        await finishWorkout()
+
+        if case .finished = completionState { return true }
+        // The save failed. `performFinish` already cleared `completedAt`; put
+        // the start back too, so the workout is left exactly as it was and a
+        // later attempt recomputes the window from scratch.
+        workout.startedAt = originalStart
+        return false
+    }
+
     private func performFinish() async {
         guard let workout else { return }
         completionState = .finishing
@@ -582,7 +875,10 @@ final class ActiveWorkoutViewModel {
         // The critical transaction has committed. Publishing the receipt here
         // — before any of the follow-up work — is what lets the UI leave the
         // workout immediately.
-        let summary = WorkoutCompletionSummary(workout: workout)
+        let summary = WorkoutCompletionSummary(
+            workout: workout,
+            finishedAutomatically: finishingAutomatically
+        )
         completionState = .finished(summary: summary)
 
         postCommitTask = Task { @MainActor [weak self] in
@@ -598,12 +894,20 @@ final class ActiveWorkoutViewModel {
         for workout: Workout,
         summary: WorkoutCompletionSummary
     ) async {
+        // The template's revision either side of this workout's own usage
+        // bookkeeping, so detection can tell that write apart from an edit
+        // made elsewhere. Nil when there was none, or it failed to save.
+        var ownTemplateEdit: (before: Date, after: Date)?
         if let template, let templateRepository {
+            let revisionBefore = template.lastModified
             template.timesPerformed += 1
-            template.lastPerformedAt = .now
+            // When the workout ended, which is not "now" for an auto-finished
+            // workout noticed hours later (report 07B1AD96).
+            template.lastPerformedAt = workout.completedAt ?? .now
             template.recordChange()
             do {
                 try await templateRepository.save(template)
+                ownTemplateEdit = (revisionBefore, template.lastModified)
             } catch {
                 // Previously `try?`, so a broken template save was invisible.
                 template.timesPerformed -= 1
@@ -623,6 +927,69 @@ final class ActiveWorkoutViewModel {
                     "Couldn't check for personal records: \(error.localizedDescription)"
                 )
             }
+        }
+
+        await detectTemplateChanges(
+            for: workout,
+            summary: summary,
+            ownTemplateEdit: ownTemplateEdit
+        )
+    }
+
+    /// Compares the finished workout to the plan it started from (#129).
+    ///
+    /// Runs here, after the durable save, for the same reason PR detection
+    /// does: the workout is already safe, so nothing this finds — or fails to
+    /// find — can delay or endanger it. The result lands on the summary, which
+    /// is a reference type precisely so it can be filled in after the sheet is
+    /// already on screen.
+    private func detectTemplateChanges(
+        for workout: Workout,
+        summary: WorkoutCompletionSummary,
+        ownTemplateEdit: (before: Date, after: Date)? = nil
+    ) async {
+        guard let baselineRepository, let templateRepository else { return }
+        do {
+            guard
+                let baseline = try await baselineRepository.fetchBaseline(
+                    workoutId: workout.id
+                ),
+                let currentTemplate = try await templateRepository.fetch(
+                    id: baseline.templateId
+                )
+            else { return }
+            let entries = try await baselineRepository.fetchEntries(
+                workoutId: workout.id
+            )
+            var changeSet = TemplateChangeDetector().detect(
+                workout: workout,
+                baseline: baseline,
+                entries: entries,
+                template: currentTemplate
+            )
+            // `runPostCommitWork` bumps timesPerformed, and with it the
+            // template's revision, before this runs. That write is this
+            // workout's own, so when nothing else touched the template since
+            // the start it must not read as a conflict: it did, for every
+            // template workout, and Apply was always refused. Re-anchor on the
+            // revision after the bookkeeping so Apply's own check agrees.
+            if let ownTemplateEdit,
+               baseline.templateRevision == ownTemplateEdit.before {
+                changeSet = TemplateChangeSet(
+                    templateId: changeSet.templateId,
+                    templateName: changeSet.templateName,
+                    changes: changeSet.changes,
+                    capturedRevision: ownTemplateEdit.after,
+                    hasConflict: false
+                )
+            }
+            // Nil rather than an empty set, so the review card has one simple
+            // condition to test and cannot appear with nothing in it.
+            summary.templateChangeSet = changeSet.isEmpty ? nil : changeSet
+        } catch {
+            postCommitWarnings.append(
+                "Couldn't check for template changes: \(error.localizedDescription)"
+            )
         }
     }
 

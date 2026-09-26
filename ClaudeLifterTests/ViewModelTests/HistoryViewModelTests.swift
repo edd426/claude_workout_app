@@ -196,4 +196,96 @@ struct HistoryViewModelTests {
         #expect(vm.completedWorkouts.count == 1, "Empty workouts should be filtered from history")
         #expect(vm.completedWorkouts.first?.name == "Push Day")
     }
+
+    // MARK: - Editing a past workout (#117)
+    //
+    // The detail view wrote `set.weight` straight to the model on every
+    // keystroke, so the edit persisted locally but never re-queued the parent
+    // workout for sync — history silently diverged from the mirror. It also
+    // could not clear a value, because `Double("")` is nil and the write was
+    // behind `if let`.
+
+    @MainActor
+    private func makeEditableWorkout() throws -> (ModelContainer, Workout, WorkoutSet, MockWorkoutRepository) {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+        let workout = TestFixtures.makeWorkout(name: "Push Day")
+        context.insert(workout)
+        let we = TestFixtures.makeWorkoutExercise(exercise: exercise, in: context)
+        workout.exercises.append(we)
+        try context.save()
+        workout.syncStatus = .synced
+        let set = we.sets.sorted(by: { $0.order < $1.order })[0]
+        return (container, workout, set, MockWorkoutRepository())
+    }
+
+    @Test("Editing a past set re-queues the workout for sync")
+    func editingPastSetRequeuesForSync() async throws {
+        let (container, workout, set, repo) = try makeEditableWorkout()
+        let vm = HistoryViewModel(workoutRepository: repo)
+        let before = workout.lastModified
+
+        await vm.updateSet(set, weight: 72.5, in: workout)
+
+        #expect(set.weight == 72.5)
+        #expect(workout.syncStatus == .pending, "an edit the server never hears about is a silent divergence")
+        #expect(workout.lastModified > before)
+        #expect(repo.savedWorkouts.contains { $0.id == workout.id })
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("A cleared weight becomes nil, which is how bodyweight is recorded")
+    func clearingWeightStoresNil() async throws {
+        let (container, workout, set, repo) = try makeEditableWorkout()
+        let vm = HistoryViewModel(workoutRepository: repo)
+
+        await vm.updateSet(set, weight: nil, in: workout)
+
+        #expect(set.weight == nil)
+        #expect(workout.syncStatus == .pending)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("Editing reps re-queues the workout, and reps can be cleared")
+    func editingRepsRequeuesAndClears() async throws {
+        let (container, workout, set, repo) = try makeEditableWorkout()
+        let vm = HistoryViewModel(workoutRepository: repo)
+
+        await vm.updateSet(set, reps: 12, in: workout)
+        #expect(set.reps == 12)
+        #expect(workout.syncStatus == .pending)
+
+        workout.syncStatus = .synced
+        await vm.updateSet(set, reps: nil, in: workout)
+        #expect(set.reps == nil)
+        #expect(workout.syncStatus == .pending)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("An unchanged value does not re-queue the workout")
+    func unchangedValueDoesNotRequeue() async throws {
+        let (container, workout, set, repo) = try makeEditableWorkout()
+        let vm = HistoryViewModel(workoutRepository: repo)
+        let existing = set.weight
+
+        await vm.updateSet(set, weight: existing, in: workout)
+
+        #expect(workout.syncStatus == .synced, "a no-op edit must not churn sync state")
+        #expect(repo.savedWorkouts.isEmpty)
+        withExtendedLifetime(container) {}
+    }
+
+    @Test("A failing save surfaces an error instead of failing silently")
+    func failingSaveSurfacesError() async throws {
+        let (container, workout, set, repo) = try makeEditableWorkout()
+        repo.errorToThrow = NSError(domain: "test", code: 117)
+        let vm = HistoryViewModel(workoutRepository: repo)
+
+        await vm.updateSet(set, weight: 80, in: workout)
+
+        #expect(vm.errorMessage != nil)
+        withExtendedLifetime(container) {}
+    }
 }

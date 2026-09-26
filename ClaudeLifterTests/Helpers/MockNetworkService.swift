@@ -74,11 +74,22 @@ final class MockNetworkService: NetworkServiceProtocol, @unchecked Sendable {
     /// is returned — lets tests simulate edits made while the POST is in flight.
     var onPushSnapshot: (@MainActor () -> Void)?
 
+    /// Every request in call order — the downgrade-and-retry path (#140) sends
+    /// two, and only checking `lastSnapshotRequest` would hide the first.
+    var snapshotRequests: [SnapshotPushRequest] = []
+    /// Consumed one per call, before `pushSnapshotError`. A nil entry means
+    /// "this call succeeds"; an exhausted queue falls through to the flat
+    /// error, so existing tests are unaffected.
+    var pushSnapshotErrorQueue: [Error?] = []
+
     func pushSnapshot(_ request: SnapshotPushRequest) async throws -> SnapshotPushResponse {
         pushSnapshotCallCount += 1
         lastSnapshotRequest = request
+        snapshotRequests.append(request)
         if let onPushSnapshot { await onPushSnapshot() }
-        if let pushSnapshotError { throw pushSnapshotError }
+        if !pushSnapshotErrorQueue.isEmpty {
+            if let queued = pushSnapshotErrorQueue.removeFirst() { throw queued }
+        } else if let pushSnapshotError { throw pushSnapshotError }
         if let error = errorToThrow { throw error }
         guard let result = pushSnapshotResult else {
             throw SyncError.serverError(500)

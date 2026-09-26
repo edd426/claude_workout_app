@@ -19,6 +19,17 @@ final class MockImageUploadService: ImageUploadServiceProtocol, @unchecked Senda
         return uploadResultURL
     }
 
+    var uploadedReportIds: [UUID] = []
+    /// Separate from `errorToThrow` so a test can fail report uploads alone.
+    var reportUploadError: Error? = nil
+
+    func uploadReportPhoto(reportId: UUID, jpegData: Data) async throws -> String {
+        uploadedReportIds.append(reportId)
+        lastUploadedData = jpegData
+        if let error = reportUploadError ?? errorToThrow { throw error }
+        return "reports/\(reportId.uuidString).jpg"
+    }
+
     func downloadPhoto(path: String) async throws -> Data? {
         downloadCallCount += 1
         lastDownloadedPath = path

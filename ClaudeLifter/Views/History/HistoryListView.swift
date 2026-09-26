@@ -114,9 +114,18 @@ struct HistoryListView: View {
                     } else {
                         ForEach(calendarVM.selectedDayWorkouts, id: \.id) { workout in
                             NavigationLink {
-                                WorkoutDetailView(workout: workout, onSave: { updated in
-                                    await historyVM.updateWorkout(updated)
-                                })
+                                WorkoutDetailView(
+                                    workout: workout,
+                                    onSave: { updated in
+                                        await historyVM.updateWorkout(updated)
+                                    },
+                                    onEditWeight: { set, weight in
+                                        Task { await historyVM.updateSet(set, weight: weight, in: workout) }
+                                    },
+                                    onEditReps: { set, reps in
+                                        Task { await historyVM.updateSet(set, reps: reps, in: workout) }
+                                    }
+                                )
                             } label: {
                                 WorkoutHistoryRowView(workout: workout)
                             }
@@ -145,9 +154,18 @@ struct HistoryListView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(vm.completedWorkouts, id: \.id) { workout in
                         NavigationLink {
-                            WorkoutDetailView(workout: workout, onSave: { updated in
-                                await vm.updateWorkout(updated)
-                            })
+                            WorkoutDetailView(
+                                workout: workout,
+                                onSave: { updated in
+                                    await vm.updateWorkout(updated)
+                                },
+                                onEditWeight: { set, weight in
+                                    Task { await vm.updateSet(set, weight: weight, in: workout) }
+                                },
+                                onEditReps: { set, reps in
+                                    Task { await vm.updateSet(set, reps: reps, in: workout) }
+                                }
+                            )
                         } label: {
                             WorkoutHistoryRowView(workout: workout)
                         }
@@ -173,9 +191,18 @@ struct HistoryListView: View {
             } else {
                 List(vm.completedWorkouts, id: \.id) { workout in
                     NavigationLink {
-                        WorkoutDetailView(workout: workout, onSave: { updated in
-                            await vm.updateWorkout(updated)
-                        })
+                        WorkoutDetailView(
+                            workout: workout,
+                            onSave: { updated in
+                                await vm.updateWorkout(updated)
+                            },
+                            onEditWeight: { set, weight in
+                                Task { await vm.updateSet(set, weight: weight, in: workout) }
+                            },
+                            onEditReps: { set, reps in
+                                Task { await vm.updateSet(set, reps: reps, in: workout) }
+                            }
+                        )
                     } label: {
                         WorkoutHistoryRowView(workout: workout)
                     }

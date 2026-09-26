@@ -45,6 +45,8 @@ final class SettingsManager {
         static let lastSyncTimestamp = "lastSyncTimestamp"
         static let lastSyncRevision = "lastSyncRevision"
         static let isSnapshotDirty = "isSnapshotDirty"
+        static let snapshotDirtyGeneration = "snapshotDirtyGeneration"
+        static let snapshotCleanGeneration = "snapshotCleanGeneration"
         static let proactiveInsightsEnabled = "proactiveInsightsEnabled"
     }
 
@@ -82,10 +84,46 @@ final class SettingsManager {
         }
     }
 
-    /// Durable trigger for inbox-applied changes that have no per-record
-    /// `syncStatus` (notably custom exercises).
+    /// Durable trigger for changes that have no per-record `syncStatus`
+    /// (notably custom exercises, which never got one — see #104).
+    ///
+    /// Two counters rather than a boolean. `pushSnapshot` runs
+    /// serialize → await network → clear, and the main actor is reentrant, so
+    /// a custom exercise created during that await was not in the pushed
+    /// payload yet had its only signal wiped by the clear that followed.
+    /// Clearing now names the generation that was actually pushed, so a
+    /// mutation landing mid-request leaves the phone dirty and the next
+    /// trigger picks it up.
+    private(set) var snapshotDirtyGeneration: Int {
+        didSet { defaults.set(snapshotDirtyGeneration, forKey: Key.snapshotDirtyGeneration) }
+    }
+
+    private(set) var snapshotCleanGeneration: Int {
+        didSet { defaults.set(snapshotCleanGeneration, forKey: Key.snapshotCleanGeneration) }
+    }
+
     var isSnapshotDirty: Bool {
-        didSet { defaults.set(isSnapshotDirty, forKey: Key.isSnapshotDirty) }
+        snapshotDirtyGeneration != snapshotCleanGeneration
+    }
+
+    /// Records that something with no per-record `syncStatus` changed.
+    /// Idempotent in effect (already-dirty stays dirty) but never a no-op —
+    /// the bump is what makes a mid-request mutation survive the clear.
+    func markSnapshotDirty() {
+        snapshotDirtyGeneration &+= 1
+    }
+
+    /// The generation to hand back to `markSnapshotClean` after a successful
+    /// push. Read BEFORE serializing state.
+    func currentSnapshotGeneration() -> Int {
+        snapshotDirtyGeneration
+    }
+
+    /// Clears the trigger only if nothing has been marked dirty since
+    /// `generation` was taken.
+    func markSnapshotClean(upTo generation: Int) {
+        guard snapshotDirtyGeneration == generation else { return }
+        snapshotCleanGeneration = generation
     }
 
     // MARK: - Init (loads from UserDefaults)
@@ -107,7 +145,25 @@ final class SettingsManager {
         self.serverURL = defaults.string(forKey: Key.serverURL) ?? ""
         self.lastSyncTimestamp = defaults.object(forKey: Key.lastSyncTimestamp) as? Date
         self.lastSyncRevision = defaults.object(forKey: Key.lastSyncRevision) as? Int
-        self.isSnapshotDirty = defaults.bool(forKey: Key.isSnapshotDirty)
+        // Migrate the legacy boolean: a pre-#104 install that was dirty at
+        // upgrade time must stay dirty, or its unpushed state is stranded.
+        // Read the two keys INDEPENDENTLY. `didSet` does not fire for
+        // assignments made in init, so a phone that has been marked dirty but
+        // never cleaned has the dirty key stored and the clean key absent.
+        // Requiring both would read that phone as clean and strand its
+        // unpushed state — which is the very failure this counter exists to
+        // prevent.
+        if let storedDirty = defaults.object(forKey: Key.snapshotDirtyGeneration) as? Int {
+            self.snapshotDirtyGeneration = storedDirty
+            self.snapshotCleanGeneration =
+                defaults.object(forKey: Key.snapshotCleanGeneration) as? Int ?? 0
+        } else if defaults.bool(forKey: Key.isSnapshotDirty) {
+            self.snapshotDirtyGeneration = 1
+            self.snapshotCleanGeneration = 0
+        } else {
+            self.snapshotDirtyGeneration = 0
+            self.snapshotCleanGeneration = 0
+        }
         // Missing key → treat as enabled (legacy install default).
         if defaults.object(forKey: Key.proactiveInsightsEnabled) == nil {
             self.proactiveInsightsEnabled = true

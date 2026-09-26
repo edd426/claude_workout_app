@@ -30,8 +30,21 @@ final class WorkoutCompletionSummary: Identifiable {
     /// so a slow or failing detector never delays the return to Home.
     var personalRecords: [PersonalRecord] = []
 
-    init(workout: Workout) {
+    /// Proposed template changes detected after the workout was saved (#129),
+    /// for the review card in #130. Nil until detection finishes, and nil
+    /// forever for an ad-hoc workout or one whose plan produced nothing —
+    /// the card must appear only when there is genuinely something to decide.
+    var templateChangeSet: TemplateChangeSet?
+
+    /// True when the app finished this workout after it sat idle, rather than
+    /// the user tapping Finish (report 07B1AD96). The summary is then the
+    /// "message letting me know when I come back on", so it has to say what
+    /// happened and which window was recorded.
+    let finishedAutomatically: Bool
+
+    init(workout: Workout, finishedAutomatically: Bool = false) {
         self.id = workout.id
         self.workout = workout
+        self.finishedAutomatically = finishedAutomatically
     }
 }

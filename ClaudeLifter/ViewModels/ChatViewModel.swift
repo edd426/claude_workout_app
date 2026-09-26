@@ -35,6 +35,7 @@ final class ChatViewModel {
 
     private let anthropicService: any AnthropicServiceProtocol
     private let exerciseRepository: any ExerciseRepository
+    private let baselineRepository: (any TemplateBaselineRepository)?
     private let workoutRepository: any WorkoutRepository
     private let templateRepository: any TemplateRepository
     private let preferenceRepository: any TrainingPreferenceRepository
@@ -74,7 +75,9 @@ final class ChatViewModel {
         settings: SettingsManager? = nil,
         appState: AppState? = nil,
         autoFillService: (any AutoFillServiceProtocol)? = nil,
-        prDetectionService: (any PRDetectionServiceProtocol)? = nil
+        prDetectionService: (any PRDetectionServiceProtocol)? = nil,
+        /// So a Coach-started workout captures template provenance too (#128).
+        baselineRepository: (any TemplateBaselineRepository)? = nil
     ) {
         self.anthropicService = anthropicService
         self.exerciseRepository = exerciseRepository
@@ -86,6 +89,7 @@ final class ChatViewModel {
         self.appState = appState
         self.autoFillService = autoFillService
         self.prDetectionService = prDetectionService
+        self.baselineRepository = baselineRepository
         self.tools = tools ?? [
             SearchExercisesTool(),
             GetExerciseHistoryTool(),
@@ -326,7 +330,9 @@ final class ChatViewModel {
                     template: template,
                     workoutRepository: self.workoutRepository,
                     autoFillService: autoFillService,
+                    exerciseRepository: self.exerciseRepository,
                     templateRepository: self.templateRepository,
+                    baselineRepository: self.baselineRepository,
                     prDetectionService: self.prDetectionService,
                     settings: self.settings
                 )

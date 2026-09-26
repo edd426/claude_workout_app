@@ -54,6 +54,17 @@ func isSetEntryFieldAccessibilityIdentifier(_ identifier: String?) -> Bool {
         && UUID(uuidString: String(components[2])) != nil
 }
 
+/// Identifies the exercise whose note is being edited (#136). A wrapper rather
+/// than the model itself so `.sheet(item:)` keys on the stable UUID.
+struct ExerciseNoteTarget: Identifiable {
+    let workoutExercise: WorkoutExercise
+    var kind: ExerciseNoteKind = .exercise
+    var id: UUID { workoutExercise.id }
+    var exerciseName: String {
+        workoutExercise.exercise?.name ?? "Exercise"
+    }
+}
+
 struct ActiveWorkoutView: View {
     @State var vm: ActiveWorkoutViewModel
     var onDismiss: (() -> Void)? = nil
@@ -61,6 +72,10 @@ struct ActiveWorkoutView: View {
     @State private var restSession: RestTimerSession?
     @State private var showExercisePicker = false
     @State private var showCancelDialog = false
+    /// Non-nil while the report sheet is up; carries the captured context.
+    @State private var reportContext: ReportContext?
+    /// Non-nil while the per-exercise note editor is up (#136).
+    @State private var noteTarget: ExerciseNoteTarget?
     @FocusState private var focusedField: SetEntryFieldID?
     @Environment(AppState.self) private var appState
     @Environment(\.dependencies) private var dependencies
@@ -79,6 +94,12 @@ struct ActiveWorkoutView: View {
                 .toolbar { toolbarContent(scrollProxy: scrollProxy) }
                 .task { await vm.startWorkout() }
                 .sheet(isPresented: $showExercisePicker) { exercisePicker }
+                .sheet(item: $reportContext) { context in
+                    reportSheet(for: context)
+                }
+                .sheet(item: $noteTarget) { target in
+                    noteEditor(for: target)
+                }
                 .confirmationDialog(
                     "Exit workout?",
                     isPresented: $showCancelDialog
@@ -96,6 +117,7 @@ struct ActiveWorkoutView: View {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         restSession?.refreshFromClock()
+                        autoFinishIfIdle()
                     } else if phase == .background {
                         performAfterFlushingFocusedField {
                             Task {
@@ -108,7 +130,7 @@ struct ActiveWorkoutView: View {
                     restSession?.cancel()
                 }
         }
-        .selectAllTextOnBeginEditing()
+        .caretAtEndOnBeginEditing()
     }
 
     @ViewBuilder
@@ -201,8 +223,40 @@ struct ActiveWorkoutView: View {
             onRemoveSet: { set in
                 focusedField = nil
                 vm.removeSet(set, from: workoutExercise)
+            },
+            onReport: {
+                focusedField = nil
+                reportContext = .forExercise(workoutExercise, in: vm.workout)
+            },
+            onEditNotes: {
+                focusedField = nil
+                noteTarget = ExerciseNoteTarget(workoutExercise: workoutExercise)
+            },
+            onEditTemplateNote: {
+                focusedField = nil
+                noteTarget = ExerciseNoteTarget(
+                    workoutExercise: workoutExercise,
+                    kind: .template
+                )
+            },
+            plannedTarget: vm.plannedTarget(for: workoutExercise),
+            previousDrifted: { set in
+                vm.previousDriftedFromTarget(set, in: workoutExercise)
             }
         )
+    }
+
+    @ViewBuilder
+    private func reportSheet(for context: ReportContext) -> some View {
+        if let dependencies {
+            ReportSheetView(
+                vm: ReportSheetViewModel(
+                    context: context,
+                    repository: dependencies.exerciseReportRepository,
+                    photoStore: dependencies.reportPhotoStore
+                )
+            )
+        }
     }
 
     @ViewBuilder
@@ -251,6 +305,15 @@ struct ActiveWorkoutView: View {
                 }
             }
             .accessibilityIdentifier("cancelWorkout")
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                focusedField = nil
+                reportContext = .forWorkout(vm.workout)
+            } label: {
+                Label("Report a problem…", systemImage: "flag")
+            }
+            .accessibilityIdentifier("reportWorkout")
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
@@ -330,6 +393,48 @@ struct ActiveWorkoutView: View {
                 startOrRestartRest(duration: restDuration)
             } else {
                 restSession?.cancel()
+            }
+        }
+    }
+
+    private func noteEditor(for target: ExerciseNoteTarget) -> some View {
+        let workoutExercise = target.workoutExercise
+        return ExerciseNoteEditorView(
+            exerciseName: target.exerciseName,
+            initialNotes: target.kind == .exercise
+                ? workoutExercise.exercise?.notes
+                : workoutExercise.notes,
+            kind: target.kind
+        ) { notes in
+            switch target.kind {
+            case .exercise:
+                Task {
+                    await vm.updateExerciseNotes(workoutExercise, notes: notes)
+                }
+            case .template:
+                vm.updateTemplateNote(workoutExercise, notes: notes)
+            }
+        }
+    }
+
+    /// Coming back to a workout that has sat idle for hours finishes it and
+    /// shows the receipt over Home, which says it was automatic (report
+    /// 07B1AD96). Past the policy check this is the Finish button's path —
+    /// flush the focused field, then finish — so an ordinary return to the
+    /// app never touches the keyboard.
+    private func autoFinishIfIdle() {
+        guard
+            let workout = vm.workout,
+            WorkoutAutoFinishPolicy.window(for: workout, now: .now) != nil
+        else { return }
+        performAfterFlushingFocusedField {
+            restSession?.cancel()
+            Task {
+                guard await vm.autoFinishIfIdle() else { return }
+                if case .finished(let summary) = vm.completionState {
+                    appState.endWorkout(showing: summary)
+                    onDismiss?()
+                }
             }
         }
     }
@@ -442,9 +547,16 @@ struct ActiveWorkoutView: View {
     }
 }
 
-/// A single screen-level observer fixes append-on-edit for every formatted
-/// numeric field without introducing row-owned copies of model values.
-private struct SelectAllTextOnBeginEditing: ViewModifier {
+/// A single screen-level observer puts the caret at the end of every set
+/// field that begins editing — including fields focused by the keyboard bar's
+/// previous/next buttons, which no tap is involved in.
+///
+/// This used to select all, so typing replaced the value (40 → 45, not 4045).
+/// Report 8FF8C6D5 asked for the caret at the end instead, so one backspace
+/// corrects a digit; typing now appends, which is the trade that was chosen.
+/// The first tap's own caret placement is handled in `SetRowView`
+/// (`FocusWithCaretAtEnd`), because this hop loses the race with it on device.
+private struct CaretAtEndOnBeginEditing: ViewModifier {
     func body(content: Content) -> some View {
         content.onReceive(
             NotificationCenter.default.publisher(
@@ -461,14 +573,18 @@ private struct SelectAllTextOnBeginEditing: ViewModifier {
             }
             Task { @MainActor in
                 await Task.yield()
-                textField.selectAll(nil)
+                let end = textField.endOfDocument
+                textField.selectedTextRange = textField.textRange(
+                    from: end,
+                    to: end
+                )
             }
         }
     }
 }
 
 private extension View {
-    func selectAllTextOnBeginEditing() -> some View {
-        modifier(SelectAllTextOnBeginEditing())
+    func caretAtEndOnBeginEditing() -> some View {
+        modifier(CaretAtEndOnBeginEditing())
     }
 }

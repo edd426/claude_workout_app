@@ -5,12 +5,13 @@
   "type": "module",
   "main": "dist/src/server.js",
   "scripts": {
-    "build": "node scripts/build-catalog.mjs && tsc",
+    "build": "node scripts/build-catalog.mjs && tsc && node scripts/build-stamp.mjs",
     "watch": "tsc -w",
     "clean": "rm -rf dist",
     "pretest": "node scripts/build-catalog.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"

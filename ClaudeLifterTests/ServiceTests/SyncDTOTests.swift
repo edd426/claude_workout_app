@@ -178,10 +178,10 @@ struct SyncDTOTests {
         #expect(decoded.source == dto.source)
     }
 
-    // MARK: - Snapshot wire contract (v2)
+    // MARK: - Snapshot wire contract (v3)
 
-    @Test("SnapshotPushRequest always encodes all four collection keys, even when empty")
-    func snapshotRequestAlwaysHasFourKeys() throws {
+    @Test("SnapshotPushRequest always encodes every collection key, even when empty")
+    func snapshotRequestAlwaysHasFiveKeys() throws {
         // The server rejects a body with a missing collection key (400). An empty
         // array means "wipe that type" — so empty must still be on the wire.
         let request = SnapshotPushRequest(
@@ -193,12 +193,62 @@ struct SyncDTOTests {
         let json = try #require(
             try JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
-        #expect(json["schemaVersion"] as? Int == 2)
+        #expect(json["schemaVersion"] as? Int == 4)
         let snapshot = try #require(json["snapshot"] as? [String: Any])
         #expect(snapshot["workouts"] as? [Any] != nil)
         #expect(snapshot["templates"] as? [Any] != nil)
         #expect(snapshot["customExercises"] as? [Any] != nil)
         #expect(snapshot["bodyWeightEntries"] as? [Any] != nil)
+        #expect(snapshot["exerciseReports"] as? [Any] != nil)
+        #expect(snapshot["exerciseOverlays"] as? [Any] != nil)
+    }
+
+    @Test("A v2 snapshot without exerciseReports still decodes")
+    func snapshotDecodesWithoutReports() throws {
+        // Old local backup files and a mirror last written by a v2 client both
+        // lack the key. Failing the whole restore over it would be absurd.
+        let json = """
+        {
+          "workouts": [], "templates": [],
+          "customExercises": [], "bodyWeightEntries": []
+        }
+        """
+        let snapshot = try decoder.decode(
+            SyncSnapshot.self, from: Data(json.utf8)
+        )
+        #expect(snapshot.exerciseReports.isEmpty)
+    }
+
+    @Test("ExerciseReportDTO round-trips its captured context")
+    func reportDTORoundTrips() throws {
+        let dto = ExerciseReportDTO(
+            id: UUID(),
+            createdAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            category: "wrongExercise",
+            detail: "mislabeled machine",
+            exerciseExternalId: "Barbell_Bench_Press_-_Medium_Grip",
+            exerciseName: "Barbell Bench Press",
+            suggestedReplacement: "Hammer Strength Iso-Lateral Press",
+            workoutId: UUID(),
+            workoutExerciseId: UUID(),
+            templateId: UUID(),
+            contextSummary: "Push Day · 60kg×8 ✓",
+            status: "open",
+            resolution: nil,
+            appVersion: "1.4.0 (42)",
+            iosVersion: "26.5",
+            photoURL: nil,
+            lastModified: Date(timeIntervalSinceReferenceDate: 800_000_000)
+        )
+
+        let decoded = try decoder.decode(
+            ExerciseReportDTO.self, from: try encoder.encode(dto)
+        )
+
+        #expect(decoded.id == dto.id)
+        #expect(decoded.category == "wrongExercise")
+        #expect(decoded.exerciseExternalId == dto.exerciseExternalId)
+        #expect(decoded.contextSummary == dto.contextSummary)
     }
 
     @Test("SnapshotPushResponse decodes the contract-literal JSON")

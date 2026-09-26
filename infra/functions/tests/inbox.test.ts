@@ -113,13 +113,37 @@ class FakeInboxContainer {
 
   readonly items = { create: this.create, query: this.query };
 
+  readonly delete = jest.fn(
+    async (id: string, options?: { accessCondition?: { type: string; condition: string } }) => {
+      const existing = this.docs.get(id);
+      if (!existing) {
+        const err = new Error("NotFound") as Error & { code: string };
+        err.code = "NotFound";
+        throw err;
+      }
+      const etag = options?.accessCondition?.condition;
+      if (etag !== undefined && etag !== existing["_etag"]) {
+        const err = new Error("PreconditionFailed") as Error & { code: number };
+        err.code = 412;
+        throw err;
+      }
+      this.docs.delete(id);
+      return { resource: existing };
+    }
+  );
+
   readonly item = jest.fn((id: string, _partitionKey: string) => ({
     read: () => this.read(id),
     replace: (doc: Doc) => this.replace(id, doc),
+    delete: (options?: { accessCondition?: { type: string; condition: string } }) =>
+      this.delete(id, options),
   }));
 
   seed(...docs: Doc[]) {
-    for (const doc of docs) this.docs.set(doc["id"] as string, { ...doc });
+    for (const doc of docs) {
+      const etag = (doc["_etag"] as string) ?? `"etag-${doc["id"]}"`;
+      this.docs.set(doc["id"] as string, { ...doc, _etag: etag });
+    }
   }
 }
 
@@ -148,6 +172,16 @@ async function list(status?: string) {
 
 async function ack(body: unknown) {
   return findHandler("inboxAck")(makeRequest(body), new InvocationContext());
+}
+
+async function del(id: string, options?: { authenticated?: boolean }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const request = new (HttpRequest as any)(
+    undefined,
+    options?.authenticated === false ? {} : { "x-api-key": "test-key" },
+    { params: { id } }
+  );
+  return findHandler("inboxDelete")(request, new InvocationContext());
 }
 
 const templateExercise = {
@@ -190,6 +224,12 @@ describe("registration", () => {
     expect(registration.methods).toEqual(["POST"]);
     expect(registration.route).toBe("inbox/ack");
   });
+
+  test("DELETE registers on inbox/{id}", () => {
+    const registration = findRegistration("inboxDelete");
+    expect(registration.methods).toEqual(["DELETE"]);
+    expect(registration.route).toBe("inbox/{id}");
+  });
 });
 
 describe("authentication", () => {
@@ -204,6 +244,18 @@ describe("authentication", () => {
     });
 
     const response = await findHandler(name)(makeRequest(body), new InvocationContext());
+
+    expect(response.status).toBe(401);
+    expect(mockDatabase.container).not.toHaveBeenCalled();
+  });
+
+  test("delete rejects missing or invalid auth before touching Cosmos", async () => {
+    mockAuthenticate.mockReturnValue({
+      status: 401,
+      jsonBody: { error: "Unauthorized" },
+    });
+
+    const response = await del("operation-1", { authenticated: false });
 
     expect(response.status).toBe(401);
     expect(mockDatabase.container).not.toHaveBeenCalled();
@@ -830,5 +882,141 @@ describe("POST /api/inbox/ack — an illegal transition must not poison the batc
     expect(JSON.stringify([awaiting.jsonBody, applied.jsonBody])).not.toContain(
       '"failed"'
     );
+  });
+});
+
+describe("POST /api/inbox — resolveExerciseReport (#135)", () => {
+  test("enqueues a valid resolve without requiring approval", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: {
+        id: "8f2a0b0c-1111-4222-8333-444455556666",
+        status: "resolved",
+        resolution: "Filed as #140",
+      },
+    });
+
+    expect(isOk(response.status)).toBe(true);
+    const operation = response.jsonBody as Doc;
+    expect(operation["op"]).toBe("resolveExerciseReport");
+    // Closing out a report is trivially reversible; a second confirmation
+    // step would defeat the point of letting the AI clear the backlog.
+    expect(operation["requiresApproval"]).toBe(false);
+    expect(operation["status"]).toBe("pending");
+  });
+
+  test("accepts a resolve with no status (server default applies on the phone)", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666" },
+    });
+
+    expect(isOk(response.status)).toBe(true);
+  });
+
+  test("rejects a resolve without an id", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { resolution: "done" },
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  // Inverted by #146. Reopening was refused on the grounds that the inbox
+  // exists to close reports, not to reopen them behind the user. The case that
+  // changed it: #136 was acknowledged, its fix shipped, and the fix was inert
+  // — a real complaint had left the backlog with no way back.
+  test("accepts reopening a report that was closed too early", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666", status: "open" },
+    });
+
+    // A successful enqueue omits an explicit status; 200 is the default.
+    expect(response.status ?? 200).toBe(200);
+    expect((response.jsonBody as { op: string }).op).toBe("resolveExerciseReport");
+  });
+
+  test("still rejects a status outside the lifecycle", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666", status: "wontfix" },
+    });
+
+    expect(response.status).toBe(400);
+    expect((response.jsonBody as { error: string }).error).toContain("status");
+  });
+
+  test("rejects a non-string resolution", async () => {
+    const response = await enqueue({
+      op: "resolveExerciseReport",
+      payload: { id: "8f2a0b0c-1111-4222-8333-444455556666", resolution: 42 },
+    });
+
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("DELETE /api/inbox/{id} (#148)", () => {
+  test.each(["applied", "rejected", "failed"])(
+    "deletes a terminal %s operation",
+    async (status) => {
+      inbox.seed(pendingOperation({ status, appliedAt: undefined, error: undefined }));
+
+      const response = await del("operation-1");
+
+      expect(response.status).toBe(204);
+      expect(inbox.docs.has("operation-1")).toBe(false);
+      expect(inbox.delete).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test("re-reads the operation before deleting and uses its etag conditionally", async () => {
+    inbox.seed(pendingOperation({ status: "failed", error: "boom" }));
+
+    await del("operation-1");
+
+    expect(inbox.read).toHaveBeenCalledTimes(1);
+    expect(inbox.delete).toHaveBeenCalledWith("operation-1", {
+      accessCondition: { type: "IfMatch", condition: '"etag-operation-1"' },
+    });
+  });
+
+  test.each(["pending", "awaitingApproval"])(
+    "refuses to delete a %s operation the phone may still fetch",
+    async (status) => {
+      inbox.seed(pendingOperation({ status }));
+
+      const response = await del("operation-1");
+
+      expect(response.status).toBe(409);
+      expect((response.jsonBody as { error: string }).error).toMatch(
+        new RegExp(status)
+      );
+      expect(inbox.docs.has("operation-1")).toBe(true);
+      expect(inbox.delete).not.toHaveBeenCalled();
+    }
+  );
+
+  test("an unknown id returns 404 without attempting a delete", async () => {
+    const response = await del("does-not-exist");
+
+    expect(response.status).toBe(404);
+    expect(inbox.delete).not.toHaveBeenCalled();
+  });
+
+  test("a concurrent status change surfaces as a 409, not a 500", async () => {
+    inbox.seed(pendingOperation({ status: "failed", error: "boom" }));
+    inbox.delete.mockImplementationOnce(async () => {
+      const err = new Error("PreconditionFailed") as Error & { code: number };
+      err.code = 412;
+      throw err;
+    });
+
+    const response = await del("operation-1");
+
+    expect(response.status).toBe(409);
+    expect(inbox.docs.has("operation-1")).toBe(true);
   });
 });

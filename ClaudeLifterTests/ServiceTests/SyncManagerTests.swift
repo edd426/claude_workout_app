@@ -14,6 +14,7 @@ private struct SyncTestEnv {
     let templateRepo: SwiftDataTemplateRepository
     let exerciseRepo: SwiftDataExerciseRepository
     let bodyWeightRepo: SwiftDataBodyWeightRepository
+    let reportRepo: SwiftDataExerciseReportRepository
     let inboxApplier: InboxApplier
     let network: MockNetworkService
     let settings: SettingsManager
@@ -29,9 +30,11 @@ private struct SyncTestEnv {
         templateRepo = SwiftDataTemplateRepository(context: context)
         exerciseRepo = SwiftDataExerciseRepository(context: context)
         bodyWeightRepo = SwiftDataBodyWeightRepository(context: context)
+        reportRepo = SwiftDataExerciseReportRepository(context: context)
         inboxApplier = InboxApplier(
             templateRepository: templateRepo,
-            exerciseRepository: exerciseRepo
+            exerciseRepository: exerciseRepo,
+            reportRepository: reportRepo
         )
         network = MockNetworkService()
         settings = SettingsManager(
@@ -44,6 +47,7 @@ private struct SyncTestEnv {
             templateRepository: templateRepo,
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
+            exerciseReportRepository: reportRepo,
             networkService: network,
             settings: settings,
             inboxApplier: inboxApplier
@@ -107,8 +111,8 @@ private func runAckValidationScenario(
 @Suite("SyncManager Snapshot Push")
 @MainActor
 struct SyncManagerSnapshotPushTests {
-    @Test("snapshot push serializes full state: all four types, nothing else")
-    func snapshotContainsAllFourTypesAndNothingElse() async throws {
+    @Test("snapshot push serializes full state: every mirrored type, nothing else")
+    func snapshotContainsAllFiveTypesAndNothingElse() async throws {
         // Arrange — one of everything, including types that must NOT sync
         let env = try SyncTestEnv()
         let custom = TestFixtures.makeExercise(name: "My Cable Fly", isCustom: true)
@@ -118,6 +122,7 @@ struct SyncManagerSnapshotPushTests {
         env.context.insert(Workout(name: "Push Day", startedAt: .now, syncStatus: .pending))
         env.context.insert(WorkoutTemplate(name: "Push Template"))
         env.context.insert(BodyWeightEntry(weightKg: 82.5))
+        env.context.insert(ExerciseReport(category: .bug, detail: "timer double-fired"))
         env.context.insert(TestFixtures.makeChatMessage(content: "not synced"))
         env.context.insert(TestFixtures.makeInsight(content: "not synced"))
         env.context.insert(TestFixtures.makeTrainingPreference(key: "style", value: "not synced"))
@@ -127,14 +132,15 @@ struct SyncManagerSnapshotPushTests {
         // Act
         try await env.manager.pushSnapshot()
 
-        // Assert — request carries exactly the four mirrored collections
+        // Assert — request carries exactly the mirrored collections
         let request = try #require(env.network.lastSnapshotRequest)
-        #expect(request.schemaVersion == 2)
+        #expect(request.schemaVersion == 4)
         #expect(request.snapshot.workouts.count == 1)
         #expect(request.snapshot.templates.count == 1)
         #expect(request.snapshot.customExercises.count == 1)
         #expect(request.snapshot.customExercises.first?.name == "My Cable Fly")
         #expect(request.snapshot.bodyWeightEntries.count == 1)
+        #expect(request.snapshot.exerciseReports.count == 1)
     }
 
     @Test("snapshot is full state even when only some records are pending")
@@ -521,6 +527,7 @@ struct SyncIfNeededTests {
             templateRepository: env.templateRepo,
             exerciseRepository: env.exerciseRepo,
             bodyWeightRepository: env.bodyWeightRepo,
+            exerciseReportRepository: env.reportRepo,
             networkService: env.network,
             settings: reloadedSettings,
             inboxApplier: env.inboxApplier
@@ -863,11 +870,13 @@ struct SyncStateTests {
             templateRepository: SwiftDataTemplateRepository(context: context),
             exerciseRepository: SwiftDataExerciseRepository(context: context),
             bodyWeightRepository: SwiftDataBodyWeightRepository(context: context),
+            exerciseReportRepository: SwiftDataExerciseReportRepository(context: context),
             networkService: MockNetworkService(),
             settings: settings,
             inboxApplier: InboxApplier(
                 templateRepository: SwiftDataTemplateRepository(context: context),
-                exerciseRepository: SwiftDataExerciseRepository(context: context)
+                exerciseRepository: SwiftDataExerciseRepository(context: context),
+                reportRepository: SwiftDataExerciseReportRepository(context: context)
             )
         )
         #expect(manager.lastRevision == 17)
@@ -914,5 +923,335 @@ struct SyncStateTests {
         if case .error = env.manager.state {} else {
             Issue.record("expected .error, got \(env.manager.state)")
         }
+    }
+}
+
+@Suite("SyncManager — exercise reports in the snapshot (#135)")
+@MainActor
+struct SyncManagerReportTests {
+
+    @Test("Push carries reports and marks them synced")
+    func pushIncludesReports() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        let report = ExerciseReport(
+            category: .wrongExercise,
+            detail: "Mislabeled machine",
+            exerciseExternalId: "Barbell_Bench_Press_-_Medium_Grip"
+        )
+        try await env.reportRepo.save(report)
+        env.network.pushSnapshotResult = SnapshotPushResponse(
+            revision: 3,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            counts: [:]
+        )
+
+        // Act
+        try await env.manager.pushSnapshot()
+
+        // Assert
+        let sent = try #require(env.network.lastSnapshotRequest)
+        #expect(sent.snapshot.exerciseReports.count == 1)
+        #expect(sent.snapshot.exerciseReports.first?.category == "wrongExercise")
+        #expect(sent.snapshot.exerciseReports.first?.detail == "Mislabeled machine")
+        #expect(report.syncStatus == .synced)
+    }
+
+    @Test("A pending report alone is enough to trigger a push")
+    func pendingReportTriggersPush() async throws {
+        let env = try SyncTestEnv()
+        try await env.reportRepo.save(
+            ExerciseReport(category: .bug, detail: "timer double-fired")
+        )
+        env.network.fetchInboxResult = InboxListResponse(operations: [])
+        env.network.pushSnapshotResult = SnapshotPushResponse(
+            revision: 1,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            counts: [:]
+        )
+
+        await env.manager.syncIfNeeded()
+
+        #expect(env.network.pushSnapshotCallCount == 1)
+    }
+
+    @Test("Restore replaces local reports with the mirror's")
+    func restoreReplacesReports() async throws {
+        // Arrange
+        let env = try SyncTestEnv()
+        try await env.reportRepo.save(
+            ExerciseReport(category: .bug, detail: "doomed local report")
+        )
+        let mirrored = ExerciseReportDTO(
+            id: UUID(),
+            createdAt: Date(timeIntervalSinceReferenceDate: 795_000_000),
+            category: "swapRequest",
+            detail: "from the mirror",
+            exerciseExternalId: "squat",
+            exerciseName: "Squat",
+            suggestedReplacement: "Leg Press",
+            workoutId: nil,
+            workoutExerciseId: nil,
+            templateId: nil,
+            contextSummary: nil,
+            status: "acknowledged",
+            resolution: "looking into it",
+            appVersion: "1.4.0 (42)",
+            iosVersion: "26.5",
+            photoURL: nil,
+            lastModified: Date(timeIntervalSinceReferenceDate: 795_000_000)
+        )
+        env.network.fetchSnapshotResult = SnapshotFetchResponse(
+            revision: 9,
+            serverTime: Date(timeIntervalSinceReferenceDate: 795_000_000),
+            snapshot: SyncSnapshot(
+                workouts: [], templates: [], customExercises: [],
+                bodyWeightEntries: [], exerciseReports: [mirrored]
+            )
+        )
+
+        // Act
+        let summary = try await env.manager.restoreFromSnapshot()
+
+        // Assert
+        #expect(summary.exerciseReports == 1)
+        let restored = try await env.reportRepo.fetchAll()
+        #expect(restored.count == 1)
+        #expect(restored.first?.detail == "from the mirror")
+        #expect(restored.first?.status == .acknowledged)
+        #expect(restored.first?.syncStatus == .synced)
+    }
+}
+
+@Suite("SyncManager — custom exercises trigger a push (#104)")
+@MainActor
+struct SyncManagerCustomExerciseTriggerTests {
+
+    @Test("A custom exercise created through the UI is enough to trigger a push")
+    func customExerciseTriggersPush() async throws {
+        // Arrange — nothing else is pending, which is exactly the case that
+        // used to leave a custom exercise stranded indefinitely.
+        let env = try SyncTestEnv()
+        let repository = SwiftDataExerciseRepository(
+            context: env.context,
+            onCustomExerciseChanged: { env.settings.markSnapshotDirty() }
+        )
+        try await repository.save(
+            Exercise(name: "Cable Katana Extension", isCustom: true)
+        )
+        env.network.fetchInboxResult = InboxListResponse(operations: [])
+        env.network.pushSnapshotResult = SnapshotPushResponse(
+            revision: 1,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            counts: [:]
+        )
+
+        // Act
+        await env.manager.syncIfNeeded()
+
+        // Assert
+        #expect(env.network.pushSnapshotCallCount == 1)
+        let sent = try #require(env.network.lastSnapshotRequest)
+        #expect(sent.snapshot.customExercises.count == 1)
+        #expect(env.settings.isSnapshotDirty == false)
+    }
+
+    @Test("A custom exercise created mid-push is not silently marked clean")
+    func customExerciseCreatedDuringPushSurvives() async throws {
+        // The main actor is reentrant: pushSnapshot serializes, awaits, then
+        // clears. A create landing inside that await was never in the payload
+        // and used to have its only signal wiped by the clear.
+        let env = try SyncTestEnv()
+        let repository = SwiftDataExerciseRepository(
+            context: env.context,
+            onCustomExerciseChanged: { env.settings.markSnapshotDirty() }
+        )
+        env.settings.markSnapshotDirty()
+        env.network.pushSnapshotResult = SnapshotPushResponse(
+            revision: 1,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            counts: [:]
+        )
+        env.network.onPushSnapshot = {
+            env.settings.markSnapshotDirty()
+        }
+
+        // Act
+        try await env.manager.pushSnapshot()
+
+        // Assert — still dirty, so the next trigger picks the new exercise up.
+        #expect(env.settings.isSnapshotDirty == true)
+        _ = repository
+    }
+}
+
+// MARK: - Bundled-exercise overlays (issue #140)
+
+/// Notes and photos the user attaches to *bundled* exercises never reached the
+/// mirror: only `isCustom` exercises were pushed. A machine setting typed at
+/// the gym survived exactly as long as the install did.
+@Suite("Snapshot sync — exercise overlays")
+@MainActor
+struct SyncManagerOverlayTests {
+
+    private func makeOverlayPushResponse() -> SnapshotPushResponse {
+        makePushResponse()
+    }
+
+    private func makeOverlayFetchResponse(
+        overlays: [ExerciseOverlayDTO]
+    ) -> SnapshotFetchResponse {
+        SnapshotFetchResponse(
+            revision: 3,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            snapshot: SyncSnapshot(
+                workouts: [],
+                templates: [],
+                customExercises: [],
+                bodyWeightEntries: [],
+                exerciseReports: [],
+                exerciseOverlays: overlays
+            )
+        )
+    }
+
+    private func seedBundled(
+        _ env: SyncTestEnv,
+        externalId: String,
+        notes: String? = nil,
+        photoURL: String? = nil
+    ) throws -> Exercise {
+        let exercise = Exercise(
+            name: "Leg Curl",
+            isCustom: false,
+            externalId: externalId,
+            notes: notes,
+            photoURL: photoURL
+        )
+        env.context.insert(exercise)
+        try env.context.save()
+        return exercise
+    }
+
+    @Test("A bundled exercise carrying a note is pushed as an overlay")
+    func bundledNoteIsPushed() async throws {
+        let env = try SyncTestEnv()
+        _ = try seedBundled(env, externalId: "Leg_Curl", notes: "pin 7, seat 4")
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        let overlays = try #require(env.network.lastSnapshotRequest?.snapshot.exerciseOverlays)
+        #expect(overlays.count == 1)
+        #expect(overlays.first?.id == "Leg_Curl")
+        #expect(overlays.first?.notes == "pin 7, seat 4")
+    }
+
+    @Test("A bundled exercise with no user data is not pushed")
+    func cleanBundledExerciseIsOmitted() async throws {
+        let env = try SyncTestEnv()
+        _ = try seedBundled(env, externalId: "Barbell_Squat")
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.lastSnapshotRequest?.snapshot.exerciseOverlays.isEmpty == true)
+    }
+
+    @Test("An overlay is keyed by externalId, never the local UUID")
+    func overlayKeyedByExternalId() async throws {
+        let env = try SyncTestEnv()
+        let exercise = try seedBundled(env, externalId: "Leg_Curl", notes: "pin 7")
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        let id = env.network.lastSnapshotRequest?.snapshot.exerciseOverlays.first?.id
+        #expect(id == "Leg_Curl")
+        #expect(id != exercise.id.uuidString)
+    }
+
+    @Test("A bundled exercise with no externalId cannot be keyed, so it is skipped")
+    func missingExternalIdIsSkipped() async throws {
+        let env = try SyncTestEnv()
+        let exercise = Exercise(name: "Mystery Machine")
+        exercise.isCustom = false
+        exercise.externalId = nil
+        exercise.notes = "seat 3"
+        env.context.insert(exercise)
+        try env.context.save()
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.lastSnapshotRequest?.snapshot.exerciseOverlays.isEmpty == true)
+    }
+
+    @Test("The push declares schemaVersion 4")
+    func pushDeclaresV4() async throws {
+        let env = try SyncTestEnv()
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.lastSnapshotRequest?.schemaVersion == 4)
+    }
+
+    /// The Functions app deploys separately from the phone, and this time the
+    /// phone shipped first. A v4 push to a server that only knows v3 must not
+    /// break sync outright — it degrades, so install order stops mattering.
+    @Test("A server that rejects v4 gets a v3 push instead of a failed sync")
+    func downgradesToV3WhenServerRejectsV4() async throws {
+        let env = try SyncTestEnv()
+        _ = try seedBundled(env, externalId: "Leg_Curl", notes: "pin 7")
+        env.network.pushSnapshotErrorQueue = [SyncError.serverError(400), nil]
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.snapshotRequests.count == 2)
+        #expect(env.network.snapshotRequests.first?.schemaVersion == 4)
+        #expect(env.network.snapshotRequests.last?.schemaVersion == 3)
+    }
+
+    @Test("A non-400 failure is not retried at a lower version")
+    func serverErrorIsNotDowngraded() async throws {
+        let env = try SyncTestEnv()
+        env.network.pushSnapshotErrorQueue = [SyncError.serverError(500), nil]
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        await #expect(throws: SyncError.self) {
+            try await env.manager.pushSnapshot()
+        }
+        #expect(env.network.snapshotRequests.count == 1)
+    }
+
+    @Test("Restoring applies an overlay onto the matching bundled exercise")
+    func restoreAppliesOverlay() async throws {
+        let env = try SyncTestEnv()
+        let exercise = try seedBundled(env, externalId: "Leg_Curl")
+        env.network.fetchSnapshotResult = makeOverlayFetchResponse(
+            overlays: [
+                ExerciseOverlayDTO(id: "Leg_Curl", notes: "pin 7", photoURL: nil)
+            ]
+        )
+
+        _ = try await env.manager.restoreFromSnapshot()
+
+        #expect(exercise.notes == "pin 7")
+    }
+
+    @Test("An overlay for an exercise that is not installed is ignored, not an error")
+    func unknownOverlayIsIgnored() async throws {
+        let env = try SyncTestEnv()
+        env.network.fetchSnapshotResult = makeOverlayFetchResponse(
+            overlays: [
+                ExerciseOverlayDTO(id: "Not_Installed", notes: "x", photoURL: nil)
+            ]
+        )
+
+        let summary = try await env.manager.restoreFromSnapshot()
+
+        #expect(summary.exerciseOverlays == 0)
     }
 }

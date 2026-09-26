@@ -7,16 +7,26 @@ import { getStats, getCalendar } from "./tools/stats.js";
 import { health } from "./tools/health.js";
 import { searchExercises } from "./tools/catalog.js";
 import {
+  getReportPhoto,
+  listExerciseReports,
+  resolveExerciseReport,
+} from "./tools/reports.js";
+import {
   createCustomExercise,
   createProgram,
   createTemplate,
+  deleteInboxOperation,
   deleteTemplate,
   listPendingWrites,
   updateTemplate,
 } from "./tools/writes.js";
 
+export type ToolContent =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
 export interface ToolResult {
-  content: { type: "text"; text: string }[];
+  content: ToolContent[];
   isError?: boolean;
 }
 
@@ -237,6 +247,122 @@ export const TOOLS = [
     },
   },
   {
+    name: "list_exercise_reports",
+    description:
+      "Read the complaint backlog filed from the app: mislabeled exercises, " +
+      "swap requests, app bugs, bad data. Each report carries the context " +
+      "captured when it was filed (exercise externalId, workout, set state, " +
+      "app version). Defaults to everything not yet resolved. A non-null " +
+      "photoURL means a photo is attached; view it with get_report_photo.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["open", "acknowledged", "resolved", "all"],
+          description: "Defaults to open + acknowledged (the live backlog)",
+        },
+        category: {
+          type: "string",
+          enum: [
+            "bug",
+            "swapRequest",
+            "wrongExercise",
+            "dataError",
+            "formOrSetup",
+            "other",
+          ],
+        },
+        exerciseExternalId: {
+          type: "string",
+          description: "Filter to reports about one exercise",
+        },
+        limit: {
+          type: "number",
+          description: "Max results (default: 100, capped at 500)",
+        },
+      },
+    },
+  },
+  {
+    name: "get_report_photo",
+    description:
+      "View the photo attached to an exercise report — a screenshot of a " +
+      "bug, or a picture of the machine a report is about. Returns a short " +
+      "description of the report and the photo itself. A report whose " +
+      "photoURL is null has no photo, or one that has not uploaded yet: the " +
+      "phone uploads on its next sync with connectivity, and the gym is " +
+      "often offline.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: {
+          type: "string",
+          description: "Report UUID, from list_exercise_reports",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "resolve_exercise_report",
+    description:
+      "Set a report's status, so the backlog reflects reality. Use " +
+      "'acknowledged' when the work is known but not done (an issue was " +
+      "filed, or a fix is written but not installed), 'resolved' when it is " +
+      "finished, and 'open' to reopen one that was closed too early — a fix " +
+      "that turns out not to work must be able to come back. Pass 'ids' to " +
+      "answer several at once. Enqueues inbox operations: the change lands " +
+      "when the phone next syncs.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Report UUID. Use this or ids." },
+        ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Several report UUIDs, all set to the same status. Every id is " +
+            "validated before any is enqueued.",
+        },
+        status: {
+          type: "string",
+          enum: ["resolved", "acknowledged", "open"],
+          description: "Defaults to resolved",
+        },
+        resolution: {
+          type: "string",
+          description: "What was done — shown next to the report in the app",
+        },
+      },
+    },
+  },
+  {
+    name: "delete_inbox_operation",
+    description:
+      "Permanently delete one or more terminal inbox operations (applied, " +
+      "rejected, or failed) so the backlog seen by list_pending_writes stops " +
+      "growing. Refused with an error for pending/awaitingApproval operations " +
+      "— the phone may not have fetched those yet, and deleting unseen work " +
+      "would make it disappear silently. Pass 'ids' to clear several at once.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: {
+          type: "string",
+          description: "Inbox operation UUID. Use this or ids.",
+        },
+        ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Several inbox operation UUIDs. Every id is validated before " +
+            "any is deleted.",
+        },
+      },
+    },
+  },
+  {
     name: "list_pending_writes",
     description:
       "List inbox operations by status, including failures and their errors",
@@ -261,6 +387,24 @@ export const TOOLS = [
 
 function textResult(value: unknown): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
+}
+
+/** Prose for the model, sent as-is rather than JSON-quoted. */
+function messageResult(text: string): ToolResult {
+  return { content: [{ type: "text", text }] };
+}
+
+/** A caption followed by the image it describes. */
+function imageResult(
+  caption: string,
+  image: { data: string; mimeType: string }
+): ToolResult {
+  return {
+    content: [
+      { type: "text", text: caption },
+      { type: "image", data: image.data, mimeType: image.mimeType },
+    ],
+  };
 }
 
 function errorResult(message: string): ToolResult {
@@ -372,12 +516,35 @@ export async function handleToolCall(
       case "create_custom_exercise":
         return textResult(await createCustomExercise(args));
 
+      case "list_exercise_reports":
+        return textResult(
+          await listExerciseReports({
+            status: optionalString(args, "status"),
+            category: optionalString(args, "category"),
+            exerciseExternalId: optionalString(args, "exerciseExternalId"),
+            limit: optionalNumber(args, "limit"),
+          })
+        );
+
+      case "get_report_photo": {
+        const photo = await getReportPhoto(requireString(args, "id"));
+        return photo.image
+          ? imageResult(photo.caption, photo.image)
+          : messageResult(photo.caption);
+      }
+
+      case "resolve_exercise_report":
+        return textResult(await resolveExerciseReport(args));
+
       case "list_pending_writes":
         return textResult(
           await listPendingWrites({
             status: optionalString(args, "status"),
           })
         );
+
+      case "delete_inbox_operation":
+        return textResult(await deleteInboxOperation(args));
 
       default:
         return errorResult(`Unknown tool: ${name}`);

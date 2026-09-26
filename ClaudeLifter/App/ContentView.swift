@@ -48,7 +48,8 @@ struct ContentView: View {
                     settings: dependencies.settings,
                     appState: appState,
                     autoFillService: dependencies.autoFillService,
-                    prDetectionService: dependencies.prDetectionService
+                    prDetectionService: dependencies.prDetectionService,
+                    baselineRepository: dependencies.baselineRepository
                 )
             }
         }

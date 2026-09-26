@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "../shared/http.js";
+import { apiDelete, apiGet, apiPost } from "../shared/http.js";
 import {
   resolveExerciseByExternalId,
   searchCatalog,
@@ -307,4 +307,52 @@ export async function listPendingWrites(options: {
     status: options.status,
   });
   return response.operations;
+}
+
+/**
+ * Deletes one or more terminal inbox operations (issue #148). The Functions
+ * API is the source of truth for what "terminal" means and refuses
+ * pending/awaitingApproval operations with 409 — this layer only validates
+ * ids and enforces all-or-nothing on the id list itself before making any
+ * request, exactly like `resolveExerciseReport`.
+ *
+ * Takes either `id` (deletes one) or `ids` (deletes several). A failure part
+ * way through a batch is surfaced immediately — batch-mates before the
+ * failing id have already been deleted server-side, and mates after it are
+ * never attempted, so the caller sees exactly what changed.
+ */
+export async function deleteInboxOperation(
+  args: unknown
+): Promise<{ deleted: string[] }> {
+  if (args === null || typeof args !== "object" || Array.isArray(args)) {
+    throw new Error("Arguments must be an object");
+  }
+  const input = args as Record<string, unknown>;
+
+  const rawId = input["id"];
+  const rawIds = input["ids"];
+  if (rawId !== undefined && rawIds !== undefined) {
+    throw new Error("Pass either id or ids, not both");
+  }
+
+  const isBatch = rawIds !== undefined;
+  if (isBatch && !Array.isArray(rawIds)) {
+    throw new Error("ids must be an array of inbox operation ids");
+  }
+  const ids = isBatch ? (rawIds as unknown[]) : [rawId];
+  if (ids.length === 0) {
+    throw new Error("ids must contain at least one inbox operation id");
+  }
+  for (const candidate of ids) {
+    if (typeof candidate !== "string" || candidate.trim().length === 0) {
+      throw new Error("id must be a non-empty string");
+    }
+  }
+
+  const deleted: string[] = [];
+  for (const id of ids as string[]) {
+    await apiDelete(`inbox/${id}`);
+    deleted.push(id);
+  }
+  return { deleted };
 }

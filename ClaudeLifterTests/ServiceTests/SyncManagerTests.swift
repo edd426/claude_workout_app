@@ -1255,3 +1255,103 @@ struct SyncManagerOverlayTests {
         #expect(summary.exerciseOverlays == 0)
     }
 }
+
+
+// MARK: - Batch approval decisions (#153)
+
+@Suite("SyncManager batch decisions")
+@MainActor
+struct SyncManagerBatchDecisionTests {
+    private func deleteApproval(id: String, template: WorkoutTemplate) -> InboxOperationDTO {
+        InboxOperationDTO(
+            id: id,
+            createdAt: "2026-09-26T06:00:00.000Z",
+            op: "deleteTemplate",
+            payload: .object([
+                "id": .string(template.id.uuidString),
+                "name": .string(template.name),
+            ]),
+            requiresApproval: true,
+            status: "awaitingApproval",
+            appliedAt: nil,
+            error: nil
+        )
+    }
+
+    private func ackResponse(_ statuses: [(String, InboxAckStatus)]) -> InboxAckResponse {
+        InboxAckResponse(
+            counts: InboxAckCounts(updated: statuses.count, unchanged: 0, notFound: 0, invalid: 0),
+            results: statuses.map {
+                InboxAckOperationResult(
+                    id: $0.0,
+                    requestedStatus: $0.1,
+                    resultingStatus: $0.1.rawValue,
+                    outcome: .updated,
+                    conflict: nil
+                )
+            }
+        )
+    }
+
+    @Test("three decisions are one ack request and one snapshot push")
+    func oneAckOnePush() async throws {
+        let env = try SyncTestEnv()
+        let first = TestFixtures.makeTemplate(name: "First")
+        let second = TestFixtures.makeTemplate(name: "Second")
+        let third = TestFixtures.makeTemplate(name: "Third")
+        for template in [first, second, third] {
+            env.context.insert(template)
+        }
+        try env.context.save()
+        let ops = [
+            deleteApproval(id: "op-1", template: first),
+            deleteApproval(id: "op-2", template: second),
+            deleteApproval(id: "op-3", template: third),
+        ]
+        env.network.awaitingApprovalInboxResult = InboxListResponse(operations: ops)
+        _ = try await env.manager.fetchPendingApprovals()
+        env.network.ackInboxResult = ackResponse([
+            ("op-1", .applied), ("op-2", .rejected), ("op-3", .applied),
+        ])
+        env.network.pushSnapshotResult = makePushResponse()
+
+        try await env.manager.decide([
+            InboxDecision(operation: ops[0], verdict: .approve),
+            InboxDecision(operation: ops[1], verdict: .decline),
+            InboxDecision(operation: ops[2], verdict: .approve),
+        ])
+
+        #expect(env.network.ackInboxCallCount == 1)
+        #expect(env.network.lastInboxAckRequest?.results.map(\.status) == [.applied, .rejected, .applied])
+        #expect(env.network.pushSnapshotCallCount == 1)
+        #expect(env.manager.pendingApprovals.isEmpty)
+        let remaining = try await env.templateRepo.fetchAll().map(\.name)
+        #expect(remaining == ["Second"])
+    }
+
+    @Test("declining everything acks once and pushes nothing")
+    func allDeclinedNoPush() async throws {
+        let env = try SyncTestEnv()
+        let first = TestFixtures.makeTemplate(name: "First")
+        env.context.insert(first)
+        try env.context.save()
+        let op = deleteApproval(id: "op-1", template: first)
+        env.network.ackInboxResult = ackResponse([("op-1", .rejected)])
+
+        try await env.manager.decide([InboxDecision(operation: op, verdict: .decline)])
+
+        #expect(env.network.ackInboxCallCount == 1)
+        #expect(env.network.pushSnapshotCallCount == 0)
+        #expect(try await env.templateRepo.fetchAll().count == 1)
+    }
+
+    @Test("an empty batch does nothing")
+    func emptyBatch() async throws {
+        let env = try SyncTestEnv()
+
+        try await env.manager.decide([])
+
+        #expect(env.network.ackInboxCallCount == 0)
+        #expect(env.network.pushSnapshotCallCount == 0)
+    }
+}

@@ -7,6 +7,7 @@ struct HomeView: View {
     @State private var vm: HomeViewModel?
     @State private var bodyWeightVM: BodyWeightViewModel?
     @State private var approvalVM: InboxApprovalViewModel?
+    @State private var showPendingChanges = false
     @State private var showTemplateEditor = false
     @State private var reportListVM: ReportListViewModel?
     @State private var showReports = false
@@ -83,7 +84,11 @@ struct HomeView: View {
             await reportListVM?.load()
             if approvalVM == nil {
                 approvalVM = InboxApprovalViewModel(
-                    manager: deps.syncManager
+                    manager: deps.syncManager,
+                    previewBuilder: InboxChangePreviewBuilder(
+                        templateRepository: deps.templateRepository,
+                        exerciseRepository: deps.exerciseRepository
+                    )
                 )
             }
             await approvalVM?.load()
@@ -146,6 +151,15 @@ struct HomeView: View {
                 )
             }
         }
+        .sheet(isPresented: $showPendingChanges) {
+            if let approvalVM {
+                NavigationStack {
+                    PendingChangesView(vm: approvalVM)
+                }
+                // One batch, one sync, after the user is done deciding (#153).
+                .onDisappear { Task { await approvalVM.commit() } }
+            }
+        }
         .sheet(isPresented: $showReports) {
             if let reportListVM {
                 NavigationStack {
@@ -185,18 +199,17 @@ struct HomeView: View {
                     onDiscard: { Task { await vm.discardResumableWorkout() } }
                 )
             }
-            if let approvalVM {
-                ForEach(approvalVM.approvals, id: \.id) { operation in
-                    InboxApprovalCard(
-                        operation: operation,
-                        onApprove: {
-                            Task { await approvalVM.approve(operation) }
-                        },
-                        onDecline: {
-                            Task { await approvalVM.decline(operation) }
+            if let approvalVM, !approvalVM.approvals.isEmpty {
+                PendingChangesCard(
+                    count: approvalVM.approvals.count,
+                    headlines: approvalVM.approvals.map { operation in
+                        guard let preview = approvalVM.preview(for: operation) else {
+                            return "Loading change…"
                         }
-                    )
-                }
+                        return "\(preview.title) — \(preview.summary)"
+                    },
+                    onReview: { showPendingChanges = true }
+                )
             }
             if let reportListVM {
                 OpenReportsCard(
@@ -467,100 +480,3 @@ struct HomeView: View {
     }
 }
 
-private struct InboxApprovalCard: View {
-    let operation: InboxOperationDTO
-    let onApprove: () -> Void
-    let onDecline: () -> Void
-
-    @State private var isReviewing = false
-
-    var body: some View {
-        cardContent
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(
-                .quaternary.opacity(0.5),
-                in: RoundedRectangle(cornerRadius: 12)
-            )
-            .padding(.horizontal)
-            .padding(.top, 8)
-            .confirmationDialog(
-                operation.approvalTitle,
-                isPresented: $isReviewing,
-                titleVisibility: .visible
-            ) {
-                approvalActions
-            } message: {
-                Text(operation.approvalDetail)
-            }
-    }
-
-    private var cardContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Approval required", systemImage: "checkmark.shield")
-                .font(.caption)
-                .foregroundStyle(BrandTheme.terracotta)
-            Text(operation.approvalTitle)
-                .font(.headline)
-            Text(operation.approvalDetail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button("Review Change") {
-                isReviewing = true
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(BrandTheme.terracotta)
-            .accessibilityIdentifier("reviewInboxApproval")
-        }
-    }
-
-    @ViewBuilder
-    private var approvalActions: some View {
-        Button(
-            operation.op == "deleteTemplate"
-                ? "Delete Template"
-                : "Approve Change",
-            role: operation.op == "deleteTemplate" ? .destructive : nil
-        ) {
-            onApprove()
-        }
-        Button("Decline") {
-            onDecline()
-        }
-        Button("Cancel", role: .cancel) {}
-    }
-}
-
-private extension InboxOperationDTO {
-    var approvalTitle: String {
-        switch op {
-        case "deleteTemplate":
-            let payload = try? payload.decode(DeleteTemplatePayload.self)
-            return "Delete “\(payload?.name ?? "template")”?"
-        case "updateTemplate":
-            let payload = try? payload.decode(UpdateTemplatePayload.self)
-            if let name = payload?.name {
-                return "Update “\(name)”?"
-            }
-            return "Update template?"
-        default:
-            return "Apply proposed change?"
-        }
-    }
-
-    var approvalDetail: String {
-        switch op {
-        case "deleteTemplate":
-            return "This removes the template from this phone and the next cloud snapshot."
-        case "updateTemplate":
-            let payload = try? payload.decode(UpdateTemplatePayload.self)
-            let count = payload?.exercises?.count
-            if let count {
-                return "This replaces the template details and its exercise list (\(count) exercise\(count == 1 ? "" : "s"))."
-            }
-            return "This changes the template details."
-        default:
-            return "Review this inbox operation before it changes local data."
-        }
-    }
-}

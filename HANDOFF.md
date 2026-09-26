@@ -1,3 +1,56 @@
+# ▶ START HERE — 2026-09-26: 1.7.0 (9) is INSTALLED, Functions DEPLOYED, PR #157 MERGED
+
+Branch state: everything is on **`main`** (`76e4042`, merge of PR #157; #145 shows
+as merged by the same commit). The cloud branch `claude/clever-mayer-sb25i3` and
+`feat/exercise-reports` are fully contained in main and can be deleted.
+
+What was verified on the Mac today, in order:
+
+- **Build** clean on the iPhone 13 Pro Max simulator. No compile fixes were needed
+  for the blind-written Swift.
+- **Swift unit suite: 832 tests, 104 suites, exit 0.** XCUITest 68/70; the two
+  failures (`ChatCoachTests.testSendButtonEnabledAfterTyping` keyboard focus,
+  `ExerciseLibraryTests.testSearchForExercise` dropped keystroke) are outside this
+  work and passed on an isolated rerun. `KeyboardDismissalTests` 7/7 including the
+  new caret-at-end test.
+- **Functions jest 230/230, MCP vitest 112/112** locally as well as in CI.
+- **Functions deployed** (`npm run clean && npm run build && func azure functionapp
+  publish func-workout-prod --typescript`, then `az functionapp restart`). Live
+  probe: `GET /api/images/sas?path=reports/{uuid}.jpg&mode=upload` → 200,
+  `other/x.jpg` → 400, health 200.
+- **1.7.0 (9) installed** via `devicectl` from a `generic/platform=iOS` build.
+  The first two installs timed out at "Enabling developer disk image services"
+  (`kAMDMobileImageMounterExistingTransferInProgress`): the phone is on iOS 26.6.2
+  and the DDI transfer over Wi-Fi takes a few minutes. A retry loop every 60s
+  succeeded on the third attempt. **Not yet confirmed by Evan**: the Settings
+  footer should read `1.7.0 (9)`.
+- **MCP `dist/` rebuilt** for `get_report_photo`; the Claude Code MCP client still
+  needs a restart to see the new tool.
+
+Workout-MCP chores from §5 below, all done 2026-09-26 and **queued as inbox
+operations** (they land on the next phone sync; two need approval on the phone):
+
+- `4905a7d0` **Lower B: Trap Bar Deadlift 3×5 → 3×10** — needs approval.
+- `8e0075a9` **Friday Pump: Hammer Curls note** now reads "Dumbbells, neutral grip…"
+  (the old note said "Replaces Barbell Curl", which read as an instruction) — needs approval.
+- `744C6C83` resolved with the per-exercise rest explanation.
+- Acknowledged against **#156**: `02384B15 F1F61A87 42C5E2AF 999E3289 A21CD30E 0974E343`.
+- Acknowledged as shipped-in-1.7.0, resolve after the §4 gym probes:
+  `07B1AD96 8FF8C6D5 31A4983B 2A40BB7C E7A4E5F7`.
+- Acknowledged pending approval: `0537E988 E26BBFAA`.
+
+Not done: the leverage-pulldown custom exercise (`0974E343`) waits on #156's photo
+inventory; `999E3289` / `A21CD30E` are not yet saved as training preferences.
+
+Local-Mac note: `main` had six stale local-only commits from the 1.1.0 era
+(`d28d660..a6e92ea`, all still on `feat/sol-prefill-notes-recentmax`); local main
+was reset to `origin/main`.
+
+Next: the §4 gym probes, then resolve the five shipped reports. After that the
+backlog is #153 (batch approval screen), #150, #154, #156.
+
+---
+
 # ▶ START HERE — picking this up on the Mac
 
 **Branch `claude/clever-mayer-sb25i3`, PR #157.** It was written in a Linux cloud

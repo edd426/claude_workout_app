@@ -46,8 +46,9 @@ Local-Mac note: `main` had six stale local-only commits from the 1.1.0 era
 (`d28d660..a6e92ea`, all still on `feat/sol-prefill-notes-recentmax`); local main
 was reset to `origin/main`.
 
-Next: the §4 gym probes, then resolve the five shipped reports. After that the
-backlog is #153 (batch approval screen), #150, #154, #156.
+Next: the §4 gym probes, then resolve the five shipped reports. After that,
+**#153 is the 1.8.0 headline** (Evan asked again on 2026-09-26: the approval card
+shows no diff), then #150, #154, #156.
 
 ---
 

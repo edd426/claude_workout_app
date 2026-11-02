@@ -121,6 +121,66 @@ claude mcp add workout \
 }
 ```
 
+## Remote server: the claude.ai connector (#162)
+
+The same tools are served over Streamable HTTP for claude.ai (web, desktop,
+mobile) from a Function App of their own:
+
+**Connector URL: `https://func-workout-mcp-prod.azurewebsites.net/mcp`**
+(claude.ai → Settings → Connectors → Add custom connector; no client ID or
+secret needed: the server registers claude.ai itself).
+
+```
+claude.ai ──HTTPS + Entra bearer token──▶ func-workout-mcp-prod (/mcp, OAuth proxy)
+                                                 │ HTTPS + x-api-key (server-side)
+                                                 ▼
+                                          func-workout-prod (the phone's API, unchanged)
+```
+
+- **Code**: `src/azure/functions.ts` (routes) over `src/remote/` (pure,
+  unit-tested: `auth.ts` token checks, `oauth.ts` proxy rules, `mcpHandler.ts`
+  the `/mcp` endpoint) and `src/serverFactory.ts`, which the stdio server uses
+  too, so both expose identical tools. Stateless: a fresh server per request,
+  JSON responses, no SSE.
+- **Infra**: `infra/modules/mcpFunctions.bicep`, deployed on its own: Flex
+  Consumption (Azure refuses new Linux Consumption apps in this resource
+  group), a dedicated storage account, logs to the existing `ai-workout-prod`.
+- **Entra app** "ClaudeLifter Workout MCP" (`infra/scripts/setup-mcp-entra-app.sh`,
+  run once): scope `api://<clientId>/workout.access`, v2 tokens.
+
+### Security model
+
+| Control | Where |
+|---|---|
+| Only Evan can sign in: single tenant, *assignment required*, one user assigned | Entra app |
+| Redirects only to Claude's two callbacks | Entra app (the real control) and the proxy (exact match) |
+| PKCE S256 required; the token proxy forwards only `authorization_code` and `refresh_token` | `oauth.ts` |
+| Bearer token verified against Entra's keys: RS256, issuer, audience, `tid`, `scp=workout.access` (rejects ID tokens) | `auth.ts` |
+| `ALLOWED_OIDS` allowlist; **unset admits nobody** | `auth.ts`, app setting |
+| 401 answers carry no reason; tokens and codes are never logged | `mcpHandler.ts`, `functions.ts` |
+| HTTPS only, TLS 1.2+, FTP disabled; the client secret and API key exist only as app settings and in the Keychain | Bicep |
+| Writes are still inbox operations you approve on the phone | unchanged |
+
+Known gap: the app holds the full-power `API_KEY`. A key scoped to the read and
+inbox routes would shrink the damage if it ever leaked (follow-up in #162).
+
+### Deploy
+
+```bash
+cd infra/mcp
+npm run deploy:remote            # build, test, Bicep, publish, smoke test
+npm run deploy:remote -- --code  # code only
+```
+
+`scripts/deploy-remote.sh` reads the API key from `func-workout-prod`'s settings
+and the Entra client id and secret from the Keychain (service
+`claudelifter-mcp`, accounts `entra-client-id` / `entra-client-secret`); it
+prints none of them. The secret expires **2027-11-02**: rotate with the command
+at the top of `setup-mcp-entra-app.sh`, then run a full deploy.
+
+The local Functions host (`func start`) needs Node 22; the dev Mac runs Node 26,
+which it refuses, so check routes against the deployed app instead.
+
 ## Backing API endpoints
 
 The Functions API endpoints backing these tools all require `x-api-key`

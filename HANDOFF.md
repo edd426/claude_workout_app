@@ -24,12 +24,19 @@ the 10 ideas. These are listed in the 2026-11-03 session reply. Track them in
 issues once picked.
 
 **Environment (verified 2026-11-03):**
-- Xcode was updated to **27.2** and the simulator runtimes were wiped: no
-  runtimes and no devices.
-- A generic iOS build succeeds.
-- The iOS 26.6 runtime is not downloadable; downloading 26.5. Recreate the
-  iPhone 13 Pro Max simulator once it lands, and run the baseline unit suite
-  before any change.
+- Xcode was updated to **27.2**, which wiped all simulator runtimes.
+- iOS 26.5 is reinstalled; 26.6 is not downloadable.
+- Simulators:
+  - `iPhone 13 Pro Max` (04C32A89…), main;
+  - `(A)` (5341EC4F…) and `(B)` (0B33E3B6…), one per agent.
+- Baseline on `release/1.9.0`: **858/858 unit tests pass**.
+
+**In flight:** two agents in `.claude/worktrees/`, branched from `release/1.9.0`.
+- A (`data-v5`): schema V5, models, repos, conversions, backup and sync for
+  #164 and #165.
+- B (`ui-body`): #152 and #111 (display), and #167.
+- Next, after A: the UI for #164 and #165, infra (snapshot acceptance plus MCP
+  read tools), and the Jefit import (#166).
 
 **Waiting on Evan's phone:**
 - 5 template updates (program v3: Mon Legs 1 … Fri Machines).

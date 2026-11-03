@@ -89,14 +89,45 @@ enum ClaudeLifterSchemaV4: VersionedSchema {
     }
 }
 
+/// V5 (issues #164, #165, and the template-alternatives swap): four NEW models
+/// and nothing else — `BodyMeasurement`, `Medication`, `MedicationDose`,
+/// `ExerciseAlternative`. Same shape as V4, for the same reason: with live
+/// types in these lists, a version can only differ by its model list.
+///
+/// `Medication.doses` ↔ `MedicationDose.medication` is a relationship, which
+/// is fine only because BOTH ends are new here. `ExerciseAlternative` points at
+/// its template exercise by plain UUID precisely because `TemplateExercise` is
+/// an existing model and must not gain a property or inverse.
+///
+/// Height is not a model: it lives in `SettingsManager.heightCm`.
+///
+/// V1–V4 above are IMMUTABLE history — never edit an existing version's list.
+enum ClaudeLifterSchemaV5: VersionedSchema {
+    static let versionIdentifier = Schema.Version(5, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [
+            Exercise.self, ExerciseTag.self, WorkoutSet.self,
+            WorkoutExercise.self, TemplateExercise.self, Workout.self,
+            WorkoutTemplate.self, AIChatMessage.self, ProactiveInsight.self,
+            TrainingPreference.self, PersonalRecord.self,
+            BodyWeightEntry.self, ExerciseReport.self,
+            WorkoutTemplateBaseline.self, WorkoutExerciseBaseline.self,
+            BodyMeasurement.self, Medication.self, MedicationDose.self,
+            ExerciseAlternative.self
+        ]
+    }
+}
+
 /// The schema version the app currently runs.
-typealias CurrentSchema = ClaudeLifterSchemaV4
+typealias CurrentSchema = ClaudeLifterSchemaV5
 
 enum ClaudeLifterMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [
             ClaudeLifterSchemaV1.self, ClaudeLifterSchemaV2.self,
-            ClaudeLifterSchemaV3.self, ClaudeLifterSchemaV4.self
+            ClaudeLifterSchemaV3.self, ClaudeLifterSchemaV4.self,
+            ClaudeLifterSchemaV5.self
         ]
     }
 
@@ -104,7 +135,7 @@ enum ClaudeLifterMigrationPlan: SchemaMigrationPlan {
     /// suffices. A schema change without a stage here fails container
     /// creation — which quarantines instead of wiping (issue #72).
     static var stages: [MigrationStage] {
-        [migrateV1toV2, migrateV2toV3, migrateV3toV4]
+        [migrateV1toV2, migrateV2toV3, migrateV3toV4, migrateV4toV5]
     }
 
     static let migrateV1toV2 = MigrationStage.lightweight(
@@ -125,5 +156,12 @@ enum ClaudeLifterMigrationPlan: SchemaMigrationPlan {
     static let migrateV3toV4 = MigrationStage.lightweight(
         fromVersion: ClaudeLifterSchemaV3.self,
         toVersion: ClaudeLifterSchemaV4.self
+    )
+
+    /// V4→V5 adds four new models and touches no existing one, so lightweight.
+    /// Verified against a real on-disk V4 store in `SchemaV5MigrationTests`.
+    static let migrateV4toV5 = MigrationStage.lightweight(
+        fromVersion: ClaudeLifterSchemaV4.self,
+        toVersion: ClaudeLifterSchemaV5.self
     )
 }

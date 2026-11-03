@@ -46,10 +46,23 @@ final class SwiftDataTemplateRepository: TemplateRepository {
             context.insert(exercise)
         }
         try context.save()
+        try removeOrphanedAlternatives()
     }
 
     func delete(_ template: WorkoutTemplate) async throws {
         context.delete(template)
         try context.save()
+        try removeOrphanedAlternatives()
+    }
+
+    /// `ExerciseAlternative` points at its template exercise by plain UUID
+    /// (`TemplateExercise` must not gain a property or inverse), so nothing
+    /// cascades to it. Any save or delete can drop a template exercise, so
+    /// both clean up — after the template's own save, so a failed save never
+    /// costs the user their alternatives.
+    private func removeOrphanedAlternatives() throws {
+        if try SwiftDataExerciseAlternativeRepository.removeOrphans(in: context) > 0 {
+            try context.save()
+        }
     }
 }

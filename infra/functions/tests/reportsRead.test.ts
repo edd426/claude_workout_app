@@ -89,6 +89,16 @@ describe("GET /api/reports", () => {
     expect(lastQuery().query).toContain("ORDER BY c.createdAt DESC");
   });
 
+  test("never serves the snapshot's content hash or Cosmos system fields", async () => {
+    mockFetchAll.mockResolvedValue({
+      resources: [{ ...sampleReport, mirrorContentHash: "a".repeat(64), _rid: "r", _ts: 1 }],
+    });
+
+    const res = await findHandler("reportsList")(makeRequest(), new InvocationContext());
+
+    expect((res.jsonBody as { reports: unknown[] }).reports).toStrictEqual([sampleReport]);
+  });
+
   test("defaults to everything not yet resolved, not just status=open", async () => {
     // Acknowledged reports are still outstanding work — dropping them would
     // make the default view lie about the size of the backlog.

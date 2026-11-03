@@ -297,7 +297,15 @@ describe("GET /api/body-measurements", () => {
 
   test("strips Cosmos system properties", async () => {
     mirrorV5();
-    const withSystem = { ...waist, _rid: "r", _self: "s", _etag: "e", _attachments: "a", _ts: 1 };
+    const withSystem = {
+      ...waist,
+      _rid: "r",
+      _self: "s",
+      _etag: "e",
+      _attachments: "a",
+      _ts: 1,
+      mirrorContentHash: "0".repeat(64),
+    };
     container("bodyMeasurements").queryResults.push([withSystem], [withSystem]);
     const res = await handler("bodyMeasurementsList")(makeRequest(), context);
     const body = res.jsonBody as { measurements: Doc[]; latestWaist: Doc };

@@ -15,7 +15,7 @@ import {
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
 import { toSummary } from "../shared/analytics";
-import { parseIsoDate, parseLimit, readItemOrNull } from "../shared/readHelpers";
+import { parseIsoDate, parseLimit, readItemOrNull, stripSystemProps } from "../shared/readHelpers";
 import { Workout } from "../shared/types";
 
 const DEFAULT_LIMIT = 50;
@@ -94,7 +94,7 @@ app.http("workoutsGet", {
       if (!workout) {
         return { status: 404, jsonBody: { error: `Workout not found: ${id}` } };
       }
-      return { jsonBody: workout };
+      return { jsonBody: stripSystemProps(workout) };
     } catch (error) {
       context.error("Workout read failed:", error);
       return { status: 500, jsonBody: { error: "Failed to read workout" } };

@@ -22,6 +22,7 @@
 import { app, HttpRequest, InvocationContext } from "@azure/functions";
 import { authenticate } from "../src/shared/auth";
 import { mockDatabase } from "./__mocks__/cosmos";
+import { contentHash } from "../src/shared/contentHash";
 import "../src/functions/syncSnapshot";
 
 const mockApp = app as unknown as { http: jest.Mock };
@@ -117,7 +118,15 @@ class FakeContainer {
     }
     const all = [...this.docs.values()];
     const idsOnly = /SELECT\s+(VALUE\s+)?c\.id\b/i.test(querySpec.query);
-    const results = idsOnly ? all.map((d) => ({ id: d["id"] })) : all;
+    // Mirror Cosmos projection: a property the doc lacks is omitted, not null.
+    const withHash = /c\.mirrorContentHash\b/.test(querySpec.query);
+    const results = idsOnly
+      ? all.map((d) => {
+          const row: Doc = { id: d["id"] };
+          if (withHash && d["mirrorContentHash"] !== undefined) row["mirrorContentHash"] = d["mirrorContentHash"];
+          return row;
+        })
+      : all;
     const pages = chunk(results, this.pageSize);
     let index = 0;
     return {
@@ -179,6 +188,14 @@ beforeEach(() => {
 function container(name: string): FakeContainer {
   if (!containers[name]) containers[name] = new FakeContainer();
   return containers[name];
+}
+
+/** A stored doc without the server-owned content hash: what the phone sent. */
+function stored(containerName: string, id: string): Doc | undefined {
+  const doc = container(containerName).docs.get(id);
+  if (!doc) return undefined;
+  const { mirrorContentHash: _hash, ...content } = doc;
+  return content;
 }
 
 function seedMeta(revision: number, serverTime = "2026-07-01T00:00:00.000Z") {
@@ -328,7 +345,7 @@ describe("POST reconciliation", () => {
 
     // End state is exactly the snapshot.
     expect(container("workouts").ids()).toEqual(["w1", "w2"]);
-    expect(container("workouts").docs.get("w1")).toEqual({ id: "w1", name: "fresh" });
+    expect(stored("workouts", "w1")).toEqual({ id: "w1", name: "fresh" });
     expect(container("templates").ids()).toEqual(["t1"]);
     expect(container("exercises").ids()).toEqual(["e1"]);
     expect(container("bodyWeightEntries").ids()).toEqual(["b1", "b2"]);
@@ -924,12 +941,10 @@ describe("schemaVersion 5 — v5 collections and heightCm", () => {
     );
 
     expect(isOk(res.status)).toBe(true);
-    expect(container("bodyMeasurements").docs.get(waist.id)).toEqual(waist);
-    expect(container("medications").docs.get(vial.id)).toEqual(vial);
-    expect(container("medicationDoses").docs.get(dose.id)).toEqual(dose);
-    expect(container("exerciseAlternatives").docs.get(alternative.id)).toEqual(
-      alternative
-    );
+    expect(stored("bodyMeasurements", waist.id)).toEqual(waist);
+    expect(stored("medications", vial.id)).toEqual(vial);
+    expect(stored("medicationDoses", dose.id)).toEqual(dose);
+    expect(stored("exerciseAlternatives", alternative.id)).toEqual(alternative);
   });
 
   test("a v5 push still reconciles every earlier collection", async () => {
@@ -1160,5 +1175,296 @@ describe("schemaVersion 5 — v5 collections and heightCm", () => {
     const res = await read();
 
     expect(snapshotOf(res)["bodyMeasurements"]).toEqual([waist]);
+  });
+});
+
+// ─── Scaling: write only what changed ────────────────────────────────────────
+// The Jefit import (#166) adds ~896 workouts, so every push carries ~950
+// docs. Upserting them all on every set edit would spend the free tier's
+// shared 1000 RU/s on rewriting identical documents. Each stored doc carries
+// `mirrorContentHash` (sha256 of its canonical JSON, Cosmos system fields
+// excluded); a push writes only new or changed docs. The response is exactly
+// as before: `counts` is still { upserted, deleted }, with `upserted` counting
+// every snapshot doc now in the mirror (written or already identical), and the
+// revision still counts successful pushes. Writes are asserted on the mock.
+describe("content hashing — unchanged docs are not rewritten", () => {
+  const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+  function workout(i: number, extra: Doc = {}): Doc {
+    return {
+      id: `W-${String(i).padStart(4, "0")}`,
+      name: `Session ${i}`,
+      startedAt: "2024-01-01T10:00:00.000Z",
+      lastModified: "2024-01-01T11:00:00.000Z",
+      exercises: [
+        {
+          id: `WE-${i}`,
+          order: 0,
+          exerciseName: "Bench",
+          sets: [{ id: `S-${i}`, order: 0, weight: 80, reps: 5, weightUnit: "kg" }],
+        },
+      ],
+      ...extra,
+    };
+  }
+
+  function history(count: number): Doc[] {
+    return Array.from({ length: count }, (_, i) => workout(i));
+  }
+
+  test("a first push writes every doc and stores a sha256 content hash on each", async () => {
+    const res = await push(pushBody({ workouts: [workout(1), workout(2)] }));
+
+    expect(isOk(res.status)).toBe(true);
+    expect(container("workouts").upsert).toHaveBeenCalledTimes(2);
+    for (const id of ["W-0001", "W-0002"]) {
+      expect(container("workouts").docs.get(id)?.["mirrorContentHash"]).toMatch(SHA256_HEX);
+    }
+    expect((res.jsonBody as { counts: Record<string, unknown> }).counts["workouts"]).toEqual({
+      upserted: 2,
+      deleted: 0,
+    });
+  });
+
+  test("re-pushing an identical snapshot writes nothing; counts and revision are as before", async () => {
+    const body = pushBody({ workouts: [workout(1), workout(2)], templates: [{ id: "t1" }] });
+    await push(body);
+    container("workouts").upsert.mockClear();
+    container("templates").upsert.mockClear();
+
+    const res = await push(body);
+
+    expect(isOk(res.status)).toBe(true);
+    expect(container("workouts").upsert).not.toHaveBeenCalled();
+    expect(container("templates").upsert).not.toHaveBeenCalled();
+    const resBody = res.jsonBody as PushResponseBody & { counts: Record<string, unknown> };
+    // Still counted as upserted (now in the mirror), as before this change.
+    expect(resBody.counts["workouts"]).toEqual({ upserted: 2, deleted: 0 });
+    expect(resBody.revision).toBe(2);
+    expect(container("syncMeta").docs.get("snapshot")).toEqual(
+      expect.objectContaining({ revision: 2, serverTime: resBody.serverTime })
+    );
+  });
+
+  test("a changed doc is rewritten; its unchanged neighbours are not", async () => {
+    await push(pushBody({ workouts: [workout(1), workout(2), workout(3)] }));
+    const before = container("workouts").docs.get("W-0002")?.["mirrorContentHash"];
+    container("workouts").upsert.mockClear();
+
+    const edited = workout(2, { notes: "felt strong", lastModified: "2024-01-02T09:00:00.000Z" });
+    const res = await push(pushBody({ workouts: [workout(1), edited, workout(3)] }));
+
+    expect(container("workouts").upsert).toHaveBeenCalledTimes(1);
+    expect(container("workouts").upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "W-0002", notes: "felt strong" })
+    );
+    expect(stored("workouts", "W-0002")).toEqual(edited);
+    expect(container("workouts").docs.get("W-0002")?.["mirrorContentHash"]).not.toBe(before);
+    const counts = (res.jsonBody as { counts: Record<string, unknown> }).counts;
+    expect(counts["workouts"]).toEqual({ upserted: 3, deleted: 0 });
+  });
+
+  test("a change deep inside a nested array is a change", async () => {
+    await push(pushBody({ workouts: [workout(1)] }));
+    container("workouts").upsert.mockClear();
+    const heavier = workout(1);
+    (heavier["exercises"] as Doc[])[0]["sets"] = [
+      { id: "S-1", order: 0, weight: 82.5, reps: 5, weightUnit: "kg" },
+    ];
+
+    await push(pushBody({ workouts: [heavier] }));
+
+    expect(container("workouts").upsert).toHaveBeenCalledTimes(1);
+  });
+
+  test("key order does not matter: the same content in another order is unchanged", async () => {
+    await push(pushBody({ workouts: [{ id: "w1", a: 1, b: { x: 1, y: [1, 2] } }] }));
+    container("workouts").upsert.mockClear();
+
+    await push(pushBody({ workouts: [{ b: { y: [1, 2], x: 1 }, a: 1, id: "w1" }] }));
+
+    expect(container("workouts").upsert).not.toHaveBeenCalled();
+  });
+
+  test("array order does matter", async () => {
+    await push(pushBody({ workouts: [{ id: "w1", tags: [1, 2] }] }));
+    container("workouts").upsert.mockClear();
+
+    await push(pushBody({ workouts: [{ id: "w1", tags: [2, 1] }] }));
+
+    expect(container("workouts").upsert).toHaveBeenCalledTimes(1);
+  });
+
+  test("a doc stored before hashing existed is rewritten once, then gains a hash", async () => {
+    // Exactly what the mirror holds on deploy day: the phone's content, no hash.
+    container("workouts").seed(workout(1), workout(2));
+
+    const first = await push(pushBody({ workouts: [workout(1), workout(2)] }));
+
+    expect(container("workouts").upsert).toHaveBeenCalledTimes(2);
+    expect(container("workouts").docs.get("W-0001")?.["mirrorContentHash"]).toMatch(SHA256_HEX);
+    expect((first.jsonBody as { counts: Record<string, unknown> }).counts["workouts"]).toEqual({
+      upserted: 2,
+      deleted: 0,
+    });
+
+    container("workouts").upsert.mockClear();
+    await push(pushBody({ workouts: [workout(1), workout(2)] }));
+    expect(container("workouts").upsert).not.toHaveBeenCalled();
+  });
+
+  test("delete-absent still works alongside skipped and rewritten docs", async () => {
+    await push(pushBody({ workouts: [workout(1), workout(2), workout(3)] }));
+    container("workouts").upsert.mockClear();
+
+    const res = await push(
+      pushBody({ workouts: [workout(1), workout(3, { notes: "x" }), workout(4)] })
+    );
+
+    expect(container("workouts").ids()).toEqual(["W-0001", "W-0003", "W-0004"]);
+    expect(container("workouts").upsert).toHaveBeenCalledTimes(2);
+    expect((res.jsonBody as { counts: Record<string, unknown> }).counts["workouts"]).toEqual({
+      upserted: 3,
+      deleted: 1,
+    });
+  });
+
+  test("reads each container once per push, projecting only id and the hash", async () => {
+    await push(pushBody({ workouts: [workout(1)] }));
+    container("workouts").query.mockClear();
+
+    await push(pushBody({ workouts: [workout(1)] }));
+
+    expect(container("workouts").query).toHaveBeenCalledTimes(1);
+    const [[spec]] = container("workouts").query.mock.calls as unknown as [[{ query: string }]];
+    expect(spec.query).toBe("SELECT c.id, c.mirrorContentHash FROM c");
+  });
+
+  test("the hash ignores Cosmos system fields and a client-supplied mirrorContentHash", async () => {
+    await push(pushBody({ workouts: [workout(1)] }));
+    const real = container("workouts").docs.get("W-0001")?.["mirrorContentHash"];
+    container("workouts").upsert.mockClear();
+
+    // Same content, decorated: still unchanged, so no write.
+    await push(
+      pushBody({ workouts: [{ ...workout(1), _rid: "r", _etag: "e", _ts: 9, mirrorContentHash: real }] })
+    );
+    expect(container("workouts").upsert).not.toHaveBeenCalled();
+
+    // A garbage hash on unchanged content is ignored, not stored.
+    await push(pushBody({ workouts: [{ ...workout(1), mirrorContentHash: "garbage" }] }));
+    expect(container("workouts").upsert).not.toHaveBeenCalled();
+    expect(container("workouts").docs.get("W-0001")?.["mirrorContentHash"]).toBe(real);
+
+    // A forged hash on different content cannot make the server skip it, and
+    // what gets stored is the server's own hash of the content.
+    const changed = { ...workout(1), name: "changed" };
+    await push(pushBody({ workouts: [{ ...changed, mirrorContentHash: real }] }));
+    expect(container("workouts").upsert).toHaveBeenCalledTimes(1);
+    expect(container("workouts").docs.get("W-0001")?.["mirrorContentHash"]).toBe(
+      contentHash(changed)
+    );
+    expect(contentHash(changed)).not.toBe(real);
+  });
+
+  test("the stored field has no leading underscore (Cosmos's system namespace)", async () => {
+    await push(pushBody({ workouts: [workout(1)] }));
+
+    const keys = Object.keys(container("workouts").docs.get("W-0001") ?? {});
+    expect(keys).toContain("mirrorContentHash");
+    expect(keys.filter((key) => key.startsWith("_"))).toEqual([]);
+  });
+
+  test("the GET never returns the server-owned hash", async () => {
+    await push(pushBody({ workouts: [workout(1)] }));
+
+    const res = await read();
+
+    expect((res.jsonBody as ReadResponseBody).snapshot.workouts).toEqual([workout(1)]);
+  });
+
+  test("a restore round trip (GET, then push the same docs back) writes nothing", async () => {
+    await push(pushBody({ workouts: history(5), templates: [{ id: "t1", name: "Push" }] }));
+    const mirror = (await read()).jsonBody as ReadResponseBody;
+    container("workouts").upsert.mockClear();
+    container("templates").upsert.mockClear();
+
+    await push(pushBody({ workouts: mirror.snapshot.workouts, templates: mirror.snapshot.templates }));
+
+    expect(container("workouts").upsert).not.toHaveBeenCalled();
+    expect(container("templates").upsert).not.toHaveBeenCalled();
+  });
+
+  test("a 900-workout history: one full write, then one write per edited workout", async () => {
+    const workouts = container("workouts");
+    workouts.pageSize = 100;
+    const big = history(900);
+
+    // Deploy day: the mirror already holds the history, without hashes.
+    workouts.seed(...big);
+    await push(pushBody({ workouts: big }));
+    expect(workouts.upsert).toHaveBeenCalledTimes(900);
+
+    // Every later sync after editing one set rewrites one doc, not 900.
+    workouts.upsert.mockClear();
+    const edited = big.map((doc, i) => (i === 417 ? workout(417, { notes: "edited" }) : doc));
+    const res = await push(pushBody({ workouts: edited }));
+    expect(workouts.upsert).toHaveBeenCalledTimes(1);
+    expect((res.jsonBody as { counts: Record<string, unknown> }).counts["workouts"]).toEqual({
+      upserted: 900,
+      deleted: 0,
+    });
+
+    // And a sync with nothing changed in that collection writes nothing.
+    workouts.upsert.mockClear();
+    await push(pushBody({ workouts: edited }));
+    expect(workouts.upsert).not.toHaveBeenCalled();
+  });
+
+  test("a throttled push (429 after the SDK's retries) is a retryable 500, never a 400", async () => {
+    // A 400 would make the phone step down a wire version; a 500 just retries.
+    seedMeta(3);
+    container("workouts").upsert.mockImplementationOnce(async () => {
+      throw { code: 429, message: "Request rate is large" };
+    });
+
+    const res = await push(pushBody({ workouts: [workout(1), workout(2)] }));
+
+    expect(res.status).toBe(500);
+    expect(container("syncMeta").docs.get("snapshot")).toEqual(
+      expect.objectContaining({ revision: 3 })
+    );
+  });
+
+  test("a throttled scan is a 500 too", async () => {
+    container("workouts").query.mockImplementationOnce(() => ({
+      hasMoreResults: () => true,
+      fetchNext: async () => {
+        throw { code: 429 };
+      },
+      fetchAll: async () => {
+        throw { code: 429 };
+      },
+    }));
+
+    const res = await push(pushBody({ workouts: [workout(1)] }));
+
+    expect(res.status).toBe(500);
+  });
+
+  test("progress survives a throttled push: the retry writes only what is still missing", async () => {
+    const workouts = container("workouts");
+    workouts.failUpsertIds.add("W-0002");
+    const failed = await push(pushBody({ workouts: [workout(1), workout(2), workout(3)] }));
+    expect(failed.status).toBe(500);
+
+    workouts.failUpsertIds.clear();
+    workouts.upsert.mockClear();
+    const retry = await push(pushBody({ workouts: [workout(1), workout(2), workout(3)] }));
+
+    expect(isOk(retry.status)).toBe(true);
+    expect(workouts.upsert).toHaveBeenCalledTimes(1);
+    expect(workouts.upsert).toHaveBeenCalledWith(expect.objectContaining({ id: "W-0002" }));
+    expect((retry.jsonBody as PushResponseBody).revision).toBe(1);
   });
 });

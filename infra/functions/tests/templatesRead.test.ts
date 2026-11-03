@@ -166,6 +166,29 @@ describe("GET /api/templates/{id} — detail", () => {
     expect(res.jsonBody).toEqual(sampleTemplate);
   });
 
+  test("never serves the snapshot's content hash or Cosmos system fields", async () => {
+    mockItemRead.mockResolvedValue({
+      resource: { ...sampleTemplate, mirrorContentHash: "a".repeat(64), _rid: "r", _ts: 1, _etag: "e" },
+    });
+
+    const res = await findHandler("templatesGet")(
+      makeRequest({ params: { id: "tmpl-1" } }),
+      new InvocationContext()
+    );
+
+    expect(res.jsonBody).toStrictEqual(sampleTemplate);
+  });
+
+  test("the list never serves them either", async () => {
+    mockFetchAll.mockResolvedValue({
+      resources: [{ ...sampleTemplate, mirrorContentHash: "a".repeat(64), _rid: "r" }],
+    });
+
+    const res = await findHandler("templatesList")(makeRequest(), new InvocationContext());
+
+    expect((res.jsonBody as { templates: unknown[] }).templates).toStrictEqual([sampleTemplate]);
+  });
+
   test("returns 404 when the read resolves with no resource", async () => {
     mockItemRead.mockResolvedValue({ resource: undefined });
 

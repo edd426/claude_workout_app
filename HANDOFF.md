@@ -36,18 +36,54 @@ He also asked for a **UX/UI evaluation that raises the standards**.
   - `(A)` (5341EC4F…) and `(B)` (0B33E3B6…), one per agent.
 - Baseline on `release/1.9.0`: **858/858 unit tests pass**.
 
-**In flight:** two agents in `.claude/worktrees/`, branched from `release/1.9.0`.
-- A (`data-v5`): schema V5, models, repos, conversions, backup and sync for
-  #164 and #165.
-- B (`ui-body`): #152 and #111 (display), and #167.
-- C (`ux-eval`, simulator `(C)` 7C5BB45B…): screenshot-backed UX evaluation
-  (`scratchpad/ux_evaluation.md`) plus a draft `.claude/rules/ui-standards.md`.
-- Next, after A:
-  - the UI for #164, #165, #168 and #169;
-  - infra: snapshot acceptance, MCP read tools, #169 alternatives in the
-    template tools, and the #170 photo tool;
-  - the Jefit import (#166).
-  All new UI work follows the reviewed ui-standards.
+**Merged into `release/1.9.0`, each verified with my own test run:**
+- **B:** #152 weight screen, #111 protein target (display only; per-day
+  snapshots are deferred to #110), and #167 last-done panel.
+- **A:** schema **V5**:
+  - new models: BodyMeasurement, Medication, MedicationDose (snapshots
+    concentration and tablet strength at logging), ExerciseAlternative;
+  - height in SettingsManager;
+  - snapshot wire v5, with the phone stepping down 5 → 4 → 3 on a 400;
+  - backup format 3, inbox `alternatives`, and the `setExercisePhoto` apply
+    plus a blob photo downloader.
+  - From now on, **V5 must not change** once a 1.9.0 build is on any device;
+    a pre-change V5 store is set aside, not crashed.
+- **D:** snapshot v5 on the server:
+  - 4 new Cosmos containers;
+  - GET returns the v5 keys only after a v5 push has succeeded;
+  - read tools `list_body_measurements`, `list_medications` and
+    `list_medication_logs`;
+  - alternatives in the template tools;
+  - `attach_exercise_photo`, with the `exercises/ext/…` SAS family in upload
+    and download mode.
+- **Results:** iOS unit tests 1062/1062; infra/functions 418/418; infra/mcp
+  278/278.
+
+**Deploy order (not yet deployed; details in D's report):**
+1. Create the Cosmos containers `bodyMeasurements`, `medications`,
+   `medicationDoses` and `exerciseAlternatives` in `workout-db`, partition key
+   `/id`, shared throughput. Use `az cosmosdb sql container create` or
+   `cosmos.bicep` alone; **never a full main.bicep**, which rewrites the app
+   settings.
+2. Functions code.
+3. MCP remote, code only (`npm run deploy:remote -- --code`).
+4. Phone 1.9.0.
+5. Then bulk photos (#170).
+
+If the containers are missing, a 1.9.0 push fails with a 500, not a 400, so
+the phone never falls back to v4.
+
+**Still to build:**
+- UI for #164, #165, #168 and #169, and the #170 photo thumbnail on cards.
+  All of it waits for C's evaluation and ui-standards.
+- The #166 Jefit import.
+- D is adding a local-file `imagePath` argument to `attach_exercise_photo`
+  (stdio only) for bulk photos.
+
+**Known limitation:** re-attaching a photo overwrites the blob before
+approval, so even a declined re-attach replaces the stored photo.
+
+**Docs:** SPEC.md §3 and §7 need the V5 entities and the photo path family.
 
 **Waiting on Evan's phone:**
 - 5 template updates (program v3: Mon Legs 1 … Fri Machines).

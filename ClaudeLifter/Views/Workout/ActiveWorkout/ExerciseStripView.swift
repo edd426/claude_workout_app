@@ -50,6 +50,8 @@ private struct ExerciseStripChip: View {
     let isExpanded: Bool
     let action: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
@@ -69,7 +71,9 @@ private struct ExerciseStripChip: View {
             }
             .font(.subheadline)
             .foregroundStyle(progress.status == .skipped ? .secondary : .primary)
-            .frame(maxWidth: 170)
+            // A compact chip at normal sizes; at accessibility sizes the
+            // name is never cut to "Barb…" (UI-A3): the strip scrolls.
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? nil : 170)
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
             .background(background, in: Capsule())

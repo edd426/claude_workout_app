@@ -49,7 +49,7 @@ struct ExerciseActionsMenu: View {
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.title3)
-                .frame(width: 44, height: 56)
+                .frame(minWidth: 44, minHeight: 56)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("Exercise actions")

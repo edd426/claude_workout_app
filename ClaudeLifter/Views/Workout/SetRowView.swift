@@ -183,7 +183,7 @@ struct SetRowView: View {
             Image(systemName: set.isCompleted ? "checkmark.circle.fill" : "circle")
                 .font(.title)
                 .foregroundStyle(set.isCompleted ? BrandTheme.completed : .secondary)
-                .frame(width: columns.check, height: columns.check)
+                .frame(minWidth: columns.check, minHeight: columns.check)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -38,7 +38,7 @@ struct MachineTakenControl: View {
         Image(systemName: "arrow.triangle.2.circlepath")
             .font(.title3)
             .foregroundStyle(BrandTheme.accent)
-            .frame(width: 56, height: 56)
+            .frame(minWidth: 56, minHeight: 56)
             .contentShape(Rectangle())
     }
 

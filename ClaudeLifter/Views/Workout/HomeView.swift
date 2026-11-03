@@ -87,7 +87,8 @@ struct HomeView: View {
                     manager: deps.syncManager,
                     previewBuilder: InboxChangePreviewBuilder(
                         templateRepository: deps.templateRepository,
-                        exerciseRepository: deps.exerciseRepository
+                        exerciseRepository: deps.exerciseRepository,
+                        alternativeRepository: deps.exerciseAlternativeRepository
                     )
                 )
             }

@@ -11,6 +11,7 @@ enum InboxApplyError: Error, LocalizedError {
     case invalidReportId(String)
     case reportNotFound(String)
     case invalidReportStatus(String)
+    case invalidPhotoPath(String)
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +35,8 @@ enum InboxApplyError: Error, LocalizedError {
             return "Report not found: \(id)"
         case .invalidReportStatus(let status):
             return "Invalid report status: \(status) (expected acknowledged or resolved)"
+        case .invalidPhotoPath(let path):
+            return "Invalid photo path: \"\(path)\" (expected exercises/ext/{externalId}.jpg)"
         }
     }
 }
@@ -48,15 +51,18 @@ final class InboxApplier {
     private let templateRepository: any TemplateRepository
     private let exerciseRepository: any ExerciseRepository
     private let reportRepository: any ExerciseReportRepository
+    private let alternativeRepository: any ExerciseAlternativeRepository
 
     init(
         templateRepository: any TemplateRepository,
         exerciseRepository: any ExerciseRepository,
-        reportRepository: any ExerciseReportRepository
+        reportRepository: any ExerciseReportRepository,
+        alternativeRepository: any ExerciseAlternativeRepository
     ) {
         self.templateRepository = templateRepository
         self.exerciseRepository = exerciseRepository
         self.reportRepository = reportRepository
+        self.alternativeRepository = alternativeRepository
     }
 
     /// Process every operation even when an earlier one is malformed or fails.
@@ -184,6 +190,10 @@ final class InboxApplier {
             try validateDeletePayload(payload)
             try await deleteTemplate(payload)
 
+        case "setExercisePhoto":
+            let payload = try decode(SetExercisePhotoPayload.self, from: operation.payload)
+            try await setExercisePhoto(payload)
+
         default:
             throw InboxApplyError.unknownOperation(operation.op)
         }
@@ -203,8 +213,18 @@ final class InboxApplier {
             name: payload.name,
             notes: payload.notes
         )
-        template.exercises = makeTemplateExercises(from: resolved)
+        let slots = makeTemplateExercises(from: resolved)
+        template.exercises = slots.map(\.templateExercise)
         try await templateRepository.save(template)
+        // After the template save, so a failed save leaves no alternatives
+        // pointing at slots that were never stored.
+        for slot in slots {
+            guard let alternatives = slot.payload.alternatives, !alternatives.isEmpty else { continue }
+            try await alternativeRepository.replaceAlternatives(
+                forTemplateExercise: slot.templateExercise.id,
+                with: alternatives.map(Self.spec)
+            )
+        }
     }
 
     private func createCustomExercise(
@@ -277,9 +297,32 @@ final class InboxApplier {
         try await reportRepository.save(report)
     }
 
+    /// Points an exercise's photo at the blob the MCP uploaded (#170).
+    ///
+    /// The path is checked BEFORE the exercise is looked up, and must be
+    /// exactly `exercises/ext/{externalId}.jpg`: whatever the server let
+    /// through, an op can never attach another exercise's photo or a blob
+    /// from another family. Bundled and custom exercises resolve the same way
+    /// (`fetchByExternalId` covers catalog and `custom:` ids); on a bundled
+    /// one the photo then travels as its #140 overlay. The image itself is
+    /// fetched by `ExercisePhotoDownloader`.
+    private func setExercisePhoto(_ payload: SetExercisePhotoPayload) async throws {
+        guard !payload.externalId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw InboxApplyError.malformedPayload("Exercise externalId must not be empty")
+        }
+        guard payload.blobPath == SetExercisePhotoPayload.expectedBlobPath(for: payload.externalId) else {
+            throw InboxApplyError.invalidPhotoPath(payload.blobPath)
+        }
+        guard let exercise = try await exerciseRepository.fetchByExternalId(payload.externalId) else {
+            throw InboxApplyError.unresolvedExerciseIds([payload.externalId])
+        }
+        exercise.photoURL = payload.blobPath
+        try await exerciseRepository.save(exercise)
+    }
+
     private func approvalRequirement(for operation: String) throws -> Bool {
         switch operation {
-        case "updateTemplate", "deleteTemplate":
+        case "updateTemplate", "deleteTemplate", "setExercisePhoto":
             return true
         case "createTemplate", "createCustomExercise", "resolveExerciseReport":
             return false
@@ -329,12 +372,15 @@ final class InboxApplier {
             throw InboxApplyError.templateNotFound(payload.id)
         }
 
-        var replacementExercises: [TemplateExercise]?
+        var replacementSlots: [PlannedSlot]?
+        var plannedAlternatives: [(templateExerciseId: UUID, specs: [AlternativeSpec])] = []
         if let exercises = payload.exercises {
             try validateTemplatePayload(name: payload.name ?? template.name, exercises: exercises)
-            replacementExercises = makeTemplateExercises(
-                from: try await resolve(exercises)
-            )
+            let slots = makeTemplateExercises(from: try await resolve(exercises))
+            // Read BEFORE the save below: the save's orphan cleanup deletes
+            // the old slots' alternatives.
+            plannedAlternatives = try await alternatives(for: slots, replacing: template.exercises)
+            replacementSlots = slots
         }
 
         if let name = payload.name {
@@ -343,12 +389,64 @@ final class InboxApplier {
         if let notes = payload.notes {
             template.notes = notes
         }
-        if let replacementExercises {
-            template.exercises = replacementExercises
+        if let replacementSlots {
+            template.exercises = replacementSlots.map(\.templateExercise)
         }
         template.updatedAt = .now
         template.recordChange()
         try await templateRepository.save(template)
+
+        for planned in plannedAlternatives where !planned.specs.isEmpty {
+            try await alternativeRepository.replaceAlternatives(
+                forTemplateExercise: planned.templateExerciseId,
+                with: planned.specs
+            )
+        }
+    }
+
+    /// What each replacement slot should list after an update.
+    ///
+    /// The update rebuilds every `TemplateExercise` with a fresh id, so
+    /// "leave alternatives untouched" has to mean "carry them to the slot that
+    /// replaces the old one". Slots are matched by externalId, slot by slot in
+    /// order for duplicates — the rule `TemplateUpdateDiff` uses, so the
+    /// approval preview and the apply agree on which slot is which.
+    ///
+    /// Present `alternatives` replaces (an empty array clears); absent carries
+    /// the matched old slot's list; a new slot with neither gets nothing.
+    private func alternatives(
+        for slots: [PlannedSlot],
+        replacing current: [TemplateExercise]
+    ) async throws -> [(templateExerciseId: UUID, specs: [AlternativeSpec])] {
+        var unmatched: [String: [TemplateExercise]] = [:]
+        for existing in current.sorted(by: { $0.order < $1.order }) {
+            guard let externalId = existing.exercise?.externalId else { continue }
+            unmatched[externalId, default: []].append(existing)
+        }
+
+        var planned: [(templateExerciseId: UUID, specs: [AlternativeSpec])] = []
+        for slot in slots {
+            // Consume the match even when the payload is explicit, so later
+            // duplicates stay aligned with the preview's matching.
+            var previous: TemplateExercise?
+            if var queue = unmatched[slot.payload.externalId], !queue.isEmpty {
+                previous = queue.removeFirst()
+                unmatched[slot.payload.externalId] = queue
+            }
+            if let explicit = slot.payload.alternatives {
+                planned.append((templateExerciseId: slot.templateExercise.id, specs: explicit.map(Self.spec)))
+            } else if let previous {
+                let carried = try await alternativeRepository
+                    .alternatives(forTemplateExercise: previous.id)
+                    .map { AlternativeSpec(externalId: $0.externalId, note: $0.note) }
+                planned.append((templateExerciseId: slot.templateExercise.id, specs: carried))
+            }
+        }
+        return planned
+    }
+
+    private nonisolated static func spec(_ payload: InboxAlternativePayload) -> AlternativeSpec {
+        AlternativeSpec(externalId: payload.externalId, note: payload.note)
     }
 
     private func deleteTemplate(_ payload: DeleteTemplatePayload) async throws {
@@ -368,6 +466,15 @@ final class InboxApplier {
         exercise: Exercise
     )
 
+    /// A new `TemplateExercise` and the payload slot it was built from.
+    private typealias PlannedSlot = (
+        payload: InboxTemplateExercisePayload,
+        templateExercise: TemplateExercise
+    )
+
+    /// Resolves every main exercise AND every listed alternative before
+    /// anything is written. An unknown alternative fails the operation the
+    /// same way an unknown main exercise does, in the same error list.
     private func resolve(
         _ payloads: [InboxTemplateExercisePayload]
     ) async throws -> [ResolvedExercise] {
@@ -382,6 +489,11 @@ final class InboxApplier {
             } else {
                 unresolved.append(payload.externalId)
             }
+            for alternative in payload.alternatives ?? [] {
+                if try await exerciseRepository.fetchByExternalId(alternative.externalId) == nil {
+                    unresolved.append(alternative.externalId)
+                }
+            }
         }
 
         guard unresolved.isEmpty else {
@@ -392,16 +504,19 @@ final class InboxApplier {
 
     private func makeTemplateExercises(
         from resolved: [ResolvedExercise]
-    ) -> [TemplateExercise] {
-        resolved.map { item in
-            TemplateExercise(
-                order: item.payload.order,
-                exercise: item.exercise,
-                defaultSets: item.payload.defaultSets,
-                defaultReps: item.payload.defaultReps,
-                defaultWeight: item.payload.defaultWeight,
-                defaultRestSeconds: item.payload.defaultRestSeconds ?? 90,
-                notes: item.payload.notes
+    ) -> [PlannedSlot] {
+        resolved.map { item -> PlannedSlot in
+            (
+                payload: item.payload,
+                templateExercise: TemplateExercise(
+                    order: item.payload.order,
+                    exercise: item.exercise,
+                    defaultSets: item.payload.defaultSets,
+                    defaultReps: item.payload.defaultReps,
+                    defaultWeight: item.payload.defaultWeight,
+                    defaultRestSeconds: item.payload.defaultRestSeconds ?? 90,
+                    notes: item.payload.notes
+                )
             )
         }
     }
@@ -444,6 +559,15 @@ final class InboxApplier {
                 throw InboxApplyError.malformedPayload(
                     "Exercise defaultRestSeconds must be non-negative"
                 )
+            }
+            for alternative in exercise.alternatives ?? [] {
+                guard !alternative.externalId.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty else {
+                    throw InboxApplyError.malformedPayload(
+                        "Alternative externalId must not be empty"
+                    )
+                }
             }
         }
     }

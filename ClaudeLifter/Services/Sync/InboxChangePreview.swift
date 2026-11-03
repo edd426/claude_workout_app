@@ -29,6 +29,8 @@ enum InboxChangeLine: Equatable, Sendable, Identifiable {
     case restChanged(name: String, from: Int, to: Int)
     case noteChanged(name: String, from: String?, to: String?)
     case reordered(names: [String])
+    /// The slot's listed substitutes changed. Names, in order; empty = none.
+    case alternativesChanged(name: String, from: [String], to: [String])
 
     var id: String { text }
 
@@ -52,7 +54,13 @@ enum InboxChangeLine: Equatable, Sendable, Identifiable {
             return "\(name): note \(Self.quote(from)) → \(Self.quote(to))"
         case .reordered(let names):
             return "Reordered: \(names.joined(separator: ", "))"
+        case .alternativesChanged(let name, let from, let to):
+            return "\(name): alternatives \(Self.list(from)) → \(Self.list(to))"
         }
+    }
+
+    private static func list(_ names: [String]) -> String {
+        names.isEmpty ? "none" : names.joined(separator: ", ")
     }
 
     /// Adds, removes and renames matter more than a tweaked cue.
@@ -87,6 +95,8 @@ struct TemplateSnapshot: Equatable, Sendable {
         let weight: Double?
         let restSeconds: Int
         let notes: String?
+        /// The slot's alternatives as externalIds, in order.
+        var alternatives: [String] = []
     }
 
     let name: String
@@ -99,7 +109,9 @@ struct TemplateSnapshot: Equatable, Sendable {
         self.exercises = exercises
     }
 
-    init(_ template: WorkoutTemplate) {
+    /// `alternatives` maps a template exercise's id to its alternatives'
+    /// externalIds; the template itself cannot answer that (plain-UUID link).
+    init(_ template: WorkoutTemplate, alternatives: [UUID: [String]] = [:]) {
         name = template.name
         notes = template.notes
         exercises = template.exercises
@@ -112,7 +124,8 @@ struct TemplateSnapshot: Equatable, Sendable {
                     reps: $0.defaultReps,
                     weight: $0.defaultWeight,
                     restSeconds: $0.defaultRestSeconds,
-                    notes: $0.notes
+                    notes: $0.notes,
+                    alternatives: alternatives[$0.id] ?? []
                 )
             }
     }
@@ -165,6 +178,13 @@ enum TemplateUpdateDiff {
                     name: nameFor(proposal.externalId),
                     prescription: prescription(proposal.defaultSets, proposal.defaultReps)
                 ))
+                if let proposed = proposal.alternatives?.map(\.externalId), !proposed.isEmpty {
+                    fieldChanges.append(.alternativesChanged(
+                        name: nameFor(proposal.externalId),
+                        from: [],
+                        to: proposed.map(nameFor)
+                    ))
+                }
                 continue
             }
             let index = queue.removeFirst()
@@ -195,6 +215,16 @@ enum TemplateUpdateDiff {
                     name: local.name,
                     from: normalized(local.notes),
                     to: normalized(proposal.notes)
+                ))
+            }
+            // Absent alternatives keep the slot's list (InboxApplier carries
+            // them over), so only an explicit, different list is a change.
+            if let proposed = proposal.alternatives?.map(\.externalId),
+               proposed != local.alternatives {
+                fieldChanges.append(.alternativesChanged(
+                    name: local.name,
+                    from: local.alternatives.map(nameFor),
+                    to: proposed.map(nameFor)
                 ))
             }
         }
@@ -246,13 +276,19 @@ protocol InboxChangePreviewBuilding {
 final class InboxChangePreviewBuilder: InboxChangePreviewBuilding {
     private let templateRepository: any TemplateRepository
     private let exerciseRepository: any ExerciseRepository
+    /// Optional so existing call sites keep compiling. Without it the preview
+    /// cannot see the template's current alternatives, so a change to them
+    /// reads as added-from-nothing; pass it wherever the app builds one.
+    private let alternativeRepository: (any ExerciseAlternativeRepository)?
 
     init(
         templateRepository: any TemplateRepository,
-        exerciseRepository: any ExerciseRepository
+        exerciseRepository: any ExerciseRepository,
+        alternativeRepository: (any ExerciseAlternativeRepository)? = nil
     ) {
         self.templateRepository = templateRepository
         self.exerciseRepository = exerciseRepository
+        self.alternativeRepository = alternativeRepository
     }
 
     func preview(for operation: InboxOperationDTO) async -> InboxChangePreview {
@@ -261,6 +297,8 @@ final class InboxChangePreviewBuilder: InboxChangePreviewBuilding {
             return await updatePreview(operation)
         case "deleteTemplate":
             return await deletePreview(operation)
+        case "setExercisePhoto":
+            return await photoPreview(operation)
         default:
             return InboxChangePreview(
                 title: "Apply proposed change",
@@ -290,9 +328,19 @@ final class InboxChangePreviewBuilder: InboxChangePreviewBuilding {
             )
         }
 
-        let current = TemplateSnapshot(template)
+        var alternatives: [UUID: [String]] = [:]
+        if let alternativeRepository {
+            for te in template.exercises {
+                let listed = (try? await alternativeRepository.alternatives(forTemplateExercise: te.id)) ?? []
+                alternatives[te.id] = listed.map(\.externalId)
+            }
+        }
+        let current = TemplateSnapshot(template, alternatives: alternatives)
+        var referenced = Set((payload.exercises ?? []).map(\.externalId))
+        referenced.formUnion((payload.exercises ?? []).flatMap { ($0.alternatives ?? []).map(\.externalId) })
+        referenced.formUnion(current.exercises.flatMap(\.alternatives))
         var names: [String: String] = [:]
-        for externalId in Set((payload.exercises ?? []).map(\.externalId)) {
+        for externalId in referenced {
             if let exercise = try? await exerciseRepository.fetchByExternalId(externalId) {
                 names[externalId] = exercise.name
             }
@@ -322,6 +370,42 @@ final class InboxChangePreviewBuilder: InboxChangePreviewBuilding {
             summary: "Removes the template and \(what) from this phone and the cloud.",
             lines: [],
             isDestructive: true
+        )
+    }
+
+    /// One line per op (#170): the title names the exercise, the summary says
+    /// what approving does — including when it is going to fail, in the same
+    /// order the applier checks.
+    private func photoPreview(_ operation: InboxOperationDTO) async -> InboxChangePreview {
+        guard let payload = try? operation.payload.decode(SetExercisePhotoPayload.self) else {
+            return InboxChangePreview(
+                title: "Set photo",
+                summary: "The change could not be read; approving it will fail.",
+                lines: [],
+                isDestructive: false
+            )
+        }
+        let exercise = try? await exerciseRepository.fetchByExternalId(payload.externalId)
+        let name = exercise?.name ?? TemplateUpdateDiff.humanized(payload.externalId)
+        let summary: String
+        if payload.blobPath != SetExercisePhotoPayload.expectedBlobPath(for: payload.externalId) {
+            summary = "The photo path does not match this exercise; approving it will fail."
+        } else if let exercise {
+            if exercise.photoURL == payload.blobPath {
+                summary = "This photo is already on the exercise card."
+            } else if exercise.photoURL?.isEmpty == false {
+                summary = "Replaces the photo already on the exercise card."
+            } else {
+                summary = "Adds a photo to the exercise card."
+            }
+        } else {
+            summary = "This exercise is not on this phone; approving it will fail."
+        }
+        return InboxChangePreview(
+            title: "Set photo · \(name)",
+            summary: summary,
+            lines: [],
+            isDestructive: false
         )
     }
 

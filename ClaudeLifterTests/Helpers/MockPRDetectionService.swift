@@ -6,6 +6,7 @@ final class MockPRDetectionService: PRDetectionServiceProtocol {
     var detectedPRs: [PersonalRecord] = []
     var errorToThrow: Error? = nil
     var detectCallCount = 0
+    var report: PRReport? = nil
 
     func detectPRs(for workout: Workout) async throws -> [PersonalRecord] {
         detectCallCount += 1
@@ -16,5 +17,10 @@ final class MockPRDetectionService: PRDetectionServiceProtocol {
     func getAllPRs(for exerciseId: UUID) async throws -> [PersonalRecord] {
         if let error = errorToThrow { throw error }
         return detectedPRs.filter { $0.exerciseId == exerciseId }
+    }
+
+    func prReport(for workout: Workout) async throws -> PRReport? {
+        if let error = errorToThrow { throw error }
+        return report
     }
 }

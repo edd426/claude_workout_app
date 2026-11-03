@@ -142,11 +142,30 @@ struct PRDetectionServiceTests {
 
         let newPRs = try await service.detectPRs(for: currentWorkout)
 
+        // 100 lb is 45.36 kg. 60 kg × 5 beats it on weight, estimated 1RM,
+        // and reps at that weight or heavier (#173), so nothing is a record.
         #expect(!newPRs.contains { $0.prType == .heaviestWeight })
         #expect(!newPRs.contains { $0.prType == .highest1RM })
-        let repsAtWeight = try #require(
-            newPRs.first { $0.prType == .mostRepsAtWeight }
+        #expect(!newPRs.contains { $0.prType == .mostRepsAtWeight })
+    }
+
+    @Test("A pounds set is saved in kilograms")
+    func poundsRecordIsStoredInKilograms() async throws {
+        let setup = try makeSetup()
+        let (context, service) = (setup.context, setup.service)
+        let exercise = TestFixtures.makeExercise(name: "Bench Press")
+        context.insert(exercise)
+
+        let workout = TestFixtures.makeWorkout()
+        let workoutExercise = WorkoutExercise(order: 0, exercise: exercise)
+        workoutExercise.sets.append(
+            WorkoutSet(order: 0, weight: 100, weightUnit: .lbs, reps: 5, isCompleted: true, completedAt: .now)
         )
+        workout.exercises.append(workoutExercise)
+
+        let newPRs = try await service.detectPRs(for: workout)
+
+        let repsAtWeight = try #require(newPRs.first { $0.prType == .mostRepsAtWeight })
         #expect(abs((repsAtWeight.weight ?? 0) - 45.3592) < 0.001)
     }
 

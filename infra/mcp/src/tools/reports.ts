@@ -10,6 +10,7 @@
  */
 
 import { ApiError, apiGet, apiPost } from "../shared/http.js";
+import { discardBody, formatSize, isJpeg, MAX_PHOTO_BYTES } from "../shared/jpeg.js";
 
 export type ExerciseReportStatus = "open" | "acknowledged" | "resolved";
 
@@ -188,7 +189,7 @@ const REPORT_PHOTO_PATH = new RegExp(`^reports/(${UUID})\\.jpg$`);
  * 1024px JPEG, so real photos are ~100–300 KB; anything near this cap is not
  * a photo the app uploaded normally.
  */
-export const MAX_REPORT_PHOTO_BYTES = 3_750_000;
+export const MAX_REPORT_PHOTO_BYTES = MAX_PHOTO_BYTES;
 
 /** How many reports a lookup by id scans — the /api/reports limit cap. */
 const REPORT_LOOKUP_LIMIT = 500;
@@ -369,36 +370,12 @@ async function downloadPhoto(
   return bytes;
 }
 
-async function discardBody(response: Response): Promise<void> {
-  try {
-    await response.body?.cancel();
-  } catch {
-    // Nothing useful to do; the error being thrown is what matters.
-  }
-}
-
 function tooLarge(path: string, bytes: number): Error {
   return new Error(
     `Report photo ${path} is too large to return (${formatSize(bytes)}; ` +
       `the limit is ${formatSize(MAX_REPORT_PHOTO_BYTES)}). The phone uploads ` +
       "~100–300 KB JPEGs, so this is not a photo it uploaded normally."
   );
-}
-
-/** JPEG files start with the SOI marker FF D8 followed by another FF. */
-function isJpeg(bytes: Uint8Array): boolean {
-  return (
-    bytes.length >= 3 &&
-    bytes[0] === 0xff &&
-    bytes[1] === 0xd8 &&
-    bytes[2] === 0xff
-  );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} bytes`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function describeReport(report: ExerciseReport): string {

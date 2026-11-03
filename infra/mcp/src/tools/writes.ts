@@ -103,21 +103,25 @@ function optionalStringArray(value: unknown, field: string): void {
   }
 }
 
-export async function assertKnownExternalId(
-  externalId: string,
-  field?: string
-): Promise<void> {
-  if (await resolveExerciseByExternalId(externalId)) return;
-
+/** The error for an externalId that resolves nowhere, with catalog suggestions. */
+export function unknownExternalIdError(externalId: string, field?: string): Error {
   const humanized = externalId.replace(/[_:/-]+/g, " ");
   const suggestions = searchCatalog(humanized, 3)
     .map((exercise) => `${exercise.name} (${exercise.externalId})`)
     .join(", ");
-  throw new Error(
+  return new Error(
     `${field ? `${field}: ` : ""}Unknown externalId "${externalId}". ` +
       `Suggestions: ${suggestions}. ` +
       "Call search_exercises and use an exact externalId from its results."
   );
+}
+
+async function assertKnownExternalId(
+  externalId: string,
+  field?: string
+): Promise<void> {
+  if (await resolveExerciseByExternalId(externalId)) return;
+  throw unknownExternalIdError(externalId, field);
 }
 
 /**

@@ -97,4 +97,51 @@ describe("authorized requests", () => {
     await handleMcpRequest(rpc("tools/list", 3, {}, "Bearer the.jwt.value"), d);
     expect(d.verify).toHaveBeenCalledWith("the.jwt.value");
   });
+
+  it("serves the 1.9.0 tools to claude.ai too", async () => {
+    const res = await handleMcpRequest(rpc("tools/list", 4, {}, "Bearer ok"), deps());
+    const body = await res.json();
+    const names = body.result.tools.map((t: { name: string }) => t.name);
+    for (const name of [
+      "list_body_measurements",
+      "list_medications",
+      "list_medication_logs",
+      "attach_exercise_photo",
+    ]) {
+      expect(names).toContain(name);
+    }
+  });
+});
+
+describe("request size (#170)", () => {
+  // attach_exercise_photo takes the JPEG as base64: a photo at its 3.75 MB
+  // limit is a ~5 MB request, over the SDK's 4 MiB default.
+  function bigCall(base64Length: number): Request {
+    return rpc(
+      "tools/call",
+      5,
+      { name: "does_not_exist", arguments: { imageBase64: "A".repeat(base64Length) } },
+      "Bearer ok"
+    );
+  }
+
+  it("accepts a request carrying a photo at the tool's 3.75 MB limit", async () => {
+    const res = await handleMcpRequest(bigCall(5_000_000), deps());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Reached the tool dispatcher: the body was read, not refused with 413.
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain("Unknown tool");
+  });
+
+  it("still refuses a request far beyond any photo", async () => {
+    const res = await handleMcpRequest(bigCall(7 * 1024 * 1024), deps());
+    expect(res.status).toBe(413);
+  });
+
+  it("a large body does not get past a failed token check", async () => {
+    const d = deps({ verify: vi.fn(async () => { throw new Error("bad"); }) });
+    const res = await handleMcpRequest(bigCall(5_000_000), d);
+    expect(res.status).toBe(401);
+  });
 });

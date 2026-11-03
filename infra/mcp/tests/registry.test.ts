@@ -30,6 +30,7 @@ describe("tool listing", () => {
     const names = TOOLS.map((t) => t.name).sort();
     expect(names).toEqual(
       [
+        "attach_exercise_photo",
         "create_custom_exercise",
         "create_program",
         "create_template",

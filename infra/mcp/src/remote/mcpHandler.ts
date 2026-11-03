@@ -12,6 +12,14 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 
 import { isAllowedUser } from "./auth.js";
 
+/**
+ * Largest /mcp request body read, in bytes. attach_exercise_photo (#170) takes
+ * a JPEG of up to 3.75 MB as base64, a ~5 MB request, over the SDK's 4 MiB
+ * default. The transport parses it only after the token and the oid
+ * allowlist have passed (the Azure adapter has already buffered it by then).
+ */
+export const MAX_MCP_REQUEST_BYTES = 6 * 1024 * 1024;
+
 export interface McpHandlerDeps {
   /** Verifies a bearer token and returns the caller's Entra object id; throws if invalid. */
   verify: (token: string) => Promise<{ oid: string }>;
@@ -59,6 +67,7 @@ export async function handleMcpRequest(request: Request, deps: McpHandlerDeps): 
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
+    maxRequestBodySize: MAX_MCP_REQUEST_BYTES,
   });
   const server = deps.createServer();
   try {

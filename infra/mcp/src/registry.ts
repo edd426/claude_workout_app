@@ -13,6 +13,7 @@ import {
 } from "./tools/reports.js";
 import { listBodyMeasurements, MEASUREMENT_SITES } from "./tools/bodyMeasurements.js";
 import { listMedicationLogs, listMedications } from "./tools/medications.js";
+import { attachExercisePhoto } from "./tools/exercisePhotos.js";
 import {
   createCustomExercise,
   createProgram,
@@ -363,6 +364,33 @@ export const TOOLS = [
     },
   },
   {
+    name: "attach_exercise_photo",
+    description:
+      "Attach a JPEG photo (e.g. the gym's actual machine) to an exercise, " +
+      "so its card in the app shows it. Validates the exercise exists, " +
+      "uploads the image to blob storage, then queues a setExercisePhoto " +
+      "inbox operation that needs approval on the phone: nothing changes " +
+      "until it is approved there, and one batch approval covers many " +
+      "photos. Attaching again replaces the exercise's photo. JPEG only, " +
+      "at most 3.75 MB.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        externalId: {
+          type: "string",
+          description:
+            "Exact externalId from search_exercises (catalog or custom:)",
+        },
+        imageBase64: {
+          type: "string",
+          description:
+            "The JPEG, base64-encoded (a data:image/jpeg;base64, prefix is accepted)",
+        },
+      },
+      required: ["externalId", "imageBase64"],
+    },
+  },
+  {
     name: "list_body_measurements",
     description:
       "Read body measurements (circumference, cm) logged in the app, newest " +
@@ -646,6 +674,9 @@ export async function handleToolCall(
 
       case "delete_inbox_operation":
         return textResult(await deleteInboxOperation(args));
+
+      case "attach_exercise_photo":
+        return textResult(await attachExercisePhoto(args));
 
       case "list_body_measurements":
         return textResult(

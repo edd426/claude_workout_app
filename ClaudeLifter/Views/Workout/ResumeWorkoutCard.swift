@@ -25,6 +25,9 @@ struct ResumeWorkoutCard: View {
                 buttonRow
             }
         }
+        // `.contain` keeps `resumeWorkout` and `discardResumableWorkout`
+        // addressable; a bare container identifier would override them.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("resumeWorkoutCard")
         .sensoryFeedback(.warning, trigger: discardConfirmed)
         .confirmationDialog(

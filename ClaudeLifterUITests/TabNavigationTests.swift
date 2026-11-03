@@ -47,9 +47,13 @@ final class TabNavigationTests: XCTestCase {
     func testAllFiveTabsExist() throws {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 5))
-        XCTAssertTrue(tabBar.buttons["Home"].exists)
+        // 1.9.0: Today · History · Body · Exercises · Coach. Settings is a
+        // sheet from Today's gear, not a tab.
+        XCTAssertTrue(tabBar.buttons["Today"].exists)
         XCTAssertTrue(tabBar.buttons["History"].exists)
+        XCTAssertTrue(tabBar.buttons["Body"].exists)
         XCTAssertTrue(tabBar.buttons["Exercises"].exists)
         XCTAssertTrue(tabBar.buttons["Coach"].exists)
+        XCTAssertFalse(tabBar.buttons["Settings"].exists)
     }
 }

@@ -18,6 +18,10 @@ struct TodayHeroCard: View {
                 startButton
             }
         }
+        // `.contain` first: an identifier on a plain container is copied onto
+        // every child and overrides theirs, which hid `todayStartWorkout`
+        // and `template.<name>` from UI tests.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("todayHeroCard")
     }
 

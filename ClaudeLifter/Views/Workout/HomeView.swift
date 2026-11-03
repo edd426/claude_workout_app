@@ -208,6 +208,7 @@ struct HomeView: View {
                         .tint(Color(.systemGray))
                 }
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("homeErrorBanner")
         }
     }

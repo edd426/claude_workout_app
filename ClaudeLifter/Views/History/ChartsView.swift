@@ -3,10 +3,12 @@ import Charts
 
 struct ChartsView: View {
     @State var viewModel: ProgressChartsViewModel
+    @Environment(\.dependencies) private var deps
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
+                bodyWeightLink
                 volumeChart
                 oneRMChart
                 muscleDistributionChart
@@ -19,6 +21,37 @@ struct ChartsView: View {
             await viewModel.loadVolumeOverTime()
             await viewModel.loadMuscleDistribution()
             await viewModel.loadExercises()
+        }
+    }
+
+    // MARK: - Body Weight (#152)
+
+    @ViewBuilder
+    private var bodyWeightLink: some View {
+        if let deps {
+            NavigationLink {
+                BodyWeightTrendView(vm: BodyWeightTrendViewModel(
+                    repository: deps.bodyWeightRepository,
+                    settings: deps.settings
+                ))
+            } label: {
+                HStack {
+                    Label("Body Weight", systemImage: "scalemass")
+                        .font(.headline)
+                    Spacer()
+                    Text("Trend, goal, protein")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding()
+                .background(Color(uiColor: .secondarySystemBackground))
+                .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("chartsBodyWeightLink")
         }
     }
 

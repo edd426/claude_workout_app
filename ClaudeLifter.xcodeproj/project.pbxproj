@@ -90,6 +90,7 @@
 		39320B32AAB849DA6F4142BC /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB5C6DF96590C72CEA77BD4 /* SettingsManager.swift */; };
 		B902261B25F991B27E8726CE /* ActiveWorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB1106CAB595E0F873B0E4E /* ActiveWorkoutViewModel.swift */; };
 		DC8670B09213E30C41AD10CA /* BodyWeightTrend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D3CC2C84199AB8FC372FAF /* BodyWeightTrend.swift */; };
+		444A15FEEAEBB9AE5F856062 /* BodyWeightTrendViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24213EDB6077D899B03C4163 /* BodyWeightTrendViewModel.swift */; };
 		8B39AD114C8A22CA4A12F63D /* BodyWeightViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A915220457843657F447086 /* BodyWeightViewModel.swift */; };
 		D25F93C9E3A2384DFE178ACB /* CalendarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2481707D7718DFBFE1786D0B /* CalendarViewModel.swift */; };
 		2AF09F12EAC18CDA1A9FBB47 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F447D4EB6221AD59A7EDF9F /* ChatViewModel.swift */; };
@@ -120,10 +121,12 @@
 		AF1D48AB95F7653A6A847DB0 /* ExerciseRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7926DF234B42A95D7DC4AE8 /* ExerciseRowView.swift */; };
 		7751863B1495258FE9434FE3 /* FilterChipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100EF3FD65C0ED533307EB4A /* FilterChipsView.swift */; };
 		A5A15F461633A49F414B3F09 /* PhotoCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B90946C171941618E68CD3 /* PhotoCaptureView.swift */; };
+		BCEC8BC67EF6083C1EC80DF4 /* BodyWeightTrendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED22DBCB02C868B8B438C886 /* BodyWeightTrendView.swift */; };
 		50C0ADFD6BB67CE021BBED93 /* CalendarDayCellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42B5C312C2A9E2B45AF0BA52 /* CalendarDayCellView.swift */; };
 		F3D12BFD1D26D7FFF00BDF2E /* CalendarHeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E07D42BAC0E7179DC579B8E /* CalendarHeatmapView.swift */; };
 		4391362462945E4BDD2FFEFE /* ChartsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097BC09ABA7449D12ACC210F /* ChartsView.swift */; };
 		442302FEEFDC74F7B9C701FB /* HistoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E621B3B1FF74887269E973E4 /* HistoryListView.swift */; };
+		2F031CA164722C5382277780 /* WeightGoalEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB8D2DDB422420E3C7AA6631 /* WeightGoalEditorView.swift */; };
 		8327400F40E3350C8CFDBA05 /* WorkoutDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D92145A78D0FA8A249849A3 /* WorkoutDetailView.swift */; };
 		F46C48E4C16636361D3A777C /* WorkoutHistoryRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CECB6AB68CCB0415E16DF315 /* WorkoutHistoryRowView.swift */; };
 		B023F47F526D66AB81538DA6 /* CameraPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18F7909900BF3E99E9FEAAA3 /* CameraPicker.swift */; };
@@ -152,6 +155,7 @@
 		CB68982469DAD1772819C0D1 /* WorkoutFlowE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FAEEF2FF181E02E96BA99C /* WorkoutFlowE2ETests.swift */; };
 		67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED5C3AB824D34919DA2D319 /* MockAnthropicService.swift */; };
 		ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91456C9AD6483E9EC173B6F /* MockAutoFillService.swift */; };
+		F93E421766D5BAA185A5D97A /* MockBodyWeightRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41EEE4F98213103358D5CAD5 /* MockBodyWeightRepository.swift */; };
 		EF0190BDBED8D17D8409E895 /* MockChatMessageRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21483199A38B51BC7C2521CF /* MockChatMessageRepository.swift */; };
 		0063611710BE35E7D91E79AC /* MockExercisePhotoStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2234A5D7496F3A79D4F68721 /* MockExercisePhotoStorage.swift */; };
 		4173888D7CE008476D62C6D0 /* MockExerciseRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D7F1C030210B4FD9412C102 /* MockExerciseRepository.swift */; };
@@ -218,6 +222,7 @@
 		6FFE47AAAA7449058E9C42B3 /* AutoFinishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2EE8E66038FB41E761810C /* AutoFinishTests.swift */; };
 		61D87BFD5D753A149B14B4B7 /* BodyGoalSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA2ABF31C40AE4B1E8180A3 /* BodyGoalSettingsTests.swift */; };
 		B45CD9EF83FD5469A830CC2F /* BodyWeightTrendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CEFFD123E79219EFEF5365F /* BodyWeightTrendTests.swift */; };
+		F698D18D8853773F1E419E5C /* BodyWeightTrendViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26EE47F91517F6B126D7B8DD /* BodyWeightTrendViewModelTests.swift */; };
 		BD88CA8763EA48B6DF5EA1C0 /* BodyWeightViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A754765C32959052E27AC76D /* BodyWeightViewModelTests.swift */; };
 		FAE36F47262C670CBD18C189 /* BrandThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8700759E0BEF9D81F22B0BA /* BrandThemeTests.swift */; };
 		C736F5D1E91B33CB3462C165 /* CalendarViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC30A61797E98CE80A83F037 /* CalendarViewModelTests.swift */; };
@@ -359,6 +364,7 @@
 		2BB5C6DF96590C72CEA77BD4 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		BFB1106CAB595E0F873B0E4E /* ActiveWorkoutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutViewModel.swift; sourceTree = "<group>"; };
 		E9D3CC2C84199AB8FC372FAF /* BodyWeightTrend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrend.swift; sourceTree = "<group>"; };
+		24213EDB6077D899B03C4163 /* BodyWeightTrendViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrendViewModel.swift; sourceTree = "<group>"; };
 		0A915220457843657F447086 /* BodyWeightViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightViewModel.swift; sourceTree = "<group>"; };
 		2481707D7718DFBFE1786D0B /* CalendarViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViewModel.swift; sourceTree = "<group>"; };
 		7F447D4EB6221AD59A7EDF9F /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
@@ -389,10 +395,12 @@
 		D7926DF234B42A95D7DC4AE8 /* ExerciseRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseRowView.swift; sourceTree = "<group>"; };
 		100EF3FD65C0ED533307EB4A /* FilterChipsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterChipsView.swift; sourceTree = "<group>"; };
 		52B90946C171941618E68CD3 /* PhotoCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureView.swift; sourceTree = "<group>"; };
+		ED22DBCB02C868B8B438C886 /* BodyWeightTrendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrendView.swift; sourceTree = "<group>"; };
 		42B5C312C2A9E2B45AF0BA52 /* CalendarDayCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarDayCellView.swift; sourceTree = "<group>"; };
 		1E07D42BAC0E7179DC579B8E /* CalendarHeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarHeatmapView.swift; sourceTree = "<group>"; };
 		097BC09ABA7449D12ACC210F /* ChartsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartsView.swift; sourceTree = "<group>"; };
 		E621B3B1FF74887269E973E4 /* HistoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryListView.swift; sourceTree = "<group>"; };
+		DB8D2DDB422420E3C7AA6631 /* WeightGoalEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightGoalEditorView.swift; sourceTree = "<group>"; };
 		8D92145A78D0FA8A249849A3 /* WorkoutDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailView.swift; sourceTree = "<group>"; };
 		CECB6AB68CCB0415E16DF315 /* WorkoutHistoryRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutHistoryRowView.swift; sourceTree = "<group>"; };
 		18F7909900BF3E99E9FEAAA3 /* CameraPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPicker.swift; sourceTree = "<group>"; };
@@ -421,6 +429,7 @@
 		F9FAEEF2FF181E02E96BA99C /* WorkoutFlowE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFlowE2ETests.swift; sourceTree = "<group>"; };
 		2ED5C3AB824D34919DA2D319 /* MockAnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAnthropicService.swift; sourceTree = "<group>"; };
 		A91456C9AD6483E9EC173B6F /* MockAutoFillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAutoFillService.swift; sourceTree = "<group>"; };
+		41EEE4F98213103358D5CAD5 /* MockBodyWeightRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBodyWeightRepository.swift; sourceTree = "<group>"; };
 		21483199A38B51BC7C2521CF /* MockChatMessageRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockChatMessageRepository.swift; sourceTree = "<group>"; };
 		2234A5D7496F3A79D4F68721 /* MockExercisePhotoStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockExercisePhotoStorage.swift; sourceTree = "<group>"; };
 		3D7F1C030210B4FD9412C102 /* MockExerciseRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockExerciseRepository.swift; sourceTree = "<group>"; };
@@ -487,6 +496,7 @@
 		3E2EE8E66038FB41E761810C /* AutoFinishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFinishTests.swift; sourceTree = "<group>"; };
 		FCA2ABF31C40AE4B1E8180A3 /* BodyGoalSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyGoalSettingsTests.swift; sourceTree = "<group>"; };
 		9CEFFD123E79219EFEF5365F /* BodyWeightTrendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrendTests.swift; sourceTree = "<group>"; };
+		26EE47F91517F6B126D7B8DD /* BodyWeightTrendViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrendViewModelTests.swift; sourceTree = "<group>"; };
 		A754765C32959052E27AC76D /* BodyWeightViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightViewModelTests.swift; sourceTree = "<group>"; };
 		B8700759E0BEF9D81F22B0BA /* BrandThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandThemeTests.swift; sourceTree = "<group>"; };
 		BC30A61797E98CE80A83F037 /* CalendarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarViewModelTests.swift; sourceTree = "<group>"; };
@@ -729,6 +739,7 @@
 			children = (
 				BFB1106CAB595E0F873B0E4E,
 				E9D3CC2C84199AB8FC372FAF,
+				24213EDB6077D899B03C4163,
 				0A915220457843657F447086,
 				2481707D7718DFBFE1786D0B,
 				7F447D4EB6221AD59A7EDF9F,
@@ -794,10 +805,12 @@
 		002F92DA9AB9E5A16710E136 /* History */ = {
 			isa = PBXGroup;
 			children = (
+				ED22DBCB02C868B8B438C886,
 				42B5C312C2A9E2B45AF0BA52,
 				1E07D42BAC0E7179DC579B8E,
 				097BC09ABA7449D12ACC210F,
 				E621B3B1FF74887269E973E4,
+				DB8D2DDB422420E3C7AA6631,
 				8D92145A78D0FA8A249849A3,
 				CECB6AB68CCB0415E16DF315,
 			);
@@ -890,6 +903,7 @@
 			children = (
 				2ED5C3AB824D34919DA2D319,
 				A91456C9AD6483E9EC173B6F,
+				41EEE4F98213103358D5CAD5,
 				21483199A38B51BC7C2521CF,
 				2234A5D7496F3A79D4F68721,
 				3D7F1C030210B4FD9412C102,
@@ -984,6 +998,7 @@
 				3E2EE8E66038FB41E761810C,
 				FCA2ABF31C40AE4B1E8180A3,
 				9CEFFD123E79219EFEF5365F,
+				26EE47F91517F6B126D7B8DD,
 				A754765C32959052E27AC76D,
 				B8700759E0BEF9D81F22B0BA,
 				BC30A61797E98CE80A83F037,
@@ -1226,6 +1241,7 @@
 				39320B32AAB849DA6F4142BC /* SettingsManager.swift in Sources */,
 				B902261B25F991B27E8726CE /* ActiveWorkoutViewModel.swift in Sources */,
 				DC8670B09213E30C41AD10CA /* BodyWeightTrend.swift in Sources */,
+				444A15FEEAEBB9AE5F856062 /* BodyWeightTrendViewModel.swift in Sources */,
 				8B39AD114C8A22CA4A12F63D /* BodyWeightViewModel.swift in Sources */,
 				D25F93C9E3A2384DFE178ACB /* CalendarViewModel.swift in Sources */,
 				2AF09F12EAC18CDA1A9FBB47 /* ChatViewModel.swift in Sources */,
@@ -1256,10 +1272,12 @@
 				AF1D48AB95F7653A6A847DB0 /* ExerciseRowView.swift in Sources */,
 				7751863B1495258FE9434FE3 /* FilterChipsView.swift in Sources */,
 				A5A15F461633A49F414B3F09 /* PhotoCaptureView.swift in Sources */,
+				BCEC8BC67EF6083C1EC80DF4 /* BodyWeightTrendView.swift in Sources */,
 				50C0ADFD6BB67CE021BBED93 /* CalendarDayCellView.swift in Sources */,
 				F3D12BFD1D26D7FFF00BDF2E /* CalendarHeatmapView.swift in Sources */,
 				4391362462945E4BDD2FFEFE /* ChartsView.swift in Sources */,
 				442302FEEFDC74F7B9C701FB /* HistoryListView.swift in Sources */,
+				2F031CA164722C5382277780 /* WeightGoalEditorView.swift in Sources */,
 				8327400F40E3350C8CFDBA05 /* WorkoutDetailView.swift in Sources */,
 				F46C48E4C16636361D3A777C /* WorkoutHistoryRowView.swift in Sources */,
 				B023F47F526D66AB81538DA6 /* CameraPicker.swift in Sources */,
@@ -1295,6 +1313,7 @@
 				CB68982469DAD1772819C0D1 /* WorkoutFlowE2ETests.swift in Sources */,
 				67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */,
 				ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */,
+				F93E421766D5BAA185A5D97A /* MockBodyWeightRepository.swift in Sources */,
 				EF0190BDBED8D17D8409E895 /* MockChatMessageRepository.swift in Sources */,
 				0063611710BE35E7D91E79AC /* MockExercisePhotoStorage.swift in Sources */,
 				4173888D7CE008476D62C6D0 /* MockExerciseRepository.swift in Sources */,
@@ -1361,6 +1380,7 @@
 				6FFE47AAAA7449058E9C42B3 /* AutoFinishTests.swift in Sources */,
 				61D87BFD5D753A149B14B4B7 /* BodyGoalSettingsTests.swift in Sources */,
 				B45CD9EF83FD5469A830CC2F /* BodyWeightTrendTests.swift in Sources */,
+				F698D18D8853773F1E419E5C /* BodyWeightTrendViewModelTests.swift in Sources */,
 				BD88CA8763EA48B6DF5EA1C0 /* BodyWeightViewModelTests.swift in Sources */,
 				FAE36F47262C670CBD18C189 /* BrandThemeTests.swift in Sources */,
 				C736F5D1E91B33CB3462C165 /* CalendarViewModelTests.swift in Sources */,

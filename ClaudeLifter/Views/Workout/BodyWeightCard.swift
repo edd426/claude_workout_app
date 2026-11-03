@@ -2,36 +2,16 @@ import SwiftUI
 
 /// Home-screen quick-log card for body weight (issue #80). Two taps in the
 /// happy path: "Log" opens the sheet pre-filled with the last weight, "Save"
-/// commits it.
+/// commits it. Tapping the rest of the card opens the weight screen (#152),
+/// and the protein target (#111) sits under the trend.
 struct BodyWeightCard: View {
     let vm: BodyWeightViewModel
+    @Environment(\.dependencies) private var deps
     @State private var showEntrySheet = false
 
     var body: some View {
         HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Body Weight")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let weight = vm.latestDisplayWeight, let entry = vm.latest {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(weight, format: .number.precision(.fractionLength(1)))
-                            .font(.title3.bold())
-                        Text(vm.displayUnit.rawValue)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(entry.recordedAt, format: .relative(presentation: .named))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    trendLine
-                } else {
-                    Text("No entries yet")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
+            trendLink
             Button {
                 showEntrySheet = true
             } label: {
@@ -51,6 +31,69 @@ struct BodyWeightCard: View {
         .sheet(isPresented: $showEntrySheet) {
             BodyWeightEntrySheet(vm: vm)
                 .presentationDetents([.height(220)])
+        }
+    }
+
+    /// Everything left of the Log button opens the weight screen (#152).
+    @ViewBuilder
+    private var trendLink: some View {
+        if let deps {
+            NavigationLink {
+                BodyWeightTrendView(vm: BodyWeightTrendViewModel(
+                    repository: deps.bodyWeightRepository,
+                    settings: deps.settings
+                ))
+            } label: {
+                HStack {
+                    summary
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("bodyWeightTrendLink")
+        } else {
+            summary
+            Spacer()
+        }
+    }
+
+    private var summary: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Body Weight")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let weight = vm.latestDisplayWeight, let entry = vm.latest {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(weight, format: .number.precision(.fractionLength(1)))
+                        .font(.title3.bold())
+                    Text(vm.displayUnit.rawValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(entry.recordedAt, format: .relative(presentation: .named))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                trendLine
+                proteinLine
+            } else {
+                Text("No entries yet")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var proteinLine: some View {
+        if let target = vm.proteinTarget {
+            Text("Protein \(target.grams) g/day\(target.isStale ? " · stale" : "")")
+                .font(.caption2)
+                .foregroundStyle(target.isStale ? Color.orange : Color.secondary)
+                .accessibilityIdentifier("proteinTargetLine")
         }
     }
 

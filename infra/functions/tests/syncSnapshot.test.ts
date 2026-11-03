@@ -22,6 +22,7 @@
 import { app, HttpRequest, InvocationContext } from "@azure/functions";
 import { authenticate } from "../src/shared/auth";
 import { mockDatabase } from "./__mocks__/cosmos";
+import { contentHash } from "../src/shared/contentHash";
 import "../src/functions/syncSnapshot";
 
 const mockApp = app as unknown as { http: jest.Mock };
@@ -118,11 +119,11 @@ class FakeContainer {
     const all = [...this.docs.values()];
     const idsOnly = /SELECT\s+(VALUE\s+)?c\.id\b/i.test(querySpec.query);
     // Mirror Cosmos projection: a property the doc lacks is omitted, not null.
-    const withHash = /c\._contentHash\b/.test(querySpec.query);
+    const withHash = /c\.mirrorContentHash\b/.test(querySpec.query);
     const results = idsOnly
       ? all.map((d) => {
           const row: Doc = { id: d["id"] };
-          if (withHash && d["_contentHash"] !== undefined) row["_contentHash"] = d["_contentHash"];
+          if (withHash && d["mirrorContentHash"] !== undefined) row["mirrorContentHash"] = d["mirrorContentHash"];
           return row;
         })
       : all;
@@ -193,7 +194,7 @@ function container(name: string): FakeContainer {
 function stored(containerName: string, id: string): Doc | undefined {
   const doc = container(containerName).docs.get(id);
   if (!doc) return undefined;
-  const { _contentHash: _hash, ...content } = doc;
+  const { mirrorContentHash: _hash, ...content } = doc;
   return content;
 }
 
@@ -1181,7 +1182,7 @@ describe("schemaVersion 5 — v5 collections and heightCm", () => {
 // The Jefit import (#166) adds ~896 workouts, so every push carries ~950
 // docs. Upserting them all on every set edit would spend the free tier's
 // shared 1000 RU/s on rewriting identical documents. Each stored doc carries
-// `_contentHash` (sha256 of its canonical JSON, Cosmos system fields
+// `mirrorContentHash` (sha256 of its canonical JSON, Cosmos system fields
 // excluded); a push writes only new or changed docs. The response is exactly
 // as before: `counts` is still { upserted, deleted }, with `upserted` counting
 // every snapshot doc now in the mirror (written or already identical), and the
@@ -1217,7 +1218,7 @@ describe("content hashing — unchanged docs are not rewritten", () => {
     expect(isOk(res.status)).toBe(true);
     expect(container("workouts").upsert).toHaveBeenCalledTimes(2);
     for (const id of ["W-0001", "W-0002"]) {
-      expect(container("workouts").docs.get(id)?.["_contentHash"]).toMatch(SHA256_HEX);
+      expect(container("workouts").docs.get(id)?.["mirrorContentHash"]).toMatch(SHA256_HEX);
     }
     expect((res.jsonBody as { counts: Record<string, unknown> }).counts["workouts"]).toEqual({
       upserted: 2,
@@ -1247,7 +1248,7 @@ describe("content hashing — unchanged docs are not rewritten", () => {
 
   test("a changed doc is rewritten; its unchanged neighbours are not", async () => {
     await push(pushBody({ workouts: [workout(1), workout(2), workout(3)] }));
-    const before = container("workouts").docs.get("W-0002")?.["_contentHash"];
+    const before = container("workouts").docs.get("W-0002")?.["mirrorContentHash"];
     container("workouts").upsert.mockClear();
 
     const edited = workout(2, { notes: "felt strong", lastModified: "2024-01-02T09:00:00.000Z" });
@@ -1258,7 +1259,7 @@ describe("content hashing — unchanged docs are not rewritten", () => {
       expect.objectContaining({ id: "W-0002", notes: "felt strong" })
     );
     expect(stored("workouts", "W-0002")).toEqual(edited);
-    expect(container("workouts").docs.get("W-0002")?.["_contentHash"]).not.toBe(before);
+    expect(container("workouts").docs.get("W-0002")?.["mirrorContentHash"]).not.toBe(before);
     const counts = (res.jsonBody as { counts: Record<string, unknown> }).counts;
     expect(counts["workouts"]).toEqual({ upserted: 3, deleted: 0 });
   });
@@ -1301,7 +1302,7 @@ describe("content hashing — unchanged docs are not rewritten", () => {
     const first = await push(pushBody({ workouts: [workout(1), workout(2)] }));
 
     expect(container("workouts").upsert).toHaveBeenCalledTimes(2);
-    expect(container("workouts").docs.get("W-0001")?.["_contentHash"]).toMatch(SHA256_HEX);
+    expect(container("workouts").docs.get("W-0001")?.["mirrorContentHash"]).toMatch(SHA256_HEX);
     expect((first.jsonBody as { counts: Record<string, unknown> }).counts["workouts"]).toEqual({
       upserted: 2,
       deleted: 0,
@@ -1336,24 +1337,42 @@ describe("content hashing — unchanged docs are not rewritten", () => {
 
     expect(container("workouts").query).toHaveBeenCalledTimes(1);
     const [[spec]] = container("workouts").query.mock.calls as unknown as [[{ query: string }]];
-    expect(spec.query).toBe("SELECT c.id, c._contentHash FROM c");
+    expect(spec.query).toBe("SELECT c.id, c.mirrorContentHash FROM c");
   });
 
-  test("the hash ignores Cosmos system fields and a client-supplied _contentHash", async () => {
+  test("the hash ignores Cosmos system fields and a client-supplied mirrorContentHash", async () => {
     await push(pushBody({ workouts: [workout(1)] }));
-    const real = container("workouts").docs.get("W-0001")?.["_contentHash"];
+    const real = container("workouts").docs.get("W-0001")?.["mirrorContentHash"];
     container("workouts").upsert.mockClear();
 
     // Same content, decorated: still unchanged, so no write.
     await push(
-      pushBody({ workouts: [{ ...workout(1), _rid: "r", _etag: "e", _ts: 9, _contentHash: real }] })
+      pushBody({ workouts: [{ ...workout(1), _rid: "r", _etag: "e", _ts: 9, mirrorContentHash: real }] })
     );
     expect(container("workouts").upsert).not.toHaveBeenCalled();
 
-    // A forged hash on different content cannot make the server skip it.
-    await push(pushBody({ workouts: [{ ...workout(1), name: "changed", _contentHash: real }] }));
+    // A garbage hash on unchanged content is ignored, not stored.
+    await push(pushBody({ workouts: [{ ...workout(1), mirrorContentHash: "garbage" }] }));
+    expect(container("workouts").upsert).not.toHaveBeenCalled();
+    expect(container("workouts").docs.get("W-0001")?.["mirrorContentHash"]).toBe(real);
+
+    // A forged hash on different content cannot make the server skip it, and
+    // what gets stored is the server's own hash of the content.
+    const changed = { ...workout(1), name: "changed" };
+    await push(pushBody({ workouts: [{ ...changed, mirrorContentHash: real }] }));
     expect(container("workouts").upsert).toHaveBeenCalledTimes(1);
-    expect(container("workouts").docs.get("W-0001")?.["_contentHash"]).not.toBe(real);
+    expect(container("workouts").docs.get("W-0001")?.["mirrorContentHash"]).toBe(
+      contentHash(changed)
+    );
+    expect(contentHash(changed)).not.toBe(real);
+  });
+
+  test("the stored field has no leading underscore (Cosmos's system namespace)", async () => {
+    await push(pushBody({ workouts: [workout(1)] }));
+
+    const keys = Object.keys(container("workouts").docs.get("W-0001") ?? {});
+    expect(keys).toContain("mirrorContentHash");
+    expect(keys.filter((key) => key.startsWith("_"))).toEqual([]);
   });
 
   test("the GET never returns the server-owned hash", async () => {

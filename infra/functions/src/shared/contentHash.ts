@@ -1,8 +1,14 @@
 /**
  * Content hashing for snapshot reconciliation (scaling for the Jefit history,
- * #166). Every doc the snapshot push stores carries `_contentHash`: the sha256
- * of its canonical JSON, with Cosmos system fields and the hash itself left
- * out. A push compares hashes and writes only new or changed docs.
+ * #166). Every doc the snapshot push stores carries `mirrorContentHash`: the
+ * sha256 of its canonical JSON, with Cosmos system fields and the hash itself
+ * left out. A push compares hashes and writes only new or changed docs.
+ *
+ * The name deliberately has no leading underscore: `_` is the namespace of
+ * Cosmos system properties (`_rid`, `_ts`, …), and whether Cosmos accepts a
+ * user property there could not be verified before deploying. A client field
+ * of the same name is never trusted: it is left out of the hash and
+ * overwritten on store.
  *
  * Canonical JSON: object keys sorted (recursively), arrays in order, no
  * whitespace. The phone's JSONEncoder does not promise key order, so sorting
@@ -13,7 +19,7 @@
 import { createHash } from "node:crypto";
 
 /** Server-owned: written on every stored doc, never served to a reader. */
-export const CONTENT_HASH_FIELD = "_contentHash";
+export const CONTENT_HASH_FIELD = "mirrorContentHash";
 
 /** Cosmos system properties, plus the hash: never part of the content. */
 export const SERVER_FIELDS: readonly string[] = [

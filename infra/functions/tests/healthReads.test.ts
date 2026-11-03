@@ -304,7 +304,7 @@ describe("GET /api/body-measurements", () => {
       _etag: "e",
       _attachments: "a",
       _ts: 1,
-      _contentHash: "0".repeat(64),
+      mirrorContentHash: "0".repeat(64),
     };
     container("bodyMeasurements").queryResults.push([withSystem], [withSystem]);
     const res = await handler("bodyMeasurementsList")(makeRequest(), context);

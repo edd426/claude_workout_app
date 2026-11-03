@@ -100,7 +100,7 @@ export function parseIsoDateBound(
 /**
  * Returns a copy of a stored document as readers should see it: without
  * Cosmos system properties and without the snapshot push's server-owned
- * `_contentHash`.
+ * `mirrorContentHash`.
  */
 export function stripSystemProps<T extends object>(doc: T): T {
   const clean: Record<string, unknown> = { ...(doc as Record<string, unknown>) };

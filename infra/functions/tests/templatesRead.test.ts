@@ -168,7 +168,7 @@ describe("GET /api/templates/{id} — detail", () => {
 
   test("never serves the snapshot's content hash or Cosmos system fields", async () => {
     mockItemRead.mockResolvedValue({
-      resource: { ...sampleTemplate, _contentHash: "a".repeat(64), _rid: "r", _ts: 1, _etag: "e" },
+      resource: { ...sampleTemplate, mirrorContentHash: "a".repeat(64), _rid: "r", _ts: 1, _etag: "e" },
     });
 
     const res = await findHandler("templatesGet")(
@@ -181,7 +181,7 @@ describe("GET /api/templates/{id} — detail", () => {
 
   test("the list never serves them either", async () => {
     mockFetchAll.mockResolvedValue({
-      resources: [{ ...sampleTemplate, _contentHash: "a".repeat(64), _rid: "r" }],
+      resources: [{ ...sampleTemplate, mirrorContentHash: "a".repeat(64), _rid: "r" }],
     });
 
     const res = await findHandler("templatesList")(makeRequest(), new InvocationContext());

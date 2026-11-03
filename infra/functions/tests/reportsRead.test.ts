@@ -91,7 +91,7 @@ describe("GET /api/reports", () => {
 
   test("never serves the snapshot's content hash or Cosmos system fields", async () => {
     mockFetchAll.mockResolvedValue({
-      resources: [{ ...sampleReport, _contentHash: "a".repeat(64), _rid: "r", _ts: 1 }],
+      resources: [{ ...sampleReport, mirrorContentHash: "a".repeat(64), _rid: "r", _ts: 1 }],
     });
 
     const res = await findHandler("reportsList")(makeRequest(), new InvocationContext());

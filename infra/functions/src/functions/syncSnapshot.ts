@@ -18,9 +18,12 @@
  *   the full snapshot later and converges.
  *
  *   Only new or changed docs are written (#166 scaling: the Jefit history
- *   makes every push ~950 docs). Each stored doc carries `_contentHash`, and
- *   one projected query per container (`id`, `_contentHash`) serves both the
- *   change check and delete-absent. A doc stored before hashing has no hash,
+ *   makes every push ~950 docs). Each stored doc carries `mirrorContentHash`
+ *   (no leading underscore: that is Cosmos's system-field namespace), and one
+ *   projected query per container (`id`, `mirrorContentHash`) serves both the
+ *   change check and delete-absent. A client-sent `mirrorContentHash` is never
+ *   trusted: it is left out of the hash and overwritten. A doc stored before
+ *   hashing has no hash,
  *   so it is written once and gains one. `counts.upserted` still counts every
  *   snapshot doc now in the mirror, written or already identical, exactly as
  *   before; the number actually written goes to the function log. A

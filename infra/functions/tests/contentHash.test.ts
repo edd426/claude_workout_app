@@ -55,6 +55,10 @@ describe("contentHash", () => {
     expect(clientContent(decorated)).toEqual(plain);
   });
 
+  test("the field is mirrorContentHash, outside Cosmos's _ system namespace", () => {
+    expect(CONTENT_HASH_FIELD).toBe("mirrorContentHash");
+  });
+
   test("keeps other underscore fields: they are client content", () => {
     expect(contentHash({ id: "w1", _note: "x" })).not.toBe(contentHash({ id: "w1" }));
   });

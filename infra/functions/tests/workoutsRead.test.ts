@@ -218,7 +218,7 @@ describe("GET /api/workouts/{id} — detail", () => {
 
   test("never serves the snapshot's content hash or Cosmos system fields", async () => {
     mockItemRead.mockResolvedValue({
-      resource: { ...sampleWorkout, _contentHash: "a".repeat(64), _rid: "r", _ts: 1 },
+      resource: { ...sampleWorkout, mirrorContentHash: "a".repeat(64), _rid: "r", _ts: 1 },
     });
 
     const res = await findHandler("workoutsGet")(

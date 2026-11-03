@@ -85,6 +85,13 @@
 		A408611E843D70F6B2D646B3 /* StartWorkoutTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03C20ABB32B60986D79D033B /* StartWorkoutTool.swift */; };
 		A694F7F7C295536EF45CD4DB /* SuggestWeightTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC74B2285A532C2309640289 /* SuggestWeightTool.swift */; };
 		6AE4A5E440358996B5520B8C /* ToolContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDDC5F360A390AA0040AFC21 /* ToolContext.swift */; };
+		23425D8FB61736656CFAC7E8 /* JefitCSV.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C85C919BE2A830FDECF8BE /* JefitCSV.swift */; };
+		61BD1300B011A31C18444370 /* JefitConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57C1FF780A9405975B44847 /* JefitConverter.swift */; };
+		4B30C584F4751B19877A4D54 /* JefitExerciseMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84DDDA90F11664CC58C5904E /* JefitExerciseMapper.swift */; };
+		163EA1999B02F5F3EB1E0168 /* JefitExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69688BBCBE8D66F327C5CFB6 /* JefitExport.swift */; };
+		77BE3AC009069AD1596A6CF7 /* JefitImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA638DB2BA815D947DA08593 /* JefitImportService.swift */; };
+		5FAA7521DD439956D30E3EB9 /* JefitLogParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71B6713718A034F5CF706ED8 /* JefitLogParser.swift */; };
+		E2EEA1FC66CA1486C888B96F /* JefitUnitBoundary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58800B7796300D4FB22D856B /* JefitUnitBoundary.swift */; };
 		8FF138856D23FE64E52BDC22 /* InboxApplier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BF7CB7DF3294D9DAFF7C65E /* InboxApplier.swift */; };
 		938B96F08FB1EBECC33040BF /* InboxChangePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2BCF823E0D690ABC6538AFF /* InboxChangePreview.swift */; };
 		7E786F2B1B7569A6E43B3B14 /* InboxDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A71BAF2B39DA6C199B12A17A /* InboxDTOs.swift */; };
@@ -165,6 +172,7 @@
 		3E19873FCAF2E3B514476A20 /* CoachTemplateE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B049E3F754C1EBFBAD0B1E99 /* CoachTemplateE2ETests.swift */; };
 		8613A469B2FA4B9852F98DC2 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB3EA937ED9219F4D9BFEB26 /* IntegrationTests.swift */; };
 		CB68982469DAD1772819C0D1 /* WorkoutFlowE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FAEEF2FF181E02E96BA99C /* WorkoutFlowE2ETests.swift */; };
+		DF783602F1EE4A6F19FC47EB /* JefitFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9993EC7457B4D020FC9D8FCE /* JefitFixtures.swift */; };
 		67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED5C3AB824D34919DA2D319 /* MockAnthropicService.swift */; };
 		ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91456C9AD6483E9EC173B6F /* MockAutoFillService.swift */; };
 		F93E421766D5BAA185A5D97A /* MockBodyWeightRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41EEE4F98213103358D5CAD5 /* MockBodyWeightRepository.swift */; };
@@ -226,6 +234,11 @@
 		B22BDFB1E4DBA95BDE829311 /* InboxApplierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2EA5C4834BDD04FD51A152 /* InboxApplierTests.swift */; };
 		FBDAEACA64DF992A900620DA /* InboxChangePreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDD5DCBDF2FAEC35CC1BF18 /* InboxChangePreviewTests.swift */; };
 		CCC3D50FD4AF845EE7C23FCB /* InsightGenerationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E0A6F5B9612A9FD2543C0 /* InsightGenerationServiceTests.swift */; };
+		A12B78B6A07ED3DC745466F8 /* JefitExerciseMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CFE3A80E88D15A99E6F5EE /* JefitExerciseMappingTests.swift */; };
+		4161C9CFFBEA9F633A252AFF /* JefitImportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9259452DAC6874340CD126F1 /* JefitImportServiceTests.swift */; };
+		908134F3379A4EAF304CDDA1 /* JefitParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6DCB74DF66496D5783F97A6 /* JefitParsingTests.swift */; };
+		6D4D2829197F9E953DEAADBE /* JefitRealExportDryRunTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D7319D5B6DB06465A41EEF /* JefitRealExportDryRunTests.swift */; };
+		D43B854728F0718CBB2AE279 /* JefitUnitBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92EBE483A68FD260C85F9DAA /* JefitUnitBoundaryTests.swift */; };
 		32CA73C513F6D134204FF792 /* KeychainHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB1BA0FAD7D48CF98800F41 /* KeychainHelperTests.swift */; };
 		5F8BA2A9D7D40C20D07BFB42 /* LogSetToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB61131FBE4F8E956A8F5D4 /* LogSetToolTests.swift */; };
 		26A91C28708C952955278C50 /* ModelContainerFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B407B2324DDEE6C4F38B322 /* ModelContainerFactoryTests.swift */; };
@@ -283,6 +296,7 @@
 		C1AF454D4126746BE9FE5A93 /* WorkoutFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D589703C09996B162CB9CAAB /* WorkoutFlowTests.swift */; };
 		59DF5776D910D2F8EED1A8E4 /* UITestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A18A4D9D36741B602ED0CDD /* UITestHelpers.swift */; };
 		082A7742489FA6F429E946B5 /* exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = FD648AE5A57CA00A8811D7B0 /* exercises.json */; };
+		8AF896C7B64CE44520A9A113 /* jefit_exercise_map.json in Resources */ = {isa = PBXBuildFile; fileRef = 6EC2BE302E334F0267A973EC /* jefit_exercise_map.json */; };
 		028A08C6196B1E735FAB0BEC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 75838688CCF7152892E118E1 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -385,6 +399,13 @@
 		03C20ABB32B60986D79D033B /* StartWorkoutTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartWorkoutTool.swift; sourceTree = "<group>"; };
 		DC74B2285A532C2309640289 /* SuggestWeightTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestWeightTool.swift; sourceTree = "<group>"; };
 		CDDC5F360A390AA0040AFC21 /* ToolContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolContext.swift; sourceTree = "<group>"; };
+		A1C85C919BE2A830FDECF8BE /* JefitCSV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitCSV.swift; sourceTree = "<group>"; };
+		A57C1FF780A9405975B44847 /* JefitConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitConverter.swift; sourceTree = "<group>"; };
+		84DDDA90F11664CC58C5904E /* JefitExerciseMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitExerciseMapper.swift; sourceTree = "<group>"; };
+		69688BBCBE8D66F327C5CFB6 /* JefitExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitExport.swift; sourceTree = "<group>"; };
+		CA638DB2BA815D947DA08593 /* JefitImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitImportService.swift; sourceTree = "<group>"; };
+		71B6713718A034F5CF706ED8 /* JefitLogParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitLogParser.swift; sourceTree = "<group>"; };
+		58800B7796300D4FB22D856B /* JefitUnitBoundary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitUnitBoundary.swift; sourceTree = "<group>"; };
 		1BF7CB7DF3294D9DAFF7C65E /* InboxApplier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxApplier.swift; sourceTree = "<group>"; };
 		F2BCF823E0D690ABC6538AFF /* InboxChangePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxChangePreview.swift; sourceTree = "<group>"; };
 		A71BAF2B39DA6C199B12A17A /* InboxDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxDTOs.swift; sourceTree = "<group>"; };
@@ -465,6 +486,7 @@
 		B049E3F754C1EBFBAD0B1E99 /* CoachTemplateE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachTemplateE2ETests.swift; sourceTree = "<group>"; };
 		CB3EA937ED9219F4D9BFEB26 /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
 		F9FAEEF2FF181E02E96BA99C /* WorkoutFlowE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFlowE2ETests.swift; sourceTree = "<group>"; };
+		9993EC7457B4D020FC9D8FCE /* JefitFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitFixtures.swift; sourceTree = "<group>"; };
 		2ED5C3AB824D34919DA2D319 /* MockAnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAnthropicService.swift; sourceTree = "<group>"; };
 		A91456C9AD6483E9EC173B6F /* MockAutoFillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAutoFillService.swift; sourceTree = "<group>"; };
 		41EEE4F98213103358D5CAD5 /* MockBodyWeightRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBodyWeightRepository.swift; sourceTree = "<group>"; };
@@ -526,6 +548,11 @@
 		1B2EA5C4834BDD04FD51A152 /* InboxApplierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxApplierTests.swift; sourceTree = "<group>"; };
 		ABDD5DCBDF2FAEC35CC1BF18 /* InboxChangePreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxChangePreviewTests.swift; sourceTree = "<group>"; };
 		8C8E0A6F5B9612A9FD2543C0 /* InsightGenerationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightGenerationServiceTests.swift; sourceTree = "<group>"; };
+		57CFE3A80E88D15A99E6F5EE /* JefitExerciseMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitExerciseMappingTests.swift; sourceTree = "<group>"; };
+		9259452DAC6874340CD126F1 /* JefitImportServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitImportServiceTests.swift; sourceTree = "<group>"; };
+		F6DCB74DF66496D5783F97A6 /* JefitParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitParsingTests.swift; sourceTree = "<group>"; };
+		76D7319D5B6DB06465A41EEF /* JefitRealExportDryRunTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitRealExportDryRunTests.swift; sourceTree = "<group>"; };
+		92EBE483A68FD260C85F9DAA /* JefitUnitBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitUnitBoundaryTests.swift; sourceTree = "<group>"; };
 		BFB1BA0FAD7D48CF98800F41 /* KeychainHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelperTests.swift; sourceTree = "<group>"; };
 		AAB61131FBE4F8E956A8F5D4 /* LogSetToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogSetToolTests.swift; sourceTree = "<group>"; };
 		6B407B2324DDEE6C4F38B322 /* ModelContainerFactoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelContainerFactoryTests.swift; sourceTree = "<group>"; };
@@ -583,6 +610,7 @@
 		D589703C09996B162CB9CAAB /* WorkoutFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFlowTests.swift; sourceTree = "<group>"; };
 		9A18A4D9D36741B602ED0CDD /* UITestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestHelpers.swift; sourceTree = "<group>"; };
 		FD648AE5A57CA00A8811D7B0 /* exercises.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = exercises.json; sourceTree = "<group>"; };
+		6EC2BE302E334F0267A973EC /* jefit_exercise_map.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = jefit_exercise_map.json; sourceTree = "<group>"; };
 		75838688CCF7152892E118E1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -722,6 +750,7 @@
 			isa = PBXGroup;
 			children = (
 				E5A1A627D32425BC7C8BA220,
+				CFE82E9740E5A7E13A6795C3,
 				D9CEC1664156BEADAFFC3182,
 				CA11BBBC79FFE09545E46E0D,
 				9E7CF96DD47561F6D654A6D0,
@@ -767,6 +796,20 @@
 				CDDC5F360A390AA0040AFC21,
 			);
 			path = ChatTools;
+			sourceTree = "<group>";
+		};
+		CFE82E9740E5A7E13A6795C3 /* JefitImport */ = {
+			isa = PBXGroup;
+			children = (
+				A1C85C919BE2A830FDECF8BE,
+				A57C1FF780A9405975B44847,
+				84DDDA90F11664CC58C5904E,
+				69688BBCBE8D66F327C5CFB6,
+				CA638DB2BA815D947DA08593,
+				71B6713718A034F5CF706ED8,
+				58800B7796300D4FB22D856B,
+			);
+			path = JefitImport;
 			sourceTree = "<group>";
 		};
 		D9CEC1664156BEADAFFC3182 /* Sync */ = {
@@ -933,6 +976,7 @@
 			isa = PBXGroup;
 			children = (
 				FD648AE5A57CA00A8811D7B0 /* exercises.json */,
+				6EC2BE302E334F0267A973EC /* jefit_exercise_map.json */,
 				75838688CCF7152892E118E1 /* Assets.xcassets */,
 			);
 			path = Resources;
@@ -965,6 +1009,7 @@
 		97107AF04494E75BADA722E7 /* Helpers */ = {
 			isa = PBXGroup;
 			children = (
+				9993EC7457B4D020FC9D8FCE,
 				2ED5C3AB824D34919DA2D319,
 				A91456C9AD6483E9EC173B6F,
 				41EEE4F98213103358D5CAD5,
@@ -1047,6 +1092,11 @@
 				1B2EA5C4834BDD04FD51A152,
 				ABDD5DCBDF2FAEC35CC1BF18,
 				8C8E0A6F5B9612A9FD2543C0,
+				57CFE3A80E88D15A99E6F5EE,
+				9259452DAC6874340CD126F1,
+				F6DCB74DF66496D5783F97A6,
+				76D7319D5B6DB06465A41EEF,
+				92EBE483A68FD260C85F9DAA,
 				BFB1BA0FAD7D48CF98800F41,
 				AAB61131FBE4F8E956A8F5D4,
 				6B407B2324DDEE6C4F38B322,
@@ -1225,6 +1275,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				082A7742489FA6F429E946B5 /* exercises.json in Resources */,
+				8AF896C7B64CE44520A9A113 /* jefit_exercise_map.json in Resources */,
 				028A08C6196B1E735FAB0BEC /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1314,6 +1365,13 @@
 				A408611E843D70F6B2D646B3 /* StartWorkoutTool.swift in Sources */,
 				A694F7F7C295536EF45CD4DB /* SuggestWeightTool.swift in Sources */,
 				6AE4A5E440358996B5520B8C /* ToolContext.swift in Sources */,
+				23425D8FB61736656CFAC7E8 /* JefitCSV.swift in Sources */,
+				61BD1300B011A31C18444370 /* JefitConverter.swift in Sources */,
+				4B30C584F4751B19877A4D54 /* JefitExerciseMapper.swift in Sources */,
+				163EA1999B02F5F3EB1E0168 /* JefitExport.swift in Sources */,
+				77BE3AC009069AD1596A6CF7 /* JefitImportService.swift in Sources */,
+				5FAA7521DD439956D30E3EB9 /* JefitLogParser.swift in Sources */,
+				E2EEA1FC66CA1486C888B96F /* JefitUnitBoundary.swift in Sources */,
 				8FF138856D23FE64E52BDC22 /* InboxApplier.swift in Sources */,
 				938B96F08FB1EBECC33040BF /* InboxChangePreview.swift in Sources */,
 				7E786F2B1B7569A6E43B3B14 /* InboxDTOs.swift in Sources */,
@@ -1401,6 +1459,7 @@
 				3E19873FCAF2E3B514476A20 /* CoachTemplateE2ETests.swift in Sources */,
 				8613A469B2FA4B9852F98DC2 /* IntegrationTests.swift in Sources */,
 				CB68982469DAD1772819C0D1 /* WorkoutFlowE2ETests.swift in Sources */,
+				DF783602F1EE4A6F19FC47EB /* JefitFixtures.swift in Sources */,
 				67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */,
 				ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */,
 				F93E421766D5BAA185A5D97A /* MockBodyWeightRepository.swift in Sources */,
@@ -1462,6 +1521,11 @@
 				B22BDFB1E4DBA95BDE829311 /* InboxApplierTests.swift in Sources */,
 				FBDAEACA64DF992A900620DA /* InboxChangePreviewTests.swift in Sources */,
 				CCC3D50FD4AF845EE7C23FCB /* InsightGenerationServiceTests.swift in Sources */,
+				A12B78B6A07ED3DC745466F8 /* JefitExerciseMappingTests.swift in Sources */,
+				4161C9CFFBEA9F633A252AFF /* JefitImportServiceTests.swift in Sources */,
+				908134F3379A4EAF304CDDA1 /* JefitParsingTests.swift in Sources */,
+				6D4D2829197F9E953DEAADBE /* JefitRealExportDryRunTests.swift in Sources */,
+				D43B854728F0718CBB2AE279 /* JefitUnitBoundaryTests.swift in Sources */,
 				32CA73C513F6D134204FF792 /* KeychainHelperTests.swift in Sources */,
 				5F8BA2A9D7D40C20D07BFB42 /* LogSetToolTests.swift in Sources */,
 				26A91C28708C952955278C50 /* ModelContainerFactoryTests.swift in Sources */,

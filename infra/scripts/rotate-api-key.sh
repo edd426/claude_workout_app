@@ -11,7 +11,8 @@
 #   1. macOS Keychain, service claudelifter-mcp, account functions-api-key
 #   2. API_KEY app setting on func-workout-prod (the API itself)
 #   3. FUNCTIONS_API_KEY app setting on func-workout-mcp-prod (claude.ai connector)
-#   4. ~/.claude.json, the workout MCP server's env (Claude Code, stdio)
+#   4. ~/.claude.json, the local stdio workout server's env, if configured
+#      (since 2026-11-03 Claude Code uses the claude.ai connector instead)
 #   5. the phone: Settings → Server API Key (by hand; paste from the clipboard)
 #
 # The API accepts one key at a time, so the phone cannot sync until step 5.
@@ -82,8 +83,12 @@ VALUE="$NEW" PROJECT="$REPO_DIR" python3 -I - <<'PY'
 import json, os, tempfile
 path = os.path.expanduser("~/.claude.json")
 data = json.load(open(path))
-env = data["projects"][os.environ["PROJECT"]]["mcpServers"]["workout"]["env"]
-env["FUNCTIONS_API_KEY"] = os.environ["VALUE"]
+server = data.get("projects", {}).get(os.environ["PROJECT"], {}).get("mcpServers", {}).get("workout")
+if server is None:
+    # Claude Code uses the claude.ai connector since 2026-11-03; nothing to update.
+    print("no local workout server configured (skipped)")
+    raise SystemExit(0)
+server["env"]["FUNCTIONS_API_KEY"] = os.environ["VALUE"]
 mode = os.stat(path).st_mode & 0o777
 fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
 with os.fdopen(fd, "w") as f:
@@ -107,10 +112,14 @@ MCP=$(az functionapp config appsettings list -g "$RG" -n "$MCP_APP" \
 CC=$(python3 -I -c '
 import json, os, sys
 d = json.load(open(os.path.expanduser("~/.claude.json")))
-sys.stdout.write(d["projects"][sys.argv[1]]["mcpServers"]["workout"]["env"]["FUNCTIONS_API_KEY"])' "$REPO_DIR" \
+s = d.get("projects", {}).get(sys.argv[1], {}).get("mcpServers", {}).get("workout")
+sys.stdout.write(s["env"]["FUNCTIONS_API_KEY"] if s else "")' "$REPO_DIR" \
   | shasum -a 256 | cut -c1-12)
 KC=$(security find-generic-password -s "$SERVICE" -a "$ACCOUNT" -w | tr -d '\n' | shasum -a 256 | cut -c1-12)
 [[ "$MCP" == "$KC" ]] && echo "connector app setting: matches Keychain" || echo "connector app setting: MISMATCH" >&2
-[[ "$CC" == "$KC" ]] && echo "~/.claude.json: matches Keychain" || echo "~/.claude.json: MISMATCH" >&2
+EMPTY=$(printf '' | shasum -a 256 | cut -c1-12)
+if [[ "$CC" == "$EMPTY" ]]; then CC="$KC"; echo "~/.claude.json: no local workout server (skipped)"
+elif [[ "$CC" == "$KC" ]]; then echo "~/.claude.json: matches Keychain"
+else echo "~/.claude.json: MISMATCH" >&2; fi
 [[ "$NEW_STATUS" == "200" && "$OLD_STATUS" == "401" && "$MCP" == "$KC" && "$CC" == "$KC" ]] || exit 1
 echo "done. Next: paste the key on the phone (run with --copy), then /mcp → reconnect workout in Claude Code."

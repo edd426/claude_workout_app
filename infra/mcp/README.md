@@ -76,6 +76,11 @@ npm run build   # emits dist/src/server.js and dist/catalog-index.json
 
 ### Claude Code
 
+Since 2026-11-03 Claude Code uses the **claude.ai connector** (below): once it is
+added on claude.ai, its tools appear in Claude Code as `mcp__claude_ai_ClaudeLifter__*`,
+so Claude Code tests the same server everyone else uses. The local stdio config
+here is for trying unreleased tool changes before a deploy.
+
 `.mcp.json` (project) or `~/.claude.json` (user):
 
 ```json

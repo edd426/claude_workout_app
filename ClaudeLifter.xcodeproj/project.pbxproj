@@ -143,6 +143,7 @@
 		A6561E854F4137DCE189325B /* ExerciseCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38AA7F3DEA42BB23873FA3CF /* ExerciseCardView.swift */; };
 		F7EB7FC7D0A3ED33CD42DC4C /* ExerciseNoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB50C83E38F026FF38A0A7 /* ExerciseNoteEditorView.swift */; };
 		3FFA31DADD610FBC28E081E2 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 872C18983FC82204C6673019 /* HomeView.swift */; };
+		46338E8D447B7A012FEB71F6 /* LastDonePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320AFCF8F169BA6E0F493FD7 /* LastDonePanel.swift */; };
 		E42B02BFC24FDCD7DE0D37CA /* PendingChangesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC136FF97F7DFCBA8708AD8 /* PendingChangesView.swift */; };
 		0063A185AE0B214715BA9FBA /* RestTimerOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 251A036C35AA00E683BDB9BD /* RestTimerOverlayView.swift */; };
 		790A2E66A6B1A9D8A9CDFB78 /* ResumeWorkoutCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47E66131E8982224C5E417AE /* ResumeWorkoutCard.swift */; };
@@ -417,6 +418,7 @@
 		38AA7F3DEA42BB23873FA3CF /* ExerciseCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseCardView.swift; sourceTree = "<group>"; };
 		1CDB50C83E38F026FF38A0A7 /* ExerciseNoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseNoteEditorView.swift; sourceTree = "<group>"; };
 		872C18983FC82204C6673019 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		320AFCF8F169BA6E0F493FD7 /* LastDonePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LastDonePanel.swift; sourceTree = "<group>"; };
 		9BC136FF97F7DFCBA8708AD8 /* PendingChangesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingChangesView.swift; sourceTree = "<group>"; };
 		251A036C35AA00E683BDB9BD /* RestTimerOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimerOverlayView.swift; sourceTree = "<group>"; };
 		47E66131E8982224C5E417AE /* ResumeWorkoutCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumeWorkoutCard.swift; sourceTree = "<group>"; };
@@ -855,6 +857,7 @@
 				38AA7F3DEA42BB23873FA3CF,
 				1CDB50C83E38F026FF38A0A7,
 				872C18983FC82204C6673019,
+				320AFCF8F169BA6E0F493FD7,
 				9BC136FF97F7DFCBA8708AD8,
 				251A036C35AA00E683BDB9BD,
 				47E66131E8982224C5E417AE,
@@ -1294,6 +1297,7 @@
 				A6561E854F4137DCE189325B /* ExerciseCardView.swift in Sources */,
 				F7EB7FC7D0A3ED33CD42DC4C /* ExerciseNoteEditorView.swift in Sources */,
 				3FFA31DADD610FBC28E081E2 /* HomeView.swift in Sources */,
+				46338E8D447B7A012FEB71F6 /* LastDonePanel.swift in Sources */,
 				E42B02BFC24FDCD7DE0D37CA /* PendingChangesView.swift in Sources */,
 				0063A185AE0B214715BA9FBA /* RestTimerOverlayView.swift in Sources */,
 				790A2E66A6B1A9D8A9CDFB78 /* ResumeWorkoutCard.swift in Sources */,

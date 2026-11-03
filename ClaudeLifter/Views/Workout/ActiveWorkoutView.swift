@@ -242,6 +242,9 @@ struct ActiveWorkoutView: View {
             plannedTarget: vm.plannedTarget(for: workoutExercise),
             previousDrifted: { set in
                 vm.previousDriftedFromTarget(set, in: workoutExercise)
+            },
+            loadRecency: {
+                await vm.recency(for: workoutExercise)
             }
         )
     }

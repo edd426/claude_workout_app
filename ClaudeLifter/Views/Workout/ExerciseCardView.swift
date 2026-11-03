@@ -25,11 +25,18 @@ struct ExerciseCardView: View {
     var plannedTarget: PlannedTarget? = nil
     /// Whether last session's reps for a given set missed that target.
     var previousDrifted: (WorkoutSet) -> Bool = { _ in false }
+    /// Loads the "last done" panel (#167). Nil hides the disclosure entirely.
+    var loadRecency: (@MainActor () async -> ExerciseRecency?)? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The template note starts collapsed to one line (report 31A4983B: "They
     /// take up a lot of space … should be clicked into, but not prominent").
     @State private var isTemplateNoteExpanded = false
+    /// The "last done" panel starts collapsed and costs no height until
+    /// opened (#167); its content is loaded on first expand.
+    @State private var isLastDoneExpanded = false
+    @State private var recency: ExerciseRecency?
+    @State private var recencyLoadFailed = false
 
     private var sortedSets: [WorkoutSet] {
         workoutExercise.sets.sorted(by: { $0.order < $1.order })
@@ -38,6 +45,9 @@ struct ExerciseCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             exerciseHeader
+            if isLastDoneExpanded {
+                LastDonePanel(recency: recency, loadFailed: recencyLoadFailed)
+            }
             targetRow
             notesRow
             Divider()
@@ -47,6 +57,14 @@ struct ExerciseCardView: View {
         .padding()
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .task(id: isLastDoneExpanded) { await loadRecencyIfNeeded() }
+    }
+
+    private func loadRecencyIfNeeded() async {
+        guard isLastDoneExpanded, recency == nil, let loadRecency else { return }
+        recencyLoadFailed = false
+        recency = await loadRecency()
+        recencyLoadFailed = recency == nil
     }
 
     /// The plan, so drift is visible while training rather than only in
@@ -243,15 +261,50 @@ struct ExerciseCardView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(workoutExercise.exercise?.name ?? "Unknown Exercise")
                     .font(.headline)
-                if let muscles = workoutExercise.exercise?.primaryMuscles,
-                   !muscles.isEmpty {
-                    Text(muscles.joined(separator: ", "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                musclesLine
             }
             Spacer()
             actionsMenu
+        }
+    }
+
+    /// The primary muscles, as before. With a recency loader the same line is
+    /// the "last done" disclosure (#167), so the collapsed card keeps its
+    /// height: a clock and chevron are the only additions.
+    @ViewBuilder
+    private var musclesLine: some View {
+        let muscles = workoutExercise.exercise?.primaryMuscles ?? []
+        let text = muscles.joined(separator: ", ")
+        if loadRecency != nil {
+            Button {
+                withAnimation(.snappy) { isLastDoneExpanded.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(muscles.isEmpty ? "Last done" : text)
+                        .multilineTextAlignment(.leading)
+                    Image(systemName: "clock.arrow.circlepath")
+                    Image(systemName: isLastDoneExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                // Taller hit area than the caption line, without changing layout.
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .padding(.vertical, -6)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(muscles.isEmpty ? "Last done" : "\(text), last done")
+            .accessibilityHint(
+                isLastDoneExpanded
+                    ? "Hides when you last did this exercise"
+                    : "Shows when you last did this exercise and trained these muscles"
+            )
+            .accessibilityIdentifier("lastDoneToggle")
+        } else if !muscles.isEmpty {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -196,6 +196,36 @@ final class ActiveWorkoutViewModel {
         previousValues[set.id]
     }
 
+    // MARK: - Last done (#167)
+
+    /// Results for the card's "last done" panel, keyed by `Exercise.id`, so
+    /// re-expanding a card does not re-read history. Values only: caching
+    /// `Workout` models here could outlive a deletion made in History while
+    /// this workout is open.
+    @ObservationIgnored private var recencyCache: [UUID: ExerciseRecency] = [:]
+
+    /// When this exercise was last done and its muscles last trained, from
+    /// finished workouts other than this one. Nil when the history can't be
+    /// read, which the card shows as an error rather than as "never".
+    func recency(
+        for workoutExercise: WorkoutExercise,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) async -> ExerciseRecency? {
+        guard let exercise = workoutExercise.exercise else { return nil }
+        if let cached = recencyCache[exercise.id] { return cached }
+        guard let history = try? await workoutRepository.fetchAll() else { return nil }
+        let result = ExerciseRecencyCalculator.recency(
+            for: exercise,
+            history: history,
+            excludingWorkoutId: workout?.id,
+            now: now,
+            calendar: calendar
+        )
+        recencyCache[exercise.id] = result
+        return result
+    }
+
     var totalSetsCompleted: Int {
         workout?.exercises.flatMap(\.sets).filter(\.isCompleted).count ?? 0
     }

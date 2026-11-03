@@ -16,6 +16,10 @@ final class BodyWeightViewModel {
     var latest: BodyWeightEntry?
     private(set) var recentEntries: [BodyWeightEntry] = []
     var errorMessage: String?
+    /// Readings from the 7 days ending at the latest one: the protein basis
+    /// (#111). Anchored on the latest reading, not on today, so a month
+    /// without a weigh-in still yields the last target, flagged stale.
+    private var proteinBasis: [WeightSample] = []
 
     init(
         repository: any BodyWeightRepository,
@@ -44,11 +48,38 @@ final class BodyWeightViewModel {
         return WeightUnit.kg.convert(latest.weightKg - oldest.weightKg, to: displayUnit)
     }
 
+    /// Daily protein floor for the card (#111). Computed on read from the
+    /// live multiplier setting, so a change made on the weight screen shows
+    /// here without a reload.
+    var proteinTarget: ProteinTarget? {
+        ProteinTargetCalculator.target(
+            samples: proteinBasis,
+            multiplier: settings.proteinMultiplier,
+            now: .now,
+            calendar: .current
+        )
+    }
+
     func load() async {
         latest = try? await repository.fetchLatest()
         recentEntries = (try? await repository.fetchRange(
             from: Date(timeIntervalSinceNow: -30 * 86_400), to: .now
         )) ?? []
+        await loadProteinBasis()
+    }
+
+    private func loadProteinBasis() async {
+        guard let latest else {
+            proteinBasis = []
+            return
+        }
+        let window = (try? await repository.fetchRange(
+            from: latest.recordedAt.addingTimeInterval(
+                -Double(ProteinTargetCalculator.averageWindowDays) * 86_400
+            ),
+            to: latest.recordedAt
+        )) ?? [latest]
+        proteinBasis = window.map { WeightSample(date: $0.recordedAt, kilograms: $0.weightKg) }
     }
 
     /// Log a weight typed in the given unit. Saves locally first (always), then

@@ -1,3 +1,65 @@
+# ▶ 2026-11-03 (evening): 1.9.0 scope approved; 4 build agents running
+
+**Evan's decisions (2026-11-03):**
+- **Scope approved.**
+  - In 1.9.0:
+    - bugs #171–#176;
+    - the any-order workout (exercise strip, collapsible cards, Skip/Remove/Move);
+    - Machine taken #169 and photos #170;
+    - the Today screen with #168 and a Body tab (Settings moves behind a gear);
+    - follow the system appearance;
+    - glanceable set rows;
+    - no swipe-only actions;
+    - the Jefit import screen;
+    - small fixes #144, #155 and #143.
+  - Deferred: #150, the thumb-zone bar with the bigger timer, #119, and a gym-aware library.
+- **PR baseline.** PRs count from 2026-01-01. Lifetime bests, including the Jefit history 2019–2025 converted from lb to kg, are shown only as reference.
+- **ui-standards.md is adopted.** Evan left the call to Claude.
+
+**Done this session:**
+- **#171 confirmed on the phone.** A tap does nothing; a long press fires. Comment posted on the issue.
+- **#143 done in the MCP.** `isDraft` is added to list_workouts and get_workout (306/306 tests). Commit `9e12235`; not deployed.
+- **Foundation `eacab30`:**
+  - BrandTheme tokens resolve per appearance (contrast measured);
+  - forced light mode removed;
+  - a `BodyView` stub;
+  - CLAUDE.md now says iOS 27.
+- **Phone state:**
+  - the 5 program-v3 templates are applied;
+  - 3 open reports set to acknowledged (inbox ops; they land on the next sync).
+- **UX review page** (private): https://claude.ai/artifact/QfwVcjCJ15za72M2QYgnhi
+
+**Environment (verified 2026-11-03):**
+- **The phone runs iOS 27.0.1**, per the report metadata.
+- Simulators:
+  - the 26.5 runtime and its simulators were removed, along with a stray 27.1 asset;
+  - the **iOS 27.0** runtime is installed;
+  - devices: `iPhone 13 Pro Max` (84DA6A04…, the lead's), and one per agent: (W) 63F3B129…, (T) 600B9B7F…, (B) D7EBAA16…, (D) 3F5A205A….
+- Disk is tight: about 20 GB free before the agents started. Each agent uses `scratchpad/dd-<X>` as its DerivedData.
+- 9 merged agent worktrees removed. Two locked ones remain (a686…, adb7…).
+
+**Agents (each in its own worktree; shared brief at `scratchpad/brief_common_1_9_0.md`, reports at `scratchpad/agent_<X>_1_9_0_report.md`):**
+- **W**: the workout screen (#172 first, then any-order, #169, #170, set rows, #144, #174).
+- **T**: tabs, Today, #168, reports menus (#154), derived "Last:" (#176), and the insight ✕.
+- **B**: the Body tab: weight, protein target, waist/height (#165) and medications (#164, generic).
+- **D**: Settings #171 (now a sheet with Done), the Jefit import UI #166, PRs #173 with the since-2026 baseline, History counts #176, #155, calendar labels, and the colour sweep.
+
+**After the merges:**
+1. Run the unit suite on release.
+2. Bump to 1.9.0 in `generate_project.py`.
+3. Get Evan's go-ahead, then deploy in this order:
+   1. the 4 Cosmos containers;
+   2. Functions;
+   3. the MCP remote (`--code`);
+   4. the phone install.
+4. Then:
+   - set **template alternatives** with MCP `update_template` (the templates' notes list them: rack taken → Leg Press, bench taken → the converging chest press, and so on);
+   - bulk photos (#170);
+   - Evan enters his height and waist in Body, and runs the Jefit import from Settings with the CSV on the phone.
+5. Resolve reports once the build is installed.
+
+---
+
 # ▶ 2026-11-03: 1.9.0 in progress on `release/1.9.0`
 
 Evan asked to gather every issue and request and start the next version, plus

@@ -64,6 +64,12 @@ final class WorkoutIdleProbe: XCTestCase {
         sleep(20)
         unmark("PROBE_TOP")
 
+        // The evaluation's sequence before the loop (#172): log a set (the
+        // rest bar appears), focus a weight field, dismiss, skip the rest.
+        if env["PROBE_LOG_SET"] == "1" {
+            logSetLikeTheEvaluation()
+        }
+
         // On the any-order screen (1.9.0) the lower cards are collapsed;
         // open the last one from the strip so its notes and set rows render.
         let chips = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stripChip_'"))
@@ -80,6 +86,31 @@ final class WorkoutIdleProbe: XCTestCase {
         mark("PROBE_SCROLLED")
         sleep(idleSeconds)
         unmark("PROBE_SCROLLED")
+    }
+
+    private func logSetLikeTheEvaluation() {
+        let complete = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'completeSet_'"))
+        if let first = complete.allElementsBoundByIndex.first(where: { $0.isHittable }) {
+            first.tap()
+            sleep(1)
+        }
+        let weights = app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH 'weight_'"))
+        if weights.count > 1 {
+            let field = weights.element(boundBy: 1)
+            if field.isHittable { field.tap() }
+            sleep(1)
+            let done = app.buttons["Done"]
+            if done.exists, done.isHittable { done.tap() }
+            sleep(1)
+        }
+        for label in ["Skip rest", "Skip"] {
+            let skip = app.buttons[label]
+            if skip.exists, skip.isHittable {
+                skip.tap()
+                break
+            }
+        }
+        sleep(1)
     }
 
     private func mark(_ name: String) {

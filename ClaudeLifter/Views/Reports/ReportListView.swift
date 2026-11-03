@@ -134,6 +134,7 @@ private struct ReportRow: View {
     let report: ExerciseReport
     let onAction: (ReportRowAction) -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -145,13 +146,7 @@ private struct ReportRow: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Badge and category side by side when they fit, stacked
-            // otherwise, so "Fixed – awaiting install" never truncates, at
-            // any text size (UI-A3).
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { headerItems(fixed: true) }
-                VStack(alignment: .leading, spacing: 4) { headerItems(fixed: false) }
-            }
+            header
             Text(report.detail)
                 .font(.body)
             details
@@ -160,21 +155,27 @@ private struct ReportRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    @ViewBuilder
-    private func headerItems(fixed: Bool) -> some View {
-        ReportStatusBadge(status: report.status)
-            .fixedSize(horizontal: fixed, vertical: false)
-        Label(report.category.displayName, systemImage: report.category.systemImage)
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(BrandTheme.accentText)
-            .fixedSize(horizontal: fixed, vertical: false)
-        // Set only once the photo is in blob storage, i.e. readable over MCP
-        // with get_report_photo (#141).
-        if report.photoURL != nil {
-            Image(systemName: "photo")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Photo attached")
+    /// Badge on its own line, category under it, so neither truncates:
+    /// side by side, "Fixed – awaiting install" was cut off at default size
+    /// next to the row menu. The badge keeps its natural width, except at
+    /// accessibility sizes where it may wrap (UI-A3).
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                ReportStatusBadge(status: report.status)
+                    .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
+                // Set only once the photo is in blob storage, i.e. readable
+                // over MCP with get_report_photo (#141).
+                if report.photoURL != nil {
+                    Image(systemName: "photo")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Photo attached")
+                }
+            }
+            Label(report.category.displayName, systemImage: report.category.systemImage)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(BrandTheme.accentText)
         }
     }
 

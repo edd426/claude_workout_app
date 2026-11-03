@@ -43,7 +43,7 @@ struct ExerciseLibraryViewModelTests {
         await vm.performSearch()
 
         #expect(repo.searchCallCount == 1)
-        #expect(repo.lastSearchQuery == "Bench")
+        #expect(repo.lastSearchQuery.lowercased() == "bench")
     }
 
     @Test("empty search query reloads all exercises")

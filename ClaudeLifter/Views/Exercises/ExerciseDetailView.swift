@@ -138,7 +138,7 @@ struct ExerciseDetailView: View {
         if let errorMessage = photoVM.errorMessage {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(BrandTheme.warning)
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.primary)
@@ -253,7 +253,7 @@ private struct BundledExerciseImagesView: View {
                     .overlay { ProgressView() }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -269,7 +269,7 @@ private struct UserPhotoView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             PhotosPicker(
                 selection: $selectedItem,

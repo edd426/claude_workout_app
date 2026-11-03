@@ -1,5 +1,8 @@
 import SwiftUI
 
+/// Filter chips for the library. Every chip is at least 44 pt tall (UI-T1),
+/// and an active filter is a whole-chip Button that removes it, so its ✕ is
+/// no longer a 12 pt target. Filters combine with the search query (#155).
 struct FilterChipsView: View {
     let categories: [String]
     let categoryValues: [String: [String]]
@@ -12,8 +15,8 @@ struct FilterChipsView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 if !activeFilters.isEmpty {
-                    clearAllChip
                     activeFilterChips
+                    clearAllChip
                 }
                 ForEach(categories, id: \.self) { category in
                     categoryChip(category)
@@ -24,14 +27,19 @@ struct FilterChipsView: View {
         }
     }
 
+    private static func display(_ raw: String) -> String {
+        ExerciseLibraryViewModel.displayName(raw)
+    }
+
     private var clearAllChip: some View {
         Button("Clear All") { onClearAll() }
-            .font(.caption)
+            .font(.subheadline)
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.orange.opacity(0.2))
-            .foregroundStyle(.orange)
-            .cornerRadius(16)
+            .frame(minHeight: 44)
+            .foregroundStyle(.primary)
+            .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+            .contentShape(Capsule())
+            .accessibilityIdentifier("clearAllFilters")
     }
 
     private var activeFilterChips: some View {
@@ -41,36 +49,48 @@ struct FilterChipsView: View {
     }
 
     private func activeFilterChip(category: String, value: String) -> some View {
-        HStack(spacing: 4) {
-            Text("\(category.replacingOccurrences(of: "_", with: " ").capitalized): \(value.replacingOccurrences(of: "_", with: " ").capitalized)")
-                .font(.caption)
-            Button {
-                onRemove(category)
-            } label: {
+        let title = "\(Self.display(category)): \(Self.display(value))"
+        return Button {
+            onRemove(category)
+        } label: {
+            HStack(spacing: 8) {
+                Text(title)
                 Image(systemName: "xmark")
-                    .font(.caption2)
+                    .font(.footnote.weight(.semibold))
+                    .accessibilityHidden(true)
             }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .foregroundStyle(BrandTheme.accentText)
+            .background(BrandTheme.accent.opacity(0.15), in: Capsule())
+            .contentShape(Capsule())
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(BrandTheme.terracotta.opacity(0.2))
-        .foregroundStyle(BrandTheme.terracotta)
-        .cornerRadius(16)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Remove filter \(title)")
     }
 
     private func categoryChip(_ category: String) -> some View {
-        Menu(category.replacingOccurrences(of: "_", with: " ").capitalized) {
+        let isActive = activeFilters[category] != nil
+        return Menu {
             ForEach(categoryValues[category] ?? [], id: \.self) { value in
-                Button(value.replacingOccurrences(of: "_", with: " ").capitalized) {
+                Button(Self.display(value)) {
                     onSelect(category, value)
                 }
             }
+        } label: {
+            HStack(spacing: 4) {
+                Text(Self.display(category))
+                Image(systemName: "chevron.down")
+                    .font(.footnote.weight(.semibold))
+                    .accessibilityHidden(true)
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .foregroundStyle(isActive ? BrandTheme.accentText : .primary)
+            .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+            .contentShape(Capsule())
         }
-        .font(.caption)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(activeFilters[category] != nil ? BrandTheme.terracotta.opacity(0.1) : Color(uiColor: .secondarySystemBackground))
-        .foregroundStyle(activeFilters[category] != nil ? BrandTheme.terracotta : .primary)
-        .cornerRadius(16)
     }
 }

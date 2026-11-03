@@ -165,6 +165,67 @@ struct ExerciseReportDTO: Codable, Sendable {
     let lastModified: Date
 }
 
+/// A body circumference (#165). `site` stays a raw string on the wire, like
+/// report categories, so a site added by a newer build round-trips.
+struct BodyMeasurementDTO: Codable, Sendable, Equatable {
+    let id: UUID
+    let site: String
+    let valueCm: Double
+    let recordedAt: Date
+    let note: String?
+    let lastModified: Date
+}
+
+/// A user-defined medication (#164). Enum fields stay raw strings.
+/// Concentration is EITHER `concentrationMgPerMl` OR `vialAmountMg` ÷
+/// `diluentMl`; the direct value wins when both are present.
+struct MedicationDTO: Codable, Sendable, Equatable {
+    let id: UUID
+    let name: String
+    /// "mass" | "tablet" | "liquid" | "units"
+    let doseForm: String
+    /// "mg" | "mcg" | "g", for doseForm "mass".
+    let massUnit: String?
+    let tabletStrengthMg: Double?
+    let concentrationMgPerMl: Double?
+    let vialAmountMg: Double?
+    let diluentMl: Double?
+    let allowsSyringeUnits: Bool
+    let isArchived: Bool
+    let createdAt: Date
+    let lastModified: Date
+}
+
+/// One logged dose (#164). `computedMg` and `concentrationMgPerMlAtLog` are
+/// what the phone computed and snapshotted at log time — readers must use
+/// them as stored and never recompute from the medication's current values.
+struct MedicationDoseDTO: Codable, Sendable, Equatable {
+    let id: UUID
+    /// The owning medication. Optional only for tolerance; the phone cascades
+    /// dose deletion with its medication, so it is always present in practice.
+    let medicationId: UUID?
+    let takenAt: Date
+    let amount: Double
+    /// "mg" | "mcg" | "g" | "tablet" | "mL" | "syringeUnits" | "IU"
+    let unit: String
+    let computedMg: Double?
+    let concentrationMgPerMlAtLog: Double?
+    let note: String?
+    let lastModified: Date
+}
+
+/// A substitute listed on a template exercise. `templateExerciseId` matches a
+/// `TemplateExerciseDTO.id` inside some `TemplateDTO.exercises`; `externalId`
+/// is the catalog (or `custom:`) id of the alternative exercise.
+struct ExerciseAlternativeDTO: Codable, Sendable, Equatable {
+    let id: UUID
+    let templateExerciseId: UUID
+    let externalId: String
+    let order: Int
+    let note: String?
+    let lastModified: Date
+}
+
 /// Still on the wire for local backup files only (BackupService). Preferences
 /// are NOT part of cloud sync — that path caused the pull ping-pong (#78).
 struct PreferenceDTO: Codable, Sendable {
@@ -243,6 +304,26 @@ struct SyncSnapshot: Codable, Sendable {
     /// Arrived with schemaVersion 4 (issue #140). Decodes as empty when
     /// absent, for the same reason `exerciseReports` does.
     let exerciseOverlays: [ExerciseOverlayDTO]
+    /// schemaVersion 5 (#165).
+    let bodyMeasurements: [BodyMeasurementDTO]
+    /// schemaVersion 5 (#164).
+    let medications: [MedicationDTO]
+    /// schemaVersion 5 (#164).
+    let medicationDoses: [MedicationDoseDTO]
+    /// schemaVersion 5: template-exercise alternatives.
+    let exerciseAlternatives: [ExerciseAlternativeDTO]
+    /// schemaVersion 5 (#165): the profile height, a scalar rather than a
+    /// collection. Always ENCODED, as null when unset — "no height" is a value
+    /// the mirror must hold, not a key it may skip.
+    let heightCm: Double?
+    /// Whether this snapshot actually carried the v5 keys. Not on the wire.
+    ///
+    /// A mirror last written by a v4 server (or a v4 client) has no v5 keys,
+    /// and they decode as empty. Restore must read that as "unknown", not as
+    /// "the user has no medications" — otherwise restoring from a server that
+    /// was never upgraded would wipe the phone's v5 data. Same rule the server
+    /// applies to pushes: absent from the contract means untouched.
+    let carriesV5Collections: Bool
 
     init(
         workouts: [WorkoutDTO],
@@ -250,7 +331,12 @@ struct SyncSnapshot: Codable, Sendable {
         customExercises: [ExerciseDTO],
         bodyWeightEntries: [BodyWeightEntryDTO],
         exerciseReports: [ExerciseReportDTO] = [],
-        exerciseOverlays: [ExerciseOverlayDTO] = []
+        exerciseOverlays: [ExerciseOverlayDTO] = [],
+        bodyMeasurements: [BodyMeasurementDTO] = [],
+        medications: [MedicationDTO] = [],
+        medicationDoses: [MedicationDoseDTO] = [],
+        exerciseAlternatives: [ExerciseAlternativeDTO] = [],
+        heightCm: Double? = nil
     ) {
         self.workouts = workouts
         self.templates = templates
@@ -258,6 +344,19 @@ struct SyncSnapshot: Codable, Sendable {
         self.bodyWeightEntries = bodyWeightEntries
         self.exerciseReports = exerciseReports
         self.exerciseOverlays = exerciseOverlays
+        self.bodyMeasurements = bodyMeasurements
+        self.medications = medications
+        self.medicationDoses = medicationDoses
+        self.exerciseAlternatives = exerciseAlternatives
+        self.heightCm = heightCm
+        self.carriesV5Collections = true
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case workouts, templates, customExercises, bodyWeightEntries
+        case exerciseReports, exerciseOverlays
+        case bodyMeasurements, medications, medicationDoses, exerciseAlternatives
+        case heightCm
     }
 
     init(from decoder: Decoder) throws {
@@ -274,16 +373,59 @@ struct SyncSnapshot: Codable, Sendable {
         exerciseOverlays = try container.decodeIfPresent(
             [ExerciseOverlayDTO].self, forKey: .exerciseOverlays
         ) ?? []
+        // A v5 mirror always writes all four arrays together; requiring every
+        // one keeps a partial payload from being mistaken for a full one.
+        carriesV5Collections = container.contains(.bodyMeasurements)
+            && container.contains(.medications)
+            && container.contains(.medicationDoses)
+            && container.contains(.exerciseAlternatives)
+        bodyMeasurements = try container.decodeIfPresent(
+            [BodyMeasurementDTO].self, forKey: .bodyMeasurements
+        ) ?? []
+        medications = try container.decodeIfPresent(
+            [MedicationDTO].self, forKey: .medications
+        ) ?? []
+        medicationDoses = try container.decodeIfPresent(
+            [MedicationDoseDTO].self, forKey: .medicationDoses
+        ) ?? []
+        exerciseAlternatives = try container.decodeIfPresent(
+            [ExerciseAlternativeDTO].self, forKey: .exerciseAlternatives
+        ) ?? []
+        heightCm = try container.decodeIfPresent(Double.self, forKey: .heightCm)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(workouts, forKey: .workouts)
+        try container.encode(templates, forKey: .templates)
+        try container.encode(customExercises, forKey: .customExercises)
+        try container.encode(bodyWeightEntries, forKey: .bodyWeightEntries)
+        try container.encode(exerciseReports, forKey: .exerciseReports)
+        try container.encode(exerciseOverlays, forKey: .exerciseOverlays)
+        try container.encode(bodyMeasurements, forKey: .bodyMeasurements)
+        try container.encode(medications, forKey: .medications)
+        try container.encode(medicationDoses, forKey: .medicationDoses)
+        try container.encode(exerciseAlternatives, forKey: .exerciseAlternatives)
+        // Explicit null, not an omitted key — see `heightCm`.
+        if let heightCm {
+            try container.encode(heightCm, forKey: .heightCm)
+        } else {
+            try container.encodeNil(forKey: .heightCm)
+        }
     }
 }
 
 struct SnapshotPushRequest: Codable, Sendable {
-    /// Wire contract the client speaks. 4 adds `exerciseOverlays` (#140).
-    static let currentSchemaVersion = 4
-    /// What to fall back to when the server has not been updated yet. The
-    /// Functions app deploys independently of the phone, and this time the
-    /// phone can ship first — see SyncManager.pushSnapshot.
-    static let fallbackSchemaVersion = 3
+    /// Wire contract the client speaks. 4 adds `exerciseOverlays` (#140);
+    /// 5 adds body measurements, medications, doses, alternatives and height.
+    static let currentSchemaVersion = 5
+    /// Older contracts to degrade to, newest first, when the server rejects a
+    /// version with 400 because it has not been deployed yet. The Functions
+    /// app deploys independently of the phone, and the phone can ship first —
+    /// see SyncManager.push. Every step down is safe: a server only reconciles
+    /// the collections its own version names and ignores the rest. The last
+    /// entry is the oldest contract this client will speak.
+    static let fallbackSchemaVersions = [4, 3]
 
     let schemaVersion: Int
     let snapshot: SyncSnapshot

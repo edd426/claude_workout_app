@@ -64,6 +64,22 @@ struct InboxTemplateExercisePayload: Codable, Sendable, Equatable {
     let defaultWeight: Double?
     let defaultRestSeconds: Int?
     let notes: String?
+    /// Substitutes for this slot, in order. OPTIONAL and tri-state:
+    /// absent (nil) leaves the slot's existing alternatives untouched — older
+    /// MCP servers never send the key — while an empty array clears them.
+    var alternatives: [InboxAlternativePayload]? = nil
+}
+
+/// One listed substitute: `{externalId, note?}`. `externalId` is resolved
+/// exactly like a template exercise's own, and fails the operation the same way.
+struct InboxAlternativePayload: Codable, Sendable, Equatable {
+    let externalId: String
+    let note: String?
+
+    init(externalId: String, note: String? = nil) {
+        self.externalId = externalId
+        self.note = note
+    }
 }
 
 struct CreateTemplatePayload: Codable, Sendable, Equatable {

@@ -29,6 +29,11 @@ struct BackupServiceTests {
             templateRepository: SwiftDataTemplateRepository(context: context),
             exerciseRepository: SwiftDataExerciseRepository(context: context),
             preferenceRepository: SwiftDataTrainingPreferenceRepository(context: context),
+            bodyMeasurementRepository: SwiftDataBodyMeasurementRepository(context: context),
+            medicationRepository: SwiftDataMedicationRepository(context: context),
+            medicationDoseRepository: SwiftDataMedicationDoseRepository(context: context),
+            exerciseAlternativeRepository: SwiftDataExerciseAlternativeRepository(context: context),
+            settings: SettingsManager(defaults: UserDefaults(suiteName: "backup-tests-\(UUID())")!),
             documentsDirectory: documentsDirectory
         )
     }
@@ -120,7 +125,7 @@ struct BackupServiceTests {
 
         // Assert
         // 2 since #140 — the file now also carries bundled-exercise user data.
-        #expect(doc.formatVersion == 2)
+        #expect(doc.formatVersion == 3)
         #expect(doc.workouts.count == 1)
         #expect(doc.templates.count == 1)
         #expect(doc.preferences.count == 1)
@@ -355,7 +360,7 @@ struct BackupServiceTests {
             BackupDocument.self,
             from: try Data(contentsOf: url)
         )
-        #expect(document.formatVersion == 2)
+        #expect(document.formatVersion == 3)
         #expect(document.exerciseOverlays.count == 1)
         let overlay = try #require(document.exerciseOverlays.first)
         #expect(overlay.externalId == "Seated_Leg_Curl")

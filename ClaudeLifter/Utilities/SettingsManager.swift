@@ -48,6 +48,7 @@ final class SettingsManager {
         static let snapshotDirtyGeneration = "snapshotDirtyGeneration"
         static let snapshotCleanGeneration = "snapshotCleanGeneration"
         static let proactiveInsightsEnabled = "proactiveInsightsEnabled"
+        static let heightCm = "heightCm"
     }
 
     // MARK: - Observable stored state
@@ -70,6 +71,23 @@ final class SettingsManager {
 
     var lastSyncTimestamp: Date? {
         didSet { defaults.set(lastSyncTimestamp, forKey: Key.lastSyncTimestamp) }
+    }
+
+    /// The user's height in cm (#165), nil until set. A profile setting, not a
+    /// model — and mirrored in the snapshot as a scalar. Height has no
+    /// per-record `syncStatus`, so a change sets the durable snapshot trigger
+    /// itself; an unchanged value does not.
+    var heightCm: Double? {
+        didSet {
+            if let heightCm {
+                defaults.set(heightCm, forKey: Key.heightCm)
+            } else {
+                defaults.removeObject(forKey: Key.heightCm)
+            }
+            if oldValue != heightCm {
+                markSnapshotDirty()
+            }
+        }
     }
 
     /// Server-assigned snapshot revision from the last successful push or
@@ -145,6 +163,7 @@ final class SettingsManager {
         self.serverURL = defaults.string(forKey: Key.serverURL) ?? ""
         self.lastSyncTimestamp = defaults.object(forKey: Key.lastSyncTimestamp) as? Date
         self.lastSyncRevision = defaults.object(forKey: Key.lastSyncRevision) as? Int
+        self.heightCm = defaults.object(forKey: Key.heightCm) as? Double
         // Migrate the legacy boolean: a pre-#104 install that was dirty at
         // upgrade time must stay dirty, or its unpushed state is stranded.
         // Read the two keys INDEPENDENTLY. `didSet` does not fire for

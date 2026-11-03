@@ -15,6 +15,7 @@ private struct InboxTestEnv {
     let exerciseRepository: SwiftDataExerciseRepository
     let bodyWeightRepository: SwiftDataBodyWeightRepository
     let reportRepository: SwiftDataExerciseReportRepository
+    let alternativeRepository: SwiftDataExerciseAlternativeRepository
     let applier: InboxApplier
     let network: MockNetworkService
     let settings: SettingsManager
@@ -28,10 +29,12 @@ private struct InboxTestEnv {
         exerciseRepository = SwiftDataExerciseRepository(context: context)
         bodyWeightRepository = SwiftDataBodyWeightRepository(context: context)
         reportRepository = SwiftDataExerciseReportRepository(context: context)
+        alternativeRepository = SwiftDataExerciseAlternativeRepository(context: context)
         applier = InboxApplier(
             templateRepository: templateRepository,
             exerciseRepository: exerciseRepository,
-            reportRepository: reportRepository
+            reportRepository: reportRepository,
+            alternativeRepository: alternativeRepository
         )
         network = MockNetworkService()
         settings = SettingsManager(
@@ -44,6 +47,10 @@ private struct InboxTestEnv {
             exerciseRepository: exerciseRepository,
             bodyWeightRepository: bodyWeightRepository,
             exerciseReportRepository: reportRepository,
+            bodyMeasurementRepository: SwiftDataBodyMeasurementRepository(context: context),
+            medicationRepository: SwiftDataMedicationRepository(context: context),
+            medicationDoseRepository: SwiftDataMedicationDoseRepository(context: context),
+            exerciseAlternativeRepository: alternativeRepository,
             networkService: network,
             settings: settings,
             inboxApplier: applier

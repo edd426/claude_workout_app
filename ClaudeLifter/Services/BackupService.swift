@@ -35,6 +35,14 @@ struct BackupDocument: Codable, Sendable {
     /// import unchanged — the same tolerance the snapshot wire format uses
     /// for `exerciseReports`.
     let exerciseOverlays: [ExerciseOverlayDTO]
+    /// formatVersion 3 (#165, #164, template alternatives). Same DTOs as the
+    /// snapshot wire; each decodes as empty from an older file.
+    let bodyMeasurements: [BodyMeasurementDTO]
+    let medications: [MedicationDTO]
+    let medicationDoses: [MedicationDoseDTO]
+    let exerciseAlternatives: [ExerciseAlternativeDTO]
+    /// formatVersion 3. Nil when unset, or from an older file.
+    let heightCm: Double?
 
     init(
         formatVersion: Int,
@@ -43,7 +51,12 @@ struct BackupDocument: Codable, Sendable {
         templates: [TemplateDTO],
         customExercises: [ExerciseDTO],
         preferences: [PreferenceDTO],
-        exerciseOverlays: [ExerciseOverlayDTO] = []
+        exerciseOverlays: [ExerciseOverlayDTO] = [],
+        bodyMeasurements: [BodyMeasurementDTO] = [],
+        medications: [MedicationDTO] = [],
+        medicationDoses: [MedicationDoseDTO] = [],
+        exerciseAlternatives: [ExerciseAlternativeDTO] = [],
+        heightCm: Double? = nil
     ) {
         self.formatVersion = formatVersion
         self.exportedAt = exportedAt
@@ -52,6 +65,11 @@ struct BackupDocument: Codable, Sendable {
         self.customExercises = customExercises
         self.preferences = preferences
         self.exerciseOverlays = exerciseOverlays
+        self.bodyMeasurements = bodyMeasurements
+        self.medications = medications
+        self.medicationDoses = medicationDoses
+        self.exerciseAlternatives = exerciseAlternatives
+        self.heightCm = heightCm
     }
 
     init(from decoder: any Decoder) throws {
@@ -66,6 +84,14 @@ struct BackupDocument: Codable, Sendable {
             [ExerciseOverlayDTO].self,
             forKey: .exerciseOverlays
         ) ?? []
+        bodyMeasurements = try c.decodeIfPresent([BodyMeasurementDTO].self, forKey: .bodyMeasurements) ?? []
+        medications = try c.decodeIfPresent([MedicationDTO].self, forKey: .medications) ?? []
+        medicationDoses = try c.decodeIfPresent([MedicationDoseDTO].self, forKey: .medicationDoses) ?? []
+        exerciseAlternatives = try c.decodeIfPresent(
+            [ExerciseAlternativeDTO].self,
+            forKey: .exerciseAlternatives
+        ) ?? []
+        heightCm = try c.decodeIfPresent(Double.self, forKey: .heightCm)
     }
 }
 
@@ -104,14 +130,28 @@ struct BackupImportSummary: Sendable, Equatable {
     /// Bundled-exercise user data (#140). `skipped` means the overlay had no
     /// matching exercise locally — it is never used to invent one.
     var exerciseOverlays = CollectionResult()
+    var bodyMeasurements = CollectionResult()
+    var medications = CollectionResult()
+    /// `skipped` also counts a dose whose medication is in neither the backup
+    /// nor this phone — imported, it would be an orphan.
+    var medicationDoses = CollectionResult()
+    /// `skipped` also counts an alternative whose template exercise is in no
+    /// template here.
+    var exerciseAlternatives = CollectionResult()
+    /// True when the backup's height was written. Never overwrites a height
+    /// this phone already has.
+    var heightImported = false
 }
 
 // MARK: - Service
 
 @MainActor
 protocol BackupServiceProtocol {
-    /// Encode all workouts, templates, custom exercises, and preferences into a
-    /// JSON file in the app's Documents directory and return its URL.
+    /// Encode all workouts, templates, custom exercises, preferences, body
+    /// measurements, medications and doses, template-exercise alternatives,
+    /// and height into a JSON file in the app's Documents directory and
+    /// return its URL. (Body-weight entries and exercise reports are not in
+    /// the backup file; they are mirrored by snapshot sync only.)
     func exportBackup() async throws -> URL
     /// Decode a backup file and merge it into the local store by id, skipping any
     /// record whose id already exists (conservative — never overwrites).
@@ -125,6 +165,12 @@ final class BackupService: BackupServiceProtocol {
     private let templateRepository: any TemplateRepository
     private let exerciseRepository: any ExerciseRepository
     private let preferenceRepository: any TrainingPreferenceRepository
+    private let bodyMeasurementRepository: any BodyMeasurementRepository
+    private let medicationRepository: any MedicationRepository
+    private let medicationDoseRepository: any MedicationDoseRepository
+    private let exerciseAlternativeRepository: any ExerciseAlternativeRepository
+    /// Height lives here, not in SwiftData (#165).
+    private let settings: SettingsManager
     private let documentsDirectory: URL
 
     init(
@@ -133,6 +179,11 @@ final class BackupService: BackupServiceProtocol {
         templateRepository: any TemplateRepository,
         exerciseRepository: any ExerciseRepository,
         preferenceRepository: any TrainingPreferenceRepository,
+        bodyMeasurementRepository: any BodyMeasurementRepository,
+        medicationRepository: any MedicationRepository,
+        medicationDoseRepository: any MedicationDoseRepository,
+        exerciseAlternativeRepository: any ExerciseAlternativeRepository,
+        settings: SettingsManager,
         documentsDirectory: URL = URL.documentsDirectory
     ) {
         self.modelContext = modelContext
@@ -140,6 +191,11 @@ final class BackupService: BackupServiceProtocol {
         self.templateRepository = templateRepository
         self.exerciseRepository = exerciseRepository
         self.preferenceRepository = preferenceRepository
+        self.bodyMeasurementRepository = bodyMeasurementRepository
+        self.medicationRepository = medicationRepository
+        self.medicationDoseRepository = medicationDoseRepository
+        self.exerciseAlternativeRepository = exerciseAlternativeRepository
+        self.settings = settings
         self.documentsDirectory = documentsDirectory
     }
 
@@ -184,13 +240,18 @@ final class BackupService: BackupServiceProtocol {
             }
 
         let document = BackupDocument(
-            formatVersion: 2,
+            formatVersion: 3,
             exportedAt: .now,
             workouts: workouts,
             templates: templates,
             customExercises: customExercises,
             preferences: preferences,
-            exerciseOverlays: overlays
+            exerciseOverlays: overlays,
+            bodyMeasurements: try await bodyMeasurementRepository.fetchAll().map { SyncMapper.toDTO($0) },
+            medications: try await medicationRepository.fetchAll().map { SyncMapper.toDTO($0) },
+            medicationDoses: try await medicationDoseRepository.fetchAll().map { SyncMapper.toDTO($0) },
+            exerciseAlternatives: try await exerciseAlternativeRepository.fetchAll().map { SyncMapper.toDTO($0) },
+            heightCm: settings.heightCm
         )
 
         let data = try encoder.encode(document)
@@ -305,7 +366,81 @@ final class BackupService: BackupServiceProtocol {
             summary.exerciseOverlays.imported += 1
         }
 
+        try await importV5(from: document, into: &summary)
         return summary
+    }
+
+    /// formatVersion 3 data. Same rules as everything above: merge by id,
+    /// never overwrite, and mark what is written `.pending` so it pushes.
+    private func importV5(
+        from document: BackupDocument,
+        into summary: inout BackupImportSummary
+    ) async throws {
+        // 6. Body measurements.
+        for dto in document.bodyMeasurements {
+            if try await bodyMeasurementRepository.fetch(id: dto.id) != nil {
+                summary.bodyMeasurements.skipped += 1
+                continue
+            }
+            let measurement = SyncMapper.createBodyMeasurement(from: dto)
+            measurement.syncStatus = .pending
+            try await bodyMeasurementRepository.save(measurement)
+            summary.bodyMeasurements.imported += 1
+        }
+
+        // 7. Medications, BEFORE doses, so doses can attach.
+        for dto in document.medications {
+            if try await medicationRepository.fetch(id: dto.id) != nil {
+                summary.medications.skipped += 1
+                continue
+            }
+            let medication = SyncMapper.createMedication(from: dto)
+            medication.syncStatus = .pending
+            try await medicationRepository.save(medication)
+            summary.medications.imported += 1
+        }
+
+        // 8. Doses, attached to their medication — from this backup or already
+        //    on the phone. One whose medication is in neither is skipped: it
+        //    would be an orphan no history view can show. computedMg and the
+        //    snapshotted concentration are copied as logged, never recomputed.
+        for dto in document.medicationDoses {
+            if try await medicationDoseRepository.fetch(id: dto.id) != nil {
+                summary.medicationDoses.skipped += 1
+                continue
+            }
+            guard let medicationId = dto.medicationId,
+                  let medication = try await medicationRepository.fetch(id: medicationId) else {
+                summary.medicationDoses.skipped += 1
+                continue
+            }
+            let dose = SyncMapper.createMedicationDose(from: dto, medication: medication)
+            dose.syncStatus = .pending
+            try await medicationDoseRepository.save(dose)
+            summary.medicationDoses.imported += 1
+        }
+
+        // 9. Alternatives, only onto a template exercise that is in a template
+        //    here (templates were imported above, keeping their slot ids). An
+        //    orphan would be deleted by the next template save anyway.
+        let liveSlots = Set(try await templateRepository.fetchAll().flatMap { $0.exercises.map(\.id) })
+        for dto in document.exerciseAlternatives {
+            if try await exerciseAlternativeRepository.fetch(id: dto.id) != nil
+                || !liveSlots.contains(dto.templateExerciseId) {
+                summary.exerciseAlternatives.skipped += 1
+                continue
+            }
+            let alternative = SyncMapper.createExerciseAlternative(from: dto)
+            alternative.syncStatus = .pending
+            try await exerciseAlternativeRepository.save(alternative)
+            summary.exerciseAlternatives.imported += 1
+        }
+
+        // 10. Height — only onto a phone that has none. Never overwrites.
+        if let heightCm = document.heightCm, settings.heightCm == nil {
+            settings.heightCm = heightCm
+            summary.heightImported = true
+        }
     }
 
     /// Resolvability check mirroring SyncMapper's resolution order (fetch by id,

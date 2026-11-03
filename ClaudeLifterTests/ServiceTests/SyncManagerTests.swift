@@ -15,6 +15,10 @@ private struct SyncTestEnv {
     let exerciseRepo: SwiftDataExerciseRepository
     let bodyWeightRepo: SwiftDataBodyWeightRepository
     let reportRepo: SwiftDataExerciseReportRepository
+    let measurementRepo: SwiftDataBodyMeasurementRepository
+    let medicationRepo: SwiftDataMedicationRepository
+    let doseRepo: SwiftDataMedicationDoseRepository
+    let alternativeRepo: SwiftDataExerciseAlternativeRepository
     let inboxApplier: InboxApplier
     let network: MockNetworkService
     let settings: SettingsManager
@@ -31,10 +35,15 @@ private struct SyncTestEnv {
         exerciseRepo = SwiftDataExerciseRepository(context: context)
         bodyWeightRepo = SwiftDataBodyWeightRepository(context: context)
         reportRepo = SwiftDataExerciseReportRepository(context: context)
+        measurementRepo = SwiftDataBodyMeasurementRepository(context: context)
+        medicationRepo = SwiftDataMedicationRepository(context: context)
+        doseRepo = SwiftDataMedicationDoseRepository(context: context)
+        alternativeRepo = SwiftDataExerciseAlternativeRepository(context: context)
         inboxApplier = InboxApplier(
             templateRepository: templateRepo,
             exerciseRepository: exerciseRepo,
-            reportRepository: reportRepo
+            reportRepository: reportRepo,
+            alternativeRepository: alternativeRepo
         )
         network = MockNetworkService()
         settings = SettingsManager(
@@ -48,6 +57,10 @@ private struct SyncTestEnv {
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
             exerciseReportRepository: reportRepo,
+            bodyMeasurementRepository: measurementRepo,
+            medicationRepository: medicationRepo,
+            medicationDoseRepository: doseRepo,
+            exerciseAlternativeRepository: alternativeRepo,
             networkService: network,
             settings: settings,
             inboxApplier: inboxApplier
@@ -134,7 +147,7 @@ struct SyncManagerSnapshotPushTests {
 
         // Assert — request carries exactly the mirrored collections
         let request = try #require(env.network.lastSnapshotRequest)
-        #expect(request.schemaVersion == 4)
+        #expect(request.schemaVersion == 5)
         #expect(request.snapshot.workouts.count == 1)
         #expect(request.snapshot.templates.count == 1)
         #expect(request.snapshot.customExercises.count == 1)
@@ -528,6 +541,10 @@ struct SyncIfNeededTests {
             exerciseRepository: env.exerciseRepo,
             bodyWeightRepository: env.bodyWeightRepo,
             exerciseReportRepository: env.reportRepo,
+            bodyMeasurementRepository: env.measurementRepo,
+            medicationRepository: env.medicationRepo,
+            medicationDoseRepository: env.doseRepo,
+            exerciseAlternativeRepository: env.alternativeRepo,
             networkService: env.network,
             settings: reloadedSettings,
             inboxApplier: env.inboxApplier
@@ -871,12 +888,17 @@ struct SyncStateTests {
             exerciseRepository: SwiftDataExerciseRepository(context: context),
             bodyWeightRepository: SwiftDataBodyWeightRepository(context: context),
             exerciseReportRepository: SwiftDataExerciseReportRepository(context: context),
+            bodyMeasurementRepository: SwiftDataBodyMeasurementRepository(context: context),
+            medicationRepository: SwiftDataMedicationRepository(context: context),
+            medicationDoseRepository: SwiftDataMedicationDoseRepository(context: context),
+            exerciseAlternativeRepository: SwiftDataExerciseAlternativeRepository(context: context),
             networkService: MockNetworkService(),
             settings: settings,
             inboxApplier: InboxApplier(
                 templateRepository: SwiftDataTemplateRepository(context: context),
                 exerciseRepository: SwiftDataExerciseRepository(context: context),
-                reportRepository: SwiftDataExerciseReportRepository(context: context)
+                reportRepository: SwiftDataExerciseReportRepository(context: context),
+                alternativeRepository: SwiftDataExerciseAlternativeRepository(context: context)
             )
         )
         #expect(manager.lastRevision == 17)
@@ -1187,31 +1209,62 @@ struct SyncManagerOverlayTests {
         #expect(env.network.lastSnapshotRequest?.snapshot.exerciseOverlays.isEmpty == true)
     }
 
-    @Test("The push declares schemaVersion 4")
-    func pushDeclaresV4() async throws {
+    @Test("The push declares schemaVersion 5")
+    func pushDeclaresV5() async throws {
         let env = try SyncTestEnv()
         env.network.pushSnapshotResult = makeOverlayPushResponse()
 
         try await env.manager.pushSnapshot()
 
-        #expect(env.network.lastSnapshotRequest?.schemaVersion == 4)
+        #expect(env.network.lastSnapshotRequest?.schemaVersion == 5)
     }
 
-    /// The Functions app deploys separately from the phone, and this time the
-    /// phone shipped first. A v4 push to a server that only knows v3 must not
-    /// break sync outright — it degrades, so install order stops mattering.
-    @Test("A server that rejects v4 gets a v3 push instead of a failed sync")
-    func downgradesToV3WhenServerRejectsV4() async throws {
+    /// The deployed server knows v4 when this build ships. A v5 push to it is
+    /// a 400, and must degrade to v4 rather than break sync until someone
+    /// deploys. The same snapshot goes: a v4 server ignores the v5 keys.
+    @Test("A server that rejects v5 gets a v4 push instead of a failed sync")
+    func downgradesToV4WhenServerRejectsV5() async throws {
         let env = try SyncTestEnv()
-        _ = try seedBundled(env, externalId: "Leg_Curl", notes: "pin 7")
+        env.context.insert(BodyMeasurement(site: .waist, valueCm: 86.5))
+        try env.context.save()
         env.network.pushSnapshotErrorQueue = [SyncError.serverError(400), nil]
         env.network.pushSnapshotResult = makeOverlayPushResponse()
 
         try await env.manager.pushSnapshot()
 
-        #expect(env.network.snapshotRequests.count == 2)
-        #expect(env.network.snapshotRequests.first?.schemaVersion == 4)
-        #expect(env.network.snapshotRequests.last?.schemaVersion == 3)
+        #expect(env.network.snapshotRequests.map(\.schemaVersion) == [5, 4])
+        #expect(env.network.snapshotRequests.last?.snapshot.bodyMeasurements.count == 1)
+        #expect(env.manager.syncError == nil)
+    }
+
+    /// The Functions app deploys separately from the phone, and this time the
+    /// phone shipped first. A push to a server that only knows v3 must not
+    /// break sync outright — it degrades one version at a time, so install
+    /// order stops mattering.
+    @Test("A server that rejects v4 gets a v3 push instead of a failed sync")
+    func downgradesToV3WhenServerRejectsV4() async throws {
+        let env = try SyncTestEnv()
+        _ = try seedBundled(env, externalId: "Leg_Curl", notes: "pin 7")
+        env.network.pushSnapshotErrorQueue = [SyncError.serverError(400), SyncError.serverError(400), nil]
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        #expect(env.network.snapshotRequests.map(\.schemaVersion) == [5, 4, 3])
+    }
+
+    @Test("A 400 at the oldest version is a real failure, not another retry")
+    func oldestVersionRejectionIsRethrown() async throws {
+        let env = try SyncTestEnv()
+        env.network.pushSnapshotErrorQueue = [
+            SyncError.serverError(400), SyncError.serverError(400), SyncError.serverError(400), nil
+        ]
+        env.network.pushSnapshotResult = makeOverlayPushResponse()
+
+        await #expect(throws: SyncError.self) {
+            try await env.manager.pushSnapshot()
+        }
+        #expect(env.network.snapshotRequests.map(\.schemaVersion) == [5, 4, 3])
     }
 
     @Test("A non-400 failure is not retried at a lower version")
@@ -1353,5 +1406,231 @@ struct SyncManagerBatchDecisionTests {
 
         #expect(env.network.ackInboxCallCount == 0)
         #expect(env.network.pushSnapshotCallCount == 0)
+    }
+}
+
+// MARK: - schemaVersion 5: body measurements, medications, alternatives, height
+
+@Suite("SyncManager — v5 collections and height")
+@MainActor
+struct SyncManagerV5Tests {
+
+    private let stamp = Date(timeIntervalSinceReferenceDate: 800_000_000)
+
+    /// One of every v5 record, all pending, plus a height.
+    @discardableResult
+    private func seedV5(_ env: SyncTestEnv) throws -> (Medication, MedicationDose) {
+        env.context.insert(BodyMeasurement(site: .waist, valueCm: 86.5))
+        let medication = Medication(name: "Vial A", doseForm: .liquid, vialAmountMg: 10, diluentMl: 2, allowsSyringeUnits: true)
+        env.context.insert(medication)
+        let dose = MedicationDose(logging: 50, unit: .syringeUnits, of: medication)
+        env.context.insert(dose)
+        env.context.insert(ExerciseAlternative(templateExerciseId: UUID(), externalId: "Leg_Press", order: 0))
+        try env.context.save()
+        env.settings.heightCm = 182.88
+        return (medication, dose)
+    }
+
+    @Test("Push carries every v5 collection and the height, and marks the records synced")
+    func pushCarriesV5() async throws {
+        let env = try SyncTestEnv()
+        let (medication, dose) = try seedV5(env)
+        env.network.pushSnapshotResult = makePushResponse()
+
+        try await env.manager.pushSnapshot()
+
+        let snapshot = try #require(env.network.lastSnapshotRequest?.snapshot)
+        #expect(snapshot.bodyMeasurements.map(\.valueCm) == [86.5])
+        #expect(snapshot.medications.map(\.id) == [medication.id])
+        #expect(snapshot.medicationDoses.map(\.id) == [dose.id])
+        #expect(snapshot.medicationDoses.first?.medicationId == medication.id)
+        #expect(snapshot.medicationDoses.first?.computedMg == 2.5)
+        #expect(snapshot.exerciseAlternatives.map(\.externalId) == ["Leg_Press"])
+        #expect(snapshot.heightCm == 182.88)
+
+        #expect(try await env.measurementRepo.fetchPending().isEmpty)
+        #expect(try await env.medicationRepo.fetchPending().isEmpty)
+        #expect(try await env.doseRepo.fetchPending().isEmpty)
+        #expect(try await env.alternativeRepo.fetchPending().isEmpty)
+        #expect(!env.settings.isSnapshotDirty)
+    }
+
+    @Test("A pending v5 record alone is enough to trigger a push", arguments: [0, 1, 2, 3])
+    func pendingV5RecordTriggersPush(kind: Int) async throws {
+        let env = try SyncTestEnv()
+        switch kind {
+        case 0:
+            env.context.insert(BodyMeasurement(site: .waist, valueCm: 86.5))
+        case 1:
+            env.context.insert(Medication(name: "Tabs", doseForm: .tablet, tabletStrengthMg: 50))
+        case 2:
+            let medication = Medication(name: "Tabs", doseForm: .tablet, tabletStrengthMg: 50, syncStatus: .synced)
+            env.context.insert(medication)
+            env.context.insert(MedicationDose(logging: 1, unit: .tablet, of: medication))
+        default:
+            env.context.insert(ExerciseAlternative(templateExerciseId: UUID(), externalId: "Leg_Press", order: 0))
+        }
+        try env.context.save()
+        env.network.pushSnapshotResult = makePushResponse()
+
+        await env.manager.syncIfNeeded()
+
+        #expect(env.network.pushSnapshotCallCount == 1)
+    }
+
+    @Test("Changing the height alone is enough to trigger a push")
+    func heightChangeTriggersPush() async throws {
+        let env = try SyncTestEnv()
+        env.network.pushSnapshotResult = makePushResponse()
+        env.settings.heightCm = 180
+
+        await env.manager.syncIfNeeded()
+
+        #expect(env.network.pushSnapshotCallCount == 1)
+        #expect(env.network.lastSnapshotRequest?.snapshot.heightCm == 180)
+    }
+
+    @Test("Restore replaces local v5 collections with the mirror's, and restores the height")
+    func restoreReplacesV5() async throws {
+        let env = try SyncTestEnv()
+        try seedV5(env)
+        let medicationId = UUID()
+        let doseId = UUID()
+        env.network.fetchSnapshotResult = SnapshotFetchResponse(
+            revision: 9,
+            serverTime: stamp,
+            snapshot: SyncSnapshot(
+                workouts: [], templates: [], customExercises: [], bodyWeightEntries: [],
+                bodyMeasurements: [BodyMeasurementDTO(id: UUID(), site: "waist", valueCm: 90, recordedAt: stamp, note: nil, lastModified: stamp)],
+                medications: [MedicationDTO(
+                    id: medicationId, name: "Cloud Tabs", doseForm: "tablet", massUnit: nil, tabletStrengthMg: 25,
+                    concentrationMgPerMl: nil, vialAmountMg: nil, diluentMl: nil,
+                    allowsSyringeUnits: false, isArchived: true, createdAt: stamp, lastModified: stamp
+                )],
+                medicationDoses: [MedicationDoseDTO(
+                    id: doseId, medicationId: medicationId, takenAt: stamp, amount: 2, unit: "tablet",
+                    computedMg: 50, concentrationMgPerMlAtLog: nil, note: nil, lastModified: stamp
+                )],
+                exerciseAlternatives: [ExerciseAlternativeDTO(
+                    id: UUID(), templateExerciseId: UUID(), externalId: "Hack_Squat", order: 0, note: nil, lastModified: stamp
+                )],
+                heightCm: 175
+            )
+        )
+
+        let summary = try await env.manager.restoreFromSnapshot()
+
+        #expect(try await env.measurementRepo.fetchAll().map(\.valueCm) == [90])
+        let medications = try await env.medicationRepo.fetchAll()
+        #expect(medications.map(\.name) == ["Cloud Tabs"])
+        #expect(medications.first?.isArchived == true)
+        let doses = try await env.doseRepo.fetchAll()
+        #expect(doses.map(\.id) == [doseId])
+        #expect(doses.first?.medication?.id == medicationId)
+        #expect(doses.first?.computedMg == 50)
+        #expect(try await env.alternativeRepo.fetchAll().map(\.externalId) == ["Hack_Squat"])
+        #expect(env.settings.heightCm == 175)
+        #expect(summary.bodyMeasurements == 1)
+        #expect(summary.medications == 1)
+        #expect(summary.medicationDoses == 1)
+        #expect(summary.exerciseAlternatives == 1)
+        // Restored state equals the mirror: nothing is due for a push.
+        #expect(try await env.doseRepo.fetchPending().isEmpty)
+    }
+
+    /// The server is deployed separately and may still be on v4, whose mirror
+    /// has never seen a medication. Restoring from it must not read "absent"
+    /// as "none" and wipe the phone's v5 data.
+    @Test("Restore from a v4 mirror leaves local v5 data and the height untouched")
+    func restoreFromV4MirrorKeepsV5() async throws {
+        let env = try SyncTestEnv()
+        try seedV5(env)
+        let json = """
+        {
+          "workouts": [], "templates": [], "customExercises": [],
+          "bodyWeightEntries": [], "exerciseReports": [], "exerciseOverlays": []
+        }
+        """
+        let v4Snapshot = try NetworkService.makeWireDecoder().decode(SyncSnapshot.self, from: Data(json.utf8))
+        env.network.fetchSnapshotResult = SnapshotFetchResponse(revision: 4, serverTime: stamp, snapshot: v4Snapshot)
+
+        _ = try await env.manager.restoreFromSnapshot()
+
+        #expect(try await env.measurementRepo.fetchAll().count == 1)
+        #expect(try await env.medicationRepo.fetchAll().count == 1)
+        #expect(try await env.doseRepo.fetchAll().count == 1)
+        #expect(try await env.alternativeRepo.fetchAll().count == 1)
+        #expect(env.settings.heightCm == 182.88)
+    }
+
+    @Test("Restoring the height leaves no push due — local now equals the mirror")
+    func restoredHeightIsNotAPushDue() async throws {
+        let env = try SyncTestEnv()
+        env.settings.heightCm = 182.88
+        env.settings.markSnapshotClean(upTo: env.settings.currentSnapshotGeneration())
+        env.network.fetchSnapshotResult = SnapshotFetchResponse(
+            revision: 3, serverTime: stamp,
+            snapshot: SyncSnapshot(
+                workouts: [], templates: [], customExercises: [], bodyWeightEntries: [], heightCm: 175
+            )
+        )
+        env.network.pushSnapshotResult = makePushResponse()
+
+        _ = try await env.manager.restoreFromSnapshot()
+        await env.manager.syncIfNeeded()
+
+        #expect(env.settings.heightCm == 175)
+        #expect(env.network.pushSnapshotCallCount == 0)
+    }
+
+    /// The template wipe during restore cleans up orphaned alternatives, so a
+    /// pre-v5 mirror would otherwise cost the user every alternative.
+    @Test("Restore from a v4 mirror re-attaches alternatives whose template exercise comes back")
+    func restoreFromV4MirrorKeepsAlternatives() async throws {
+        let env = try SyncTestEnv()
+        let custom = Exercise(name: "Belt Squat", isCustom: true)
+        env.context.insert(custom)
+        let template = WorkoutTemplate(name: "Mon Legs 1")
+        let te = TemplateExercise(order: 0, exercise: custom, defaultSets: 3, defaultReps: 8)
+        template.exercises.append(te)
+        try await env.templateRepo.save(template)
+        try await env.alternativeRepo.replaceAlternatives(
+            forTemplateExercise: te.id, with: [AlternativeSpec(externalId: "Leg_Press")]
+        )
+        // A v4 mirror: the template (same slot id) and its custom exercise,
+        // with every v5 key stripped, exactly as a v4 server returns it.
+        let full = SyncSnapshot(
+            workouts: [], templates: [SyncMapper.toDTO(template)],
+            customExercises: [SyncMapper.toDTO(custom)], bodyWeightEntries: []
+        )
+        var object = try #require(
+            try JSONSerialization.jsonObject(with: NetworkService.makeWireEncoder().encode(full)) as? [String: Any]
+        )
+        for key in ["bodyMeasurements", "medications", "medicationDoses", "exerciseAlternatives", "heightCm"] {
+            object.removeValue(forKey: key)
+        }
+        let v4Snapshot = try NetworkService.makeWireDecoder().decode(
+            SyncSnapshot.self, from: JSONSerialization.data(withJSONObject: object)
+        )
+        try #require(!v4Snapshot.carriesV5Collections)
+        env.network.fetchSnapshotResult = SnapshotFetchResponse(revision: 5, serverTime: stamp, snapshot: v4Snapshot)
+
+        _ = try await env.manager.restoreFromSnapshot()
+
+        #expect(try await env.alternativeRepo.alternatives(forTemplateExercise: te.id).map(\.externalId) == ["Leg_Press"])
+    }
+
+    @Test("A v5 mirror with no height does not clear the phone's height")
+    func restoreNeverClearsHeight() async throws {
+        let env = try SyncTestEnv()
+        env.settings.heightCm = 182.88
+        env.network.fetchSnapshotResult = SnapshotFetchResponse(
+            revision: 2, serverTime: stamp,
+            snapshot: SyncSnapshot(workouts: [], templates: [], customExercises: [], bodyWeightEntries: [])
+        )
+
+        _ = try await env.manager.restoreFromSnapshot()
+
+        #expect(env.settings.heightCm == 182.88)
     }
 }

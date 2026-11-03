@@ -48,6 +48,8 @@ final class SettingsManager {
         static let snapshotDirtyGeneration = "snapshotDirtyGeneration"
         static let snapshotCleanGeneration = "snapshotCleanGeneration"
         static let proactiveInsightsEnabled = "proactiveInsightsEnabled"
+        static let weightGoalPercentPerWeek = "weightGoalPercentPerWeek"
+        static let proteinMultiplier = "proteinMultiplier"
     }
 
     // MARK: - Observable stored state
@@ -70,6 +72,23 @@ final class SettingsManager {
 
     var lastSyncTimestamp: Date? {
         didSet { defaults.set(lastSyncTimestamp, forKey: Key.lastSyncTimestamp) }
+    }
+
+    /// Signed body-weight goal rate in %/week (#152): negative to lose,
+    /// positive to gain, 0 to maintain. Nil means no goal is set.
+    var weightGoalPercentPerWeek: Double? {
+        didSet {
+            if let weightGoalPercentPerWeek {
+                defaults.set(weightGoalPercentPerWeek, forKey: Key.weightGoalPercentPerWeek)
+            } else {
+                defaults.removeObject(forKey: Key.weightGoalPercentPerWeek)
+            }
+        }
+    }
+
+    /// Grams of protein per kg of body weight for the daily target (#111).
+    var proteinMultiplier: Double {
+        didSet { defaults.set(proteinMultiplier, forKey: Key.proteinMultiplier) }
     }
 
     /// Server-assigned snapshot revision from the last successful push or
@@ -163,6 +182,17 @@ final class SettingsManager {
         } else {
             self.snapshotDirtyGeneration = 0
             self.snapshotCleanGeneration = 0
+        }
+        self.weightGoalPercentPerWeek =
+            (defaults.object(forKey: Key.weightGoalPercentPerWeek) as? Double).flatMap {
+                $0.isFinite ? $0 : nil
+            }
+        // A missing or corrupt multiplier reads as the 1.6 g/kg default.
+        if let stored = defaults.object(forKey: Key.proteinMultiplier) as? Double,
+           stored.isFinite, stored > 0 {
+            self.proteinMultiplier = stored
+        } else {
+            self.proteinMultiplier = ProteinTargetCalculator.defaultMultiplier
         }
         // Missing key → treat as enabled (legacy install default).
         if defaults.object(forKey: Key.proactiveInsightsEnabled) == nil {

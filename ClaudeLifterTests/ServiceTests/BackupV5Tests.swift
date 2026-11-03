@@ -133,6 +133,29 @@ struct BackupV5Tests {
         #expect(destination.settings.heightCm == 182.88)
     }
 
+    @Test("A tablet dose's snapshotted strength survives a backup round-trip")
+    func tabletStrengthRoundTrips() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = try makeStore(documents: dir)
+        let medication = Medication(name: "Tabs", doseForm: .tablet, tabletStrengthMg: 50)
+        try await source.medications.save(medication)
+        let dose = MedicationDose(logging: 1.5, unit: .tablet, of: medication)
+        try await source.doses.save(dose)
+        // The prescription changed after the dose was logged.
+        medication.tabletStrengthMg = 25
+        try await source.medications.update(medication)
+        let url = try await source.service.exportBackup()
+
+        let destination = try makeStore(documents: dir)
+        _ = try await destination.service.importBackup(from: url)
+
+        let restored = try #require(try await destination.doses.fetch(id: dose.id))
+        #expect(restored.tabletStrengthMgAtLog == 50)
+        #expect(restored.computedMg == 75)
+        #expect(restored.medication?.tabletStrengthMg == 25)
+    }
+
     @Test("Importing the same backup twice skips every existing V5 record")
     func importTwiceSkips() async throws {
         let dir = try tempDirectory()

@@ -109,6 +109,37 @@ struct SyncV5MapperTests {
         #expect(dose.syncStatus == .synced)
     }
 
+    @Test("A tablet dose carries its snapshotted strength to the wire and back")
+    func tabletStrengthRoundTrips() throws {
+        let medication = Medication(name: "Tabs", doseForm: .tablet, tabletStrengthMg: 50)
+        let dose = MedicationDose(logging: 1.5, unit: .tablet, of: medication, takenAt: stamp)
+
+        let dto = SyncMapper.toDTO(dose)
+        #expect(dto.tabletStrengthMgAtLog == 50)
+        let decoded = try decoder.decode(MedicationDoseDTO.self, from: encoder.encode(dto))
+        #expect(decoded.tabletStrengthMgAtLog == 50)
+
+        // Restored under a medication whose strength has since changed: the
+        // dose keeps its own strength, so an edit still computes as logged.
+        medication.tabletStrengthMg = 25
+        let restored = SyncMapper.createMedicationDose(from: decoded, medication: medication)
+        #expect(restored.tabletStrengthMgAtLog == 50)
+        restored.revise(amount: 2, unit: .tablet)
+        #expect(restored.computedMg == 100)
+    }
+
+    @Test("A dose DTO without the strength key, as an older payload has, still decodes")
+    func doseWithoutStrengthKeyDecodes() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","medicationId":"\(UUID().uuidString)",
+         "takenAt":"2026-11-03T07:00:00.000Z","amount":1,"unit":"tablet",
+         "computedMg":50,"lastModified":"2026-11-03T07:00:00.000Z"}
+        """
+        let dto = try decoder.decode(MedicationDoseDTO.self, from: Data(json.utf8))
+        #expect(dto.tabletStrengthMgAtLog == nil)
+        #expect(dto.computedMg == 50)
+    }
+
     // MARK: - Alternatives
 
     @Test("An alternative maps to its DTO and back")

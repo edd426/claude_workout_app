@@ -32,10 +32,11 @@ enum DoseUnit: String, Codable, CaseIterable, Sendable, Identifiable {
 /// One logged dose of a `Medication` (#164).
 ///
 /// Stores the raw entry (`amount` in `unit`) and, where it can be computed,
-/// the mg it represents. `concentrationMgPerMlAtLog` is the medication's
-/// concentration at the moment of logging: a later vial with a different mix
-/// changes the medication, never this record. Use `init(logging:unit:of:...)`
-/// to log, and `revise(amount:unit:)` to edit, so `computedMg` stays honest.
+/// the mg it represents. `concentrationMgPerMlAtLog` and `tabletStrengthMgAtLog`
+/// are the medication's values at the moment of logging: a later vial with a
+/// different mix, or a new prescription at a different strength, changes the
+/// medication, never this record. Use `init(logging:unit:of:...)` to log, and
+/// `revise(amount:unit:)` to edit, so `computedMg` stays honest.
 ///
 /// Schema V5, a NEW model.
 @Model
@@ -49,6 +50,10 @@ final class MedicationDose: SyncableModel {
     var computedMg: Double?
     /// Snapshot of the medication's concentration when this dose was logged.
     var concentrationMgPerMlAtLog: Double?
+    /// Snapshot of the medication's mg per tablet when this dose was logged,
+    /// for the same reason: a new prescription at a different strength changes
+    /// the medication, never this record.
+    var tabletStrengthMgAtLog: Double?
     var note: String?
     var syncStatusRaw: String = "pending"
     var lastModified: Date
@@ -72,6 +77,7 @@ final class MedicationDose: SyncableModel {
         unitRaw: String,
         computedMg: Double?,
         concentrationMgPerMlAtLog: Double?,
+        tabletStrengthMgAtLog: Double? = nil,
         note: String? = nil,
         syncStatus: SyncStatus = .pending,
         lastModified: Date = .now
@@ -83,13 +89,16 @@ final class MedicationDose: SyncableModel {
         self.unitRaw = unitRaw
         self.computedMg = computedMg
         self.concentrationMgPerMlAtLog = concentrationMgPerMlAtLog
+        self.tabletStrengthMgAtLog = tabletStrengthMgAtLog
         self.note = note
         self.syncStatusRaw = syncStatus.rawValue
         self.lastModified = lastModified
     }
 
     /// Logs a dose now: snapshots the medication's current concentration and
-    /// computes mg from it and the tablet strength.
+    /// tablet strength, and computes mg from them. Each snapshot is nil when
+    /// the medication has no such value (a tablet medication has no
+    /// concentration, a liquid one no strength).
     convenience init(
         logging amount: Double,
         unit: DoseUnit,
@@ -98,6 +107,7 @@ final class MedicationDose: SyncableModel {
         note: String? = nil
     ) {
         let concentration = medication.effectiveConcentrationMgPerMl
+        let strength = medication.tabletStrengthMg
         self.init(
             medication: medication,
             takenAt: takenAt,
@@ -106,27 +116,27 @@ final class MedicationDose: SyncableModel {
             computedMg: DoseCalculator.computedMg(
                 amount: amount,
                 unit: unit,
-                tabletStrengthMg: medication.tabletStrengthMg,
+                tabletStrengthMg: strength,
                 concentrationMgPerMl: concentration
             ),
             concentrationMgPerMlAtLog: concentration,
+            tabletStrengthMgAtLog: strength,
             note: note
         )
     }
 
     /// Edits the amount or unit and recomputes mg against the concentration
-    /// SNAPSHOTTED at log time, not the medication's current one.
-    ///
-    /// Tablet strength is not snapshotted (the data model carries only the
-    /// concentration), so revising a tablet dose uses the medication's current
-    /// strength. Persist through `MedicationDoseRepository.update`.
+    /// and tablet strength SNAPSHOTTED at log time, never the medication's
+    /// current ones. A snapshot that is nil stays nil: a dose logged before
+    /// any strength or concentration was known does not acquire one by being
+    /// edited. Persist through `MedicationDoseRepository.update`.
     func revise(amount: Double, unit: DoseUnit) {
         self.amount = amount
         unitRaw = unit.rawValue
         computedMg = DoseCalculator.computedMg(
             amount: amount,
             unit: unit,
-            tabletStrengthMg: medication?.tabletStrengthMg,
+            tabletStrengthMg: tabletStrengthMgAtLog,
             concentrationMgPerMl: concentrationMgPerMlAtLog
         )
     }

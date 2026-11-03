@@ -52,8 +52,9 @@ enum MassUnit: String, Codable, CaseIterable, Sendable, Identifiable {
 /// Concentration, for `.liquid`: either `concentrationMgPerMl` directly, or a
 /// vial the user mixed (`vialAmountMg` ÷ `diluentMl`). Use `setDirectConcentration`
 /// / `setVialMix` so the two never disagree. A dose snapshots the concentration
-/// when it is logged (`MedicationDose.concentrationMgPerMlAtLog`), so a new vial
-/// with a different mix never rewrites history.
+/// and the tablet strength when it is logged (`MedicationDose.concentrationMgPerMlAtLog`,
+/// `tabletStrengthMgAtLog`), so a new vial or a new prescription never
+/// rewrites history.
 ///
 /// Schema V5, a NEW model. The `doses` relationship is safe only because both
 /// ends are new in V5; never add one to a model that existed in V1–V4.

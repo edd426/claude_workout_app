@@ -111,12 +111,47 @@ struct MedicationModelTests {
         #expect(dose.computedMg == 2)  // 0.4 mL × 5 mg/mL, not × 10
     }
 
-    @Test("A tablet dose computes from the strength on file")
+    @Test("A tablet dose computes from the strength on file, and snapshots that strength")
     func tabletDose() {
         let medication = Medication(name: "Tabs", doseForm: .tablet, tabletStrengthMg: 50)
         let dose = MedicationDose(logging: 1.5, unit: .tablet, of: medication)
         #expect(dose.computedMg == 75)
+        #expect(dose.tabletStrengthMgAtLog == 50)
         #expect(dose.concentrationMgPerMlAtLog == nil)
+    }
+
+    @Test("Changing a medication's tablet strength later does not change a past dose's computed mg")
+    func newStrengthDoesNotRewriteHistory() throws {
+        let container = try makeTestContainer()
+        let context = container.mainContext
+        let medication = Medication(name: "Tabs", doseForm: .tablet, tabletStrengthMg: 50)
+        context.insert(medication)
+        let past = MedicationDose(logging: 1.5, unit: .tablet, of: medication)
+        context.insert(past)
+        try context.save()
+
+        // A new prescription, half the strength.
+        medication.tabletStrengthMg = 25
+        let today = MedicationDose(logging: 1.5, unit: .tablet, of: medication)
+        context.insert(today)
+        try context.save()
+
+        #expect(past.computedMg == 75)
+        #expect(past.tabletStrengthMgAtLog == 50)
+        #expect(today.computedMg == 37.5)
+        #expect(today.tabletStrengthMgAtLog == 25)
+    }
+
+    @Test("Editing a past tablet dose recomputes with its snapshotted strength, not today's")
+    func reviseTabletUsesSnapshot() {
+        let medication = Medication(name: "Tabs", doseForm: .tablet, tabletStrengthMg: 50)
+        let dose = MedicationDose(logging: 1, unit: .tablet, of: medication)
+        medication.tabletStrengthMg = 25
+
+        dose.revise(amount: 2, unit: .tablet)
+
+        #expect(dose.amount == 2)
+        #expect(dose.computedMg == 100)  // 2 × 50 mg as logged, not 2 × 25
     }
 
     @Test("An IU dose is stored as entered with no computed mg")

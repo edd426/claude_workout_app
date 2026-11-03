@@ -171,6 +171,7 @@ enum SyncMapper {
             unit: dose.unitRaw,
             computedMg: dose.computedMg,
             concentrationMgPerMlAtLog: dose.concentrationMgPerMlAtLog,
+            tabletStrengthMgAtLog: dose.tabletStrengthMgAtLog,
             note: dose.note,
             lastModified: dose.lastModified
         )
@@ -389,8 +390,9 @@ enum SyncMapper {
     }
 
     /// Restores the dose EXACTLY as logged: `computedMg` and the snapshotted
-    /// concentration are copied, never recomputed from the medication's
-    /// current settings — that is the whole point of snapshotting them.
+    /// concentration and tablet strength are copied, never recomputed from
+    /// the medication's current settings — that is the whole point of
+    /// snapshotting them.
     static func createMedicationDose(
         from dto: MedicationDoseDTO,
         medication: Medication?
@@ -403,6 +405,7 @@ enum SyncMapper {
             unitRaw: dto.unit,
             computedMg: dto.computedMg,
             concentrationMgPerMlAtLog: dto.concentrationMgPerMlAtLog,
+            tabletStrengthMgAtLog: dto.tabletStrengthMgAtLog,
             note: dto.note,
             syncStatus: .synced,
             lastModified: dto.lastModified

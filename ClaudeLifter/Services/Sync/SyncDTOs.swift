@@ -196,9 +196,10 @@ struct MedicationDTO: Codable, Sendable, Equatable {
     let lastModified: Date
 }
 
-/// One logged dose (#164). `computedMg` and `concentrationMgPerMlAtLog` are
-/// what the phone computed and snapshotted at log time — readers must use
-/// them as stored and never recompute from the medication's current values.
+/// One logged dose (#164). `computedMg`, `concentrationMgPerMlAtLog` and
+/// `tabletStrengthMgAtLog` are what the phone computed and snapshotted at log
+/// time — readers must use them as stored and never recompute from the
+/// medication's current values.
 struct MedicationDoseDTO: Codable, Sendable, Equatable {
     let id: UUID
     /// The owning medication. Optional only for tolerance; the phone cascades
@@ -210,8 +211,35 @@ struct MedicationDoseDTO: Codable, Sendable, Equatable {
     let unit: String
     let computedMg: Double?
     let concentrationMgPerMlAtLog: Double?
+    /// The tablet strength snapshotted at log time. Absent from payloads
+    /// written before it existed, which decode as nil.
+    let tabletStrengthMgAtLog: Double?
     let note: String?
     let lastModified: Date
+
+    init(
+        id: UUID,
+        medicationId: UUID?,
+        takenAt: Date,
+        amount: Double,
+        unit: String,
+        computedMg: Double?,
+        concentrationMgPerMlAtLog: Double?,
+        tabletStrengthMgAtLog: Double? = nil,
+        note: String?,
+        lastModified: Date
+    ) {
+        self.id = id
+        self.medicationId = medicationId
+        self.takenAt = takenAt
+        self.amount = amount
+        self.unit = unit
+        self.computedMg = computedMg
+        self.concentrationMgPerMlAtLog = concentrationMgPerMlAtLog
+        self.tabletStrengthMgAtLog = tabletStrengthMgAtLog
+        self.note = note
+        self.lastModified = lastModified
+    }
 }
 
 /// A substitute listed on a template exercise. `templateExerciseId` matches a

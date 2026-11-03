@@ -125,6 +125,9 @@ struct SchemaV5MigrationTests {
             context.insert(medication)
             let dose = MedicationDose(logging: 50, unit: .syringeUnits, of: medication)
             context.insert(dose)
+            let tablets = Medication(name: "Tabs", doseForm: .tablet, tabletStrengthMg: 50)
+            context.insert(tablets)
+            context.insert(MedicationDose(logging: 1.5, unit: .tablet, of: tablets))
             context.insert(ExerciseAlternative(
                 templateExerciseId: templateExerciseId, externalId: "Leg_Press", order: 0, note: "if the rack is taken"
             ))
@@ -141,14 +144,18 @@ struct SchemaV5MigrationTests {
         #expect(measurement.valueCm == 86.5)
         #expect(measurement.note == "navel, morning")
 
-        let medication = try #require(try context.fetch(FetchDescriptor<Medication>()).first)
-        #expect(medication.doseForm == .liquid)
+        let medications = try context.fetch(FetchDescriptor<Medication>())
+        let medication = try #require(medications.first { $0.doseForm == .liquid })
         #expect(medication.effectiveConcentrationMgPerMl == 5)
         #expect(medication.doses.count == 1)
-        let dose = try #require(try context.fetch(FetchDescriptor<MedicationDose>()).first)
+        let doses = try context.fetch(FetchDescriptor<MedicationDose>())
+        let dose = try #require(doses.first { $0.unit == .syringeUnits })
         #expect(dose.medication?.id == medication.id)
         #expect(dose.computedMg == 2.5)
         #expect(dose.concentrationMgPerMlAtLog == 5)
+        let tabletDose = try #require(doses.first { $0.unit == .tablet })
+        #expect(tabletDose.tabletStrengthMgAtLog == 50)
+        #expect(tabletDose.computedMg == 75)
 
         let alternative = try #require(try context.fetch(FetchDescriptor<ExerciseAlternative>()).first)
         #expect(alternative.templateExerciseId == templateExerciseId)

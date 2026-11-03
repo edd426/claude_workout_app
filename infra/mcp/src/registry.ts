@@ -11,6 +11,8 @@ import {
   listExerciseReports,
   resolveExerciseReport,
 } from "./tools/reports.js";
+import { listBodyMeasurements, MEASUREMENT_SITES } from "./tools/bodyMeasurements.js";
+import { listMedicationLogs, listMedications } from "./tools/medications.js";
 import {
   createCustomExercise,
   createProgram,
@@ -338,6 +340,81 @@ export const TOOLS = [
     },
   },
   {
+    name: "list_body_measurements",
+    description:
+      "Read body measurements (circumference, cm) logged in the app, newest " +
+      "first, with the stored height and the current waist-to-height ratio " +
+      "banded per NICE NG246 (< 0.5 healthy, 0.5–0.59 increased risk, ≥ 0.6 " +
+      "high risk). The ratio always uses the latest waist measurement, " +
+      "whatever the filters. mirrored: false means the phone has not synced " +
+      "this data yet, which is not the same as having none.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        site: {
+          type: "string",
+          enum: [...MEASUREMENT_SITES],
+          description: "Only this site (the app logs waist today)",
+        },
+        startDate: { type: "string", description: "From (ISO 8601, UTC)" },
+        endDate: {
+          type: "string",
+          description: "To (ISO 8601, UTC); a date alone includes that whole day",
+        },
+        limit: {
+          type: "number",
+          description: "Max results (default: 100, capped at 500)",
+        },
+      },
+    },
+  },
+  {
+    name: "list_medications",
+    description:
+      "List the medications defined in the app's medication log: name, dose " +
+      "form (mass/tablet/liquid/units), tablet strength, and concentration " +
+      "(direct mg/mL, or vial mg ÷ diluent mL). Archived medications are " +
+      "excluded unless includeArchived is true. Read-only. mirrored: false " +
+      "means the phone has not synced this data yet.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        includeArchived: {
+          type: "boolean",
+          description: "Include archived medications (default false)",
+        },
+      },
+    },
+  },
+  {
+    name: "list_medication_logs",
+    description:
+      "List logged medication doses, newest first, each with its medication's " +
+      "name, the amount and unit as entered, and computedMg. computedMg and " +
+      "concentrationMgPerMlAtLog are as logged: never recompute a past dose " +
+      "from the medication's current concentration (a re-mixed vial does not " +
+      "change history). computedMg is absent where it cannot be computed " +
+      "(IU, or mL with no known concentration). Read-only.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        medicationId: {
+          type: "string",
+          description: "Only this medication (id from list_medications)",
+        },
+        startDate: { type: "string", description: "From (ISO 8601, UTC)" },
+        endDate: {
+          type: "string",
+          description: "To (ISO 8601, UTC); a date alone includes that whole day",
+        },
+        limit: {
+          type: "number",
+          description: "Max results (default: 100, capped at 500)",
+        },
+      },
+    },
+  },
+  {
     name: "delete_inbox_operation",
     description:
       "Permanently delete one or more terminal inbox operations (applied, " +
@@ -545,6 +622,33 @@ export async function handleToolCall(
 
       case "delete_inbox_operation":
         return textResult(await deleteInboxOperation(args));
+
+      case "list_body_measurements":
+        return textResult(
+          await listBodyMeasurements({
+            site: optionalString(args, "site"),
+            startDate: optionalString(args, "startDate"),
+            endDate: optionalString(args, "endDate"),
+            limit: optionalNumber(args, "limit"),
+          })
+        );
+
+      case "list_medications":
+        return textResult(
+          await listMedications({
+            includeArchived: args?.["includeArchived"] === true,
+          })
+        );
+
+      case "list_medication_logs":
+        return textResult(
+          await listMedicationLogs({
+            medicationId: optionalString(args, "medicationId"),
+            startDate: optionalString(args, "startDate"),
+            endDate: optionalString(args, "endDate"),
+            limit: optionalNumber(args, "limit"),
+          })
+        );
 
       default:
         return errorResult(`Unknown tool: ${name}`);

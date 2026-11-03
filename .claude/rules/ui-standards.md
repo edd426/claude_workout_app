@@ -1,4 +1,4 @@
-# UI Standards (draft, 2026-11-03)
+# UI Standards (adopted 2026-11-03)
 
 Every UI change must meet these rules. Each rule has an ID: cite it in reviews
 ("violates UI-T1"). A rule marked **[check]** can be verified from the diff
@@ -6,8 +6,8 @@ alone. Others need the screenshot harness
 (`ClaudeLifterUITests/ScreenshotHarness/`) or a simulator run.
 
 These rules sit beside `swift-style.md`; where they conflict, this file wins
-for anything a user can see. Platform baseline: Apple HIG for iOS 26 (Liquid
-Glass). Deployment target is iOS 17, so iOS 26-only APIs need
+for anything a user can see. Platform baseline: Apple HIG for iOS 26 and later (Liquid
+Glass); the phone runs iOS 27. Deployment target is iOS 17, so iOS 26-only APIs need
 `if #available(iOS 26, *)` with a working iOS 17 fallback.
 
 The user is one person: 45 minutes, 6 am, a busy commercial gym. He has the

@@ -82,8 +82,8 @@ See `.claude/rules/tdd.md` for the full workflow.
 
 ## Key Conventions
 
-- **Simulator**: match the real device — Evan carries an **iPhone 13 Pro Max on iOS 26.5.x**. Do not substitute whatever simulator ships newest; on 2026-07-27 an iPhone 17 run produced a false `ChatCoachTests` failure that did not reproduce on the real hardware. The previously documented `iPhone 16e` no longer exists in Xcode. If the destination is missing, **create it** rather than substituting:
-  `xcrun simctl create "iPhone 13 Pro Max" com.apple.CoreSimulator.SimDeviceType.iPhone-13-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-26-5`
+- **Simulator**: match the real device — Evan carries an **iPhone 13 Pro Max on iOS 27.0.1** (read from his report metadata on 2026-11-03; it was 26.6.2 in October). 27.0.1 is not downloadable, so use the **iOS 27.0** runtime (`xcodebuild -downloadPlatform iOS -buildVersion 27.0`). Each report records `iosVersion`: check it before trusting this line. Do not substitute whatever simulator ships newest; on 2026-07-27 an iPhone 17 run produced a false `ChatCoachTests` failure that did not reproduce on the real hardware. The previously documented `iPhone 16e` no longer exists in Xcode. If the destination is missing, **create it** rather than substituting:
+  `xcrun simctl create "iPhone 13 Pro Max" com.apple.CoreSimulator.SimDeviceType.iPhone-13-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-0`
 
 - **Typechecking is not testing.** A clean `tsc`/`swiftc` parse says nothing about behavior — on 2026-07-27 two rounds of write-path work typechecked cleanly and still failed the simulator suite. Run `xcodebuild test` before claiming a change works, and beware piping it through `tail` without `set -o pipefail`, which masks the real exit code.
 

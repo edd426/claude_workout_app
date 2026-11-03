@@ -31,7 +31,6 @@ struct ContentView: View {
                 .tabItem { Label("Settings", systemImage: "gear") }
         }
         .tint(BrandTheme.accent)
-        .preferredColorScheme(.light)
         .task {
             if chatViewModel == nil {
                 chatViewModel = ChatViewModel(

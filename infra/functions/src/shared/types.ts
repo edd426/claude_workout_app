@@ -429,3 +429,77 @@ export interface ExerciseReport {
 export interface ExerciseReportListResponse {
   reports: ExerciseReport[];
 }
+
+// ─── v5 health data (issues #164, #165) ─────────────────────────────────────
+// Mirrored by snapshot wire v5, read-only here. Field names are the phone's
+// DTOs (SyncDTOs.swift). Enum fields are raw strings, stored as sent. This is
+// health data: no endpoint logs a document body.
+
+export interface BodyMeasurement {
+  id: string;
+  /** waist | hips | chest | arm | thigh | calf (raw; a newer build may add more). */
+  site: string;
+  valueCm: number;
+  recordedAt: string;
+  note?: string;
+  lastModified: string;
+}
+
+export interface Medication {
+  id: string;
+  name: string;
+  /** mass | tablet | liquid | units */
+  doseForm: string;
+  /** mg | mcg | g, for doseForm "mass". */
+  massUnit?: string;
+  tabletStrengthMg?: number;
+  /** Direct concentration; wins over vialAmountMg ÷ diluentMl. */
+  concentrationMgPerMl?: number;
+  vialAmountMg?: number;
+  diluentMl?: number;
+  allowsSyringeUnits: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  lastModified: string;
+}
+
+export interface MedicationDose {
+  id: string;
+  medicationId?: string;
+  takenAt: string;
+  amount: number;
+  /** mg | mcg | g | tablet | mL | syringeUnits | IU */
+  unit: string;
+  /** As logged. Never recompute from the medication's current concentration. */
+  computedMg?: number;
+  concentrationMgPerMlAtLog?: number;
+  note?: string;
+  lastModified: string;
+}
+
+/**
+ * `mirrored` is false until a v5 push has succeeded. The lists are then
+ * empty because nothing has been mirrored, not because the user has none.
+ */
+export interface BodyMeasurementListResponse {
+  mirrored: boolean;
+  heightCm: number | null;
+  measurements: BodyMeasurement[];
+  /** The most recent waist measurement, regardless of the list's filters. */
+  latestWaist: BodyMeasurement | null;
+}
+
+export interface MedicationListResponse {
+  mirrored: boolean;
+  medications: Medication[];
+}
+
+export interface MedicationDoseWithName extends MedicationDose {
+  /** Joined from `medications`; null when the medication is not mirrored. */
+  medicationName: string | null;
+}
+
+export interface MedicationDoseListResponse {
+  mirrored: boolean;
+  doses: MedicationDoseWithName[];
+}

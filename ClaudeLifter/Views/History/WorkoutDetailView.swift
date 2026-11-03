@@ -41,6 +41,7 @@ struct WorkoutDetailView: View {
         // Back beside Cancel read as two ways out (§3.8); while editing,
         // Cancel is the way out.
         .navigationBarBackButtonHidden(isEditing)
+        .scrollDismissesKeyboard(.interactively)
         .toolbar { editToolbar }
         .confirmationDialog(
             "Delete \(workout.name)?",
@@ -126,6 +127,16 @@ struct WorkoutDetailView: View {
                 Button("Cancel") {
                     editedName = workout.name
                     isEditing = false
+                }
+            }
+            // The number pads have no return key. "Done" is taken by the
+            // commit button, so this one says what it does.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Hide Keyboard", systemImage: "keyboard.chevron.compact.down") {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+                    )
                 }
             }
         }

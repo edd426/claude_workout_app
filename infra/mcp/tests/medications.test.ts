@@ -127,6 +127,25 @@ describe("listMedicationLogs", () => {
     expect(result.doses).toEqual([dose]);
   });
 
+  it("passes a tablet dose's tabletStrengthMgAtLog through unchanged", async () => {
+    const tabletDose = {
+      id: "D-2",
+      medicationId: "TABS",
+      medicationName: "anti-inflammatory",
+      takenAt: "2026-11-02T08:00:00.000Z",
+      amount: 1.5,
+      unit: "tablet",
+      computedMg: 75,
+      tabletStrengthMgAtLog: 50,
+      lastModified: "2026-11-02T08:00:00.000Z",
+    };
+    mockApiGet.mockResolvedValue({ mirrored: true, doses: [tabletDose] });
+
+    const result = await listMedicationLogs();
+
+    expect(result.doses).toEqual([tabletDose]);
+  });
+
   it("an unknown medicationId is a clear error pointing at list_medications", async () => {
     mockApiGet.mockRejectedValue(new ApiError(404, "Functions API returned 404: Medication not found: X"));
 

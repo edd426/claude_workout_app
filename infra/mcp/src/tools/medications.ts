@@ -5,10 +5,11 @@
  * `list_medications` reads GET /api/medications; `list_medication_logs` reads
  * GET /api/medication-doses, which joins each dose to its medication's name.
  *
- * A dose's `computedMg` and `concentrationMgPerMlAtLog` are passed through
- * exactly as the phone logged them. A vial that is re-mixed later must not
- * rewrite the past, so nothing here recomputes a dose from a medication's
- * current concentration. This is health data: nothing here logs it.
+ * A dose's `computedMg`, `concentrationMgPerMlAtLog` and
+ * `tabletStrengthMgAtLog` are passed through exactly as the phone logged
+ * them. A vial re-mixed later, or a new tablet strength, must not rewrite the
+ * past, so nothing here recomputes a dose from a medication's current values.
+ * This is health data: nothing here logs it.
  */
 
 import { ApiError, apiGet } from "../shared/http.js";
@@ -46,6 +47,8 @@ export interface MedicationDose {
   unit: string;
   computedMg?: number;
   concentrationMgPerMlAtLog?: number;
+  /** Tablet doses: the strength on file when the dose was logged. */
+  tabletStrengthMgAtLog?: number;
   note?: string;
   lastModified: string;
 }

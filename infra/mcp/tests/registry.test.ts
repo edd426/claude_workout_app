@@ -706,5 +706,6 @@ describe("health-data read dispatch (#164, #165)", () => {
     const logs = TOOLS.find((tool) => tool.name === "list_medication_logs");
     expect(logs?.description).toMatch(/as logged/i);
     expect(logs?.description).toMatch(/never recompute/i);
+    expect(logs?.description).toContain("tabletStrengthMgAtLog");
   });
 });

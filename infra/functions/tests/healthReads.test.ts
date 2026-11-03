@@ -421,6 +421,28 @@ describe("GET /api/medication-doses", () => {
     expect(served["concentrationMgPerMlAtLog"]).toBe(5);
   });
 
+  test("a tablet dose serves its tablet strength at log time, not today's strength", async () => {
+    mirrorV5();
+    container("medications").docs.push({ ...tablets, tabletStrengthMg: 100 });
+    const tabletDose = {
+      id: "D-2",
+      medicationId: tablets.id,
+      takenAt: "2026-11-02T08:00:00.000Z",
+      amount: 1.5,
+      unit: "tablet",
+      computedMg: 75,
+      tabletStrengthMgAtLog: 50,
+      lastModified: "2026-11-02T08:00:00.000Z",
+    };
+    container("medicationDoses").docs.push(tabletDose);
+
+    const res = await handler("medicationDosesList")(makeRequest(), context);
+
+    expect((res.jsonBody as { doses: Doc[] }).doses).toEqual([
+      { ...tabletDose, medicationName: "anti-inflammatory" },
+    ]);
+  });
+
   test("a dose whose medication is gone keeps medicationName null", async () => {
     mirrorV5();
     container("medicationDoses").docs.push({ ...dose, medicationId: "GONE" });

@@ -413,11 +413,12 @@ export const TOOLS = [
     name: "list_medication_logs",
     description:
       "List logged medication doses, newest first, each with its medication's " +
-      "name, the amount and unit as entered, and computedMg. computedMg and " +
-      "concentrationMgPerMlAtLog are as logged: never recompute a past dose " +
-      "from the medication's current concentration (a re-mixed vial does not " +
-      "change history). computedMg is absent where it cannot be computed " +
-      "(IU, or mL with no known concentration). Read-only.",
+      "name, the amount and unit as entered, and computedMg. computedMg, " +
+      "concentrationMgPerMlAtLog and tabletStrengthMgAtLog are as logged: " +
+      "never recompute a past dose from the medication's current " +
+      "concentration or tablet strength (a re-mixed vial or a new strength " +
+      "does not change history). computedMg is absent where it cannot be " +
+      "computed (IU, or mL with no known concentration). Read-only.",
     inputSchema: {
       type: "object" as const,
       properties: {

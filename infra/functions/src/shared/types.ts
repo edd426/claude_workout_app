@@ -491,9 +491,11 @@ export interface MedicationDose {
   amount: number;
   /** mg | mcg | g | tablet | mL | syringeUnits | IU */
   unit: string;
-  /** As logged. Never recompute from the medication's current concentration. */
+  /** As logged. Never recompute from the medication's current values. */
   computedMg?: number;
   concentrationMgPerMlAtLog?: number;
+  /** Tablet doses: the strength on file at log time (phone commit 590fd0f). */
+  tabletStrengthMgAtLog?: number;
   note?: string;
   lastModified: string;
 }

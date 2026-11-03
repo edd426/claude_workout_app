@@ -8,9 +8,11 @@ private final class MockInboxApprovalManager: InboxApprovalManaging {
     var approvals: [InboxOperationDTO] = []
     var approvedIDs: [String] = []
     var declinedIDs: [String] = []
+    var fetchError: Error?
 
     func fetchPendingApprovals() async throws -> [InboxOperationDTO] {
-        approvals
+        if let fetchError { throw fetchError }
+        return approvals
     }
 
     func approve(_ operation: InboxOperationDTO) async throws {
@@ -168,6 +170,39 @@ struct InboxApprovalViewModelTests {
         await vm.load()
 
         #expect(vm.approvals.map(\.id) == ["restart-approval"])
+    }
+
+    /// Today reloads approvals on every appearance, foreground and sync. A
+    /// failed background load must not raise the modal decision alert, or a
+    /// weak gym connection pops "Approval Error" on every return to the app
+    /// (UI-E1, UI-E3). It is reported inline instead, and the last known
+    /// approvals are kept.
+    @Test("a failed load is an inline load error, not the decision alert")
+    func failedLoadIsInline() async {
+        let manager = MockInboxApprovalManager()
+        manager.approvals = [approvalOperation(id: "kept")]
+        let vm = InboxApprovalViewModel(manager: manager)
+        await vm.load()
+        manager.fetchError = StubError()
+
+        await vm.load()
+
+        #expect(vm.errorMessage == nil)
+        #expect(vm.loadErrorMessage == "network down")
+        #expect(vm.approvals.map(\.id) == ["kept"])
+    }
+
+    @Test("a successful load clears the previous load error")
+    func successfulLoadClearsLoadError() async {
+        let manager = MockInboxApprovalManager()
+        manager.fetchError = StubError()
+        let vm = InboxApprovalViewModel(manager: manager)
+        await vm.load()
+        manager.fetchError = nil
+
+        await vm.load()
+
+        #expect(vm.loadErrorMessage == nil)
     }
 
     @Test("approve delegates and removes only the decided approval")

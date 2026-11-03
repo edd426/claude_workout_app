@@ -63,4 +63,65 @@ final class ReportListViewModel {
             errorMessage = "Couldn't delete the report: \(error.localizedDescription)"
         }
     }
+
+    // MARK: - Row menu (#154)
+
+    /// The moves out of a status, in menu order. Delete is always last
+    /// (UI-P6), and the view confirms it before calling `perform`.
+    static func actions(for status: ReportStatus) -> [ReportRowAction] {
+        switch status {
+        case .open: [.acknowledge, .resolve, .delete]
+        case .acknowledged: [.resolve, .reopen, .delete]
+        case .resolved: [.reopen, .delete]
+        }
+    }
+
+    func perform(_ action: ReportRowAction, on report: ExerciseReport) async {
+        switch action {
+        case .acknowledge: await setStatus(.acknowledged, for: report)
+        case .resolve: await setStatus(.resolved, for: report)
+        case .reopen: await setStatus(.open, for: report)
+        case .delete: await delete(report)
+        }
+    }
+}
+
+/// One entry in a report row's menu and swipe actions (#154). The swipe stays
+/// as the quick path; the menu makes the same actions visible (UI-P7).
+enum ReportRowAction: String, CaseIterable, Identifiable, Sendable {
+    case acknowledge, resolve, reopen, delete
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .acknowledge: "Acknowledge"
+        case .resolve: "Resolve"
+        case .reopen: "Reopen"
+        case .delete: "Delete"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .acknowledge: "checkmark.bubble"
+        case .resolve: "checkmark.circle"
+        case .reopen: "arrow.uturn.backward"
+        case .delete: "trash"
+        }
+    }
+
+    var isDestructive: Bool { self == .delete }
+}
+
+extension ReportStatus {
+    /// The status capsule's text. Acknowledged means a fix is written and
+    /// waiting on an install, so it says that rather than "Acknowledged".
+    var badgeTitle: String {
+        switch self {
+        case .open: "Open"
+        case .acknowledged: "Fixed – awaiting install"
+        case .resolved: "Resolved"
+        }
+    }
 }

@@ -9,6 +9,7 @@ struct ReportSheetView: View {
     var onSaved: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @FocusState private var detailFocused: Bool
     @State private var pickerItem: PhotosPickerItem?
     @State private var showCamera = false
@@ -72,7 +73,7 @@ struct ReportSheetView: View {
                     Section {
                         Text(errorMessage)
                             .font(.callout)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(BrandTheme.destructive)
                     }
                 }
             }
@@ -182,7 +183,7 @@ struct ReportSheetView: View {
         if let photoError = vm.photoError {
             Text(photoError)
                 .font(.caption)
-                .foregroundStyle(.red)
+                .foregroundStyle(BrandTheme.destructive)
         }
     }
 
@@ -204,7 +205,10 @@ struct ReportSheetView: View {
         // A wrapping row of chips rather than a Picker: every option stays
         // visible and one-tap, which matters far more than saving a row.
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 150), spacing: 8)],
+            // One column at accessibility sizes, so no chip truncates (UI-A3).
+            columns: dynamicTypeSize.isAccessibilitySize
+                ? [GridItem(.flexible())]
+                : [GridItem(.adaptive(minimum: 150), spacing: 8)],
             alignment: .leading,
             spacing: 8
         ) {
@@ -222,25 +226,25 @@ struct ReportSheetView: View {
         } label: {
             Label(category.displayName, systemImage: category.systemImage)
                 .font(.subheadline)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, minHeight: 34)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.horizontal, 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(isSelected
-                              ? BrandTheme.terracotta.opacity(0.2)
+                              ? BrandTheme.accent.opacity(0.2)
                               : Color(uiColor: .tertiarySystemFill))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(
-                            isSelected ? BrandTheme.terracotta : .clear,
+                            isSelected ? BrandTheme.accent : .clear,
                             lineWidth: 1.5
                         )
                 )
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isSelected ? BrandTheme.terracotta : .primary)
+        .foregroundStyle(isSelected ? BrandTheme.accentText : .primary)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .accessibilityIdentifier("reportCategory_\(category.rawValue)")
     }

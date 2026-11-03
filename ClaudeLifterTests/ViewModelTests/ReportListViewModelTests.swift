@@ -146,3 +146,52 @@ struct ReportListFilterTests {
         #expect(env.vm.visibleReports.count == 1)
     }
 }
+
+/// The row menu that makes status changes reachable without a swipe (#154).
+@Suite("ReportListViewModel — row actions")
+@MainActor
+struct ReportRowActionTests {
+    @Test("Each status offers the moves out of it, with Delete last", arguments: [
+        (ReportStatus.open, [ReportRowAction.acknowledge, .resolve, .delete]),
+        (.acknowledged, [.resolve, .reopen, .delete]),
+        (.resolved, [.reopen, .delete]),
+    ])
+    func actionsPerStatus(status: ReportStatus, expected: [ReportRowAction]) {
+        #expect(ReportListViewModel.actions(for: status) == expected)
+    }
+
+    @Test("Only Delete is destructive")
+    func onlyDeleteIsDestructive() {
+        let destructive = ReportRowAction.allCases.filter(\.isDestructive)
+        #expect(destructive == [.delete])
+    }
+
+    @Test("Status badges say what each state means", arguments: [
+        (ReportStatus.open, "Open"),
+        (.acknowledged, "Fixed – awaiting install"),
+        (.resolved, "Resolved"),
+    ])
+    func badgeTitles(status: ReportStatus, title: String) {
+        #expect(status.badgeTitle == title)
+    }
+
+    @Test("Performing an action moves the report to that status")
+    func performMovesStatus() async throws {
+        let container = try makeTestContainer()
+        let repository = SwiftDataExerciseReportRepository(context: container.mainContext)
+        let vm = ReportListViewModel(repository: repository)
+        let report = ExerciseReport(category: .bug, detail: "row menu")
+        container.mainContext.insert(report)
+        try container.mainContext.save()
+        await vm.load()
+
+        await vm.perform(.acknowledge, on: report)
+        #expect(report.status == .acknowledged)
+        await vm.perform(.resolve, on: report)
+        #expect(report.status == .resolved)
+        await vm.perform(.reopen, on: report)
+        #expect(report.status == .open)
+        await vm.perform(.delete, on: report)
+        #expect(vm.reports.isEmpty)
+    }
+}

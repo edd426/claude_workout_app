@@ -15,8 +15,8 @@ final class FullUserSessionTests: XCTestCase {
 
     func testCompleteUserSession() throws {
         // 1. Home tab is visible with seeded template
-        XCTAssertTrue(app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Push Day"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["template.Push Day"].waitForExistence(timeout: 5))
 
         // 2. Start a workout from Push Day template
         app.startWorkoutFromTemplate("Push Day")
@@ -40,6 +40,6 @@ final class FullUserSessionTests: XCTestCase {
 
         // 6. Verify we are back on the home tab after workout completion
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 8))
-        XCTAssertTrue(app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 8))
     }
 }

@@ -14,11 +14,11 @@ final class WorkoutFlowTests: XCTestCase {
     }
 
     func testTemplatePushDayAppearsOnHome() throws {
-        XCTAssertTrue(app.staticTexts["Push Day"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["template.Push Day"].waitForExistence(timeout: 5))
     }
 
     func testStartWorkoutFromTemplate() throws {
-        let pushDay = app.staticTexts["Push Day"]
+        let pushDay = app.buttons["template.Push Day"]
         XCTAssertTrue(pushDay.waitForExistence(timeout: 5))
         pushDay.tap()
         XCTAssertTrue(app.navigationBars["Push Day"].waitForExistence(timeout: 5))
@@ -128,7 +128,7 @@ final class WorkoutFlowTests: XCTestCase {
         finish.tap()
         XCTAssertTrue(app.buttons["summaryDone"].waitForExistence(timeout: 5))
         app.buttons["summaryDone"].tap()
-        XCTAssertTrue(app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5))
     }
 
     /// Regression test for #123.
@@ -158,7 +158,7 @@ final class WorkoutFlowTests: XCTestCase {
         sheetTop.press(forDuration: 0.1, thenDragTo: offscreen)
 
         XCTAssertTrue(
-            app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 5),
+            app.navigationBars["Today"].waitForExistence(timeout: 5),
             "Home must be underneath once the workout has been saved"
         )
         XCTAssertFalse(
@@ -185,7 +185,7 @@ final class WorkoutFlowTests: XCTestCase {
 
         XCTAssertTrue(app.buttons["summaryDone"].waitForExistence(timeout: 5))
         app.buttons["summaryDone"].tap()
-        XCTAssertTrue(app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5))
 
         // Three taps must produce exactly one session dated today.
         //

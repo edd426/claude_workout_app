@@ -14,12 +14,12 @@ final class TemplateManagementTests: XCTestCase {
     }
 
     func testSeededTemplateAppearsOnHome() throws {
-        XCTAssertTrue(app.staticTexts["Push Day"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["template.Push Day"].waitForExistence(timeout: 5))
     }
 
     func testNewTemplateButtonExists() throws {
         // Navigate to templates section via home or dedicated area
-        XCTAssertTrue(app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5))
         // Look for a templates section or new template button
         let newTemplateButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'New Template'")).firstMatch
         XCTAssertTrue(newTemplateButton.waitForExistence(timeout: 5))

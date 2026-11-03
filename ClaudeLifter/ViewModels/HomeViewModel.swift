@@ -8,12 +8,43 @@ final class HomeViewModel {
     var isLoading = false
     var errorMessage: String? = nil
 
+    // MARK: - Today (1.9.0)
+
+    /// The hero card's workout: today's by weekday name, else the least
+    /// recently done. Nil while a draft is waiting, because then the hero is
+    /// Resume. Stored, not computed, so `body` never re-derives it (UI-E5).
+    private(set) var todaysTemplate: WorkoutTemplate?
+    /// True when the hero is named for today; false when it is the
+    /// least-recently-done fallback (weekends, or no weekday names).
+    private(set) var heroIsScheduledToday = false
+    /// False until the first `loadToday()`, so the screen shows a spinner
+    /// rather than a flash of the empty state (UI-E1).
+    private(set) var hasLoadedToday = false
+    /// Every template except the hero's, for "Other workouts".
+    private(set) var otherTemplates: [WorkoutTemplate] = []
+    /// Start date of the latest finished workout per template (#176).
+    private(set) var lastDone: [UUID: Date] = [:]
+    /// This week's completed sets per muscle (#168). Nil until history loads.
+    private(set) var weeklyVolume: WeeklyMuscleVolume?
+
     private let templateRepository: any TemplateRepository
     private let workoutRepository: (any WorkoutRepository)?
+    private let volumeService: any MuscleVolumeCalculating
+    private let calendar: Calendar
+    private let now: () -> Date
 
-    init(templateRepository: any TemplateRepository, workoutRepository: (any WorkoutRepository)? = nil) {
+    init(
+        templateRepository: any TemplateRepository,
+        workoutRepository: (any WorkoutRepository)? = nil,
+        volumeService: (any MuscleVolumeCalculating)? = nil,
+        calendar: Calendar = .current,
+        now: @escaping () -> Date = { .now }
+    ) {
         self.templateRepository = templateRepository
         self.workoutRepository = workoutRepository
+        self.volumeService = volumeService ?? MuscleVolumeService(calendar: calendar)
+        self.calendar = calendar
+        self.now = now
     }
 
     func loadTemplates() async {
@@ -25,6 +56,39 @@ final class HomeViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        refreshToday()
+    }
+
+    /// Everything the Today screen shows that comes from templates and
+    /// history, in one pass over the workouts.
+    func loadToday() async {
+        await loadTemplates()
+        await checkForResumableWorkout()
+        hasLoadedToday = true
+    }
+
+    func lastDoneDate(for template: WorkoutTemplate) -> Date? {
+        TemplateLastDone.date(for: template, in: lastDone)
+    }
+
+    func heroSubtitle(for template: WorkoutTemplate) -> String {
+        TodayTemplatePicker.subtitle(
+            exerciseCount: template.exercises.count,
+            lastDone: lastDoneDate(for: template),
+            now: now(),
+            calendar: calendar
+        )
+    }
+
+    private func refreshToday() {
+        let hero = resumableWorkout == nil
+            ? TodayTemplatePicker.pick(from: templates, lastDone: lastDone, now: now(), calendar: calendar)
+            : nil
+        todaysTemplate = hero
+        heroIsScheduledToday = hero.map {
+            TodayTemplatePicker.weekday(named: $0.name) == calendar.component(.weekday, from: now())
+        } ?? false
+        otherTemplates = templates.filter { $0.id != hero?.id }
     }
 
     @discardableResult
@@ -57,11 +121,16 @@ final class HomeViewModel {
     /// The most recent in-progress workout with actual content, surfaced on
     /// the Home screen with a Resume/Discard prompt. Nil when there is
     /// nothing to recover.
-    var resumableWorkout: Workout? = nil
+    var resumableWorkout: Workout? = nil {
+        didSet { refreshToday() }
+    }
 
     /// Detects a crash-orphaned or draft-saved in-progress workout
     /// (`completedAt == nil`) so Home can offer Resume / Discard. Empty
     /// ghost sessions are ignored — start-workout cleanup handles those.
+    ///
+    /// The same pass derives the template last-done dates (#176) and this
+    /// week's muscle volume (#168), so history is read once per refresh.
     func checkForResumableWorkout() async {
         guard let workoutRepository else { return }
         do {
@@ -69,10 +138,13 @@ final class HomeViewModel {
             resumableWorkout = all
                 .filter { $0.completedAt == nil && !$0.isEmptyGhostSession }
                 .max { $0.startedAt < $1.startedAt }
+            lastDone = TemplateLastDone.dates(from: all)
+            weeklyVolume = volumeService.weeklyVolume(from: all, now: now())
         } catch {
             // Non-fatal: Home still works without resume detection.
             resumableWorkout = nil
         }
+        refreshToday()
     }
 
     /// Deletes exactly the surfaced draft — only ever called after the
@@ -104,7 +176,12 @@ final class InboxApprovalViewModel {
     /// committed together by `commit()` so N decisions cost one ack and one
     /// snapshot push instead of N serial syncs.
     private(set) var staged: [String: InboxDecision.Verdict] = [:]
+    /// A failed approve, decline or commit: something the user just did.
+    /// Today and Pending Changes present it as an alert.
     var errorMessage: String?
+    /// A failed background `load()`. Shown inline, never as an alert, since
+    /// Today reloads on every appearance, foreground and sync (UI-E1, UI-E3).
+    private(set) var loadErrorMessage: String?
     var isLoading = false
     private(set) var isCommitting = false
 

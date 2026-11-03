@@ -50,9 +50,9 @@ final class EdgeCaseTests: XCTestCase {
             app.tabBars.buttons["History"].tap()
             app.tabBars.buttons["Exercises"].tap()
             app.tabBars.buttons["Coach"].tap()
-            app.tabBars.buttons["Home"].tap()
+            app.tabBars.buttons["Today"].tap()
         }
-        XCTAssertTrue(app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5))
     }
 
     func testPullToRefreshOnHistoryTab() throws {

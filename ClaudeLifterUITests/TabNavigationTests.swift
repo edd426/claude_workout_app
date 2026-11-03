@@ -18,8 +18,8 @@ final class TabNavigationTests: XCTestCase {
     }
 
     func testHomeTabIsSelectedByDefault() throws {
-        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5))
     }
 
     func testNavigateToHistoryTab() throws {
@@ -40,8 +40,8 @@ final class TabNavigationTests: XCTestCase {
     func testNavigateBackToHomeTab() throws {
         app.tabBars.buttons["Coach"].tap()
         XCTAssertTrue(app.navigationBars["Coach"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Home"].tap()
-        XCTAssertTrue(app.navigationBars["ClaudeLifter"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Today"].tap()
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5))
     }
 
     func testAllFiveTabsExist() throws {

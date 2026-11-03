@@ -9,7 +9,7 @@ extension XCUIApplication {
     /// Taps a template by name, then taps "Start Workout" on the preview screen
     /// to navigate into the active workout view.
     func startWorkoutFromTemplate(_ name: String, file: StaticString = #file, line: UInt = #line) {
-        let templateText = staticTexts[name]
+        let templateText = buttons["template.\(name)"]
         XCTAssertTrue(templateText.waitForExistence(timeout: 5), "Template '\(name)' not found", file: file, line: line)
         templateText.tap()
         let startButton = buttons["startWorkoutFromPreview"]

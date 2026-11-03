@@ -1,16 +1,21 @@
 import SwiftUI
 
+/// The Today tab (1.9.0). With no workout running it is one scrolling screen
+/// (UI-P2): the hero (today's workout, or Resume), then at most four status
+/// cards that each render only when they have something to say, then the
+/// other templates. During a workout it hosts `ActiveWorkoutView`.
 struct HomeView: View {
     @Environment(\.dependencies) private var deps
     @Environment(AppState.self) private var appState
-    @Environment(\.scenePhase) private var scenePhase
     @State private var vm: HomeViewModel?
     @State private var bodyWeightVM: BodyWeightViewModel?
+    @State private var bodyTrendVM: BodyWeightTrendViewModel?
     @State private var approvalVM: InboxApprovalViewModel?
+    @State private var reportListVM: ReportListViewModel?
     @State private var showPendingChanges = false
     @State private var showTemplateEditor = false
-    @State private var reportListVM: ReportListViewModel?
     @State private var showReports = false
+    @State private var showSettings = false
     /// Non-nil while the general (no-exercise) report sheet is up (A590AD71).
     @State private var generalReportContext: ReportContext?
     @State private var unreadInsights: [ProactiveInsight] = []
@@ -20,299 +25,348 @@ struct HomeView: View {
     @State private var isAutoFinishingDrafts = false
 
     var body: some View {
-        @Bindable var appState = appState
         NavigationStack(path: $path) {
             Group {
                 if let activeVM = appState.activeWorkoutVM {
                     ActiveWorkoutView(vm: activeVM, onDismiss: {
                         // ActiveWorkoutView already calls appState.endWorkout() in its
-                        // dismiss paths — here we only refresh templates.
-                        Task { await vm?.loadTemplates() }
+                        // dismiss paths — here we only refresh Today.
+                        Task { await vm?.loadToday() }
                     })
                 } else {
-                    templatePickerView
+                    todayScreen
                 }
             }
-            .navigationTitle("ClaudeLifter")
-            .toolbar {
-                if appState.activeWorkoutVM == nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            generalReportContext = .general()
-                        } label: {
-                            Label("Report a problem…", systemImage: "flag")
-                        }
-                        .accessibilityIdentifier("reportFromHome")
-                    }
+            .navigationTitle("Today")
+            .toolbar { todayToolbar }
+        }
+        .task { await setUpAndReload() }
+        .modifier(TodayRefreshTriggers(
+            onWorkoutEnded: { Task { await reloadAll() } },
+            onBecameActive: { Task { await reloadOnReturn() } },
+            onSynced: { Task { await reloadAfterSync() } },
+            onApprovalsChanged: { approvalVM?.replaceApprovals($0) }
+        ))
+        .modifier(ApprovalErrorAlert(approvalVM: approvalVM))
+        .modifier(TodaySheets(
+            completedSummary: completedSummaryBinding,
+            showSettings: $showSettings,
+            showPendingChanges: $showPendingChanges,
+            showReports: $showReports,
+            showTemplateEditor: $showTemplateEditor,
+            generalReportContext: $generalReportContext,
+            approvalVM: approvalVM,
+            reportListVM: reportListVM,
+            onReload: { Task { await reloadAll() } },
+            summarySheet: { summarySheet(for: $0) }
+        ))
+    }
+
+    // MARK: - Screen
+
+    @ViewBuilder
+    private var todayScreen: some View {
+        if let vm, vm.hasLoadedToday {
+            ScrollView {
+                if let deps {
+                    // Surfaces the silent-no-op state from `SyncManager.syncIfNeeded`'s
+                    // serverURL guard; renders nothing for every other state.
+                    SyncStateBanner(state: deps.syncManager.state)
                 }
-            }
-        }
-        // The completion summary is presented here, not inside
-        // ActiveWorkoutView, because ending the workout tears that view down.
-        // Presenting it over Home means the workout is already safely closed by
-        // the time this appears, so any way of dismissing it is harmless (#123).
-        .sheet(item: $appState.completedWorkoutSummary) { summary in
-            summarySheet(for: summary)
-        }
-        .task {
-            guard let deps else { return }
-            if vm == nil {
-                vm = HomeViewModel(
-                    templateRepository: deps.templateRepository,
-                    workoutRepository: deps.workoutRepository
-                )
-                await vm?.loadTemplates()
-            }
-            // Crash recovery (#75): surface any in-progress workout left
-            // behind by a crash, force-quit, or explicit draft save.
-            if !appState.isWorkoutActive {
-                await vm?.checkForResumableWorkout()
-                await autoFinishIdleDrafts()
-            }
-            if bodyWeightVM == nil {
-                bodyWeightVM = BodyWeightViewModel(
-                    repository: deps.bodyWeightRepository,
-                    healthKit: deps.healthKitService,
-                    settings: deps.settings
-                )
-            }
-            if reportListVM == nil {
-                reportListVM = ReportListViewModel(
-                    repository: deps.exerciseReportRepository
-                )
-            }
-            await reportListVM?.load()
-            if approvalVM == nil {
-                approvalVM = InboxApprovalViewModel(
-                    manager: deps.syncManager,
-                    previewBuilder: InboxChangePreviewBuilder(
-                        templateRepository: deps.templateRepository,
-                        exerciseRepository: deps.exerciseRepository,
-                        alternativeRepository: deps.exerciseAlternativeRepository
-                    )
-                )
-            }
-            await approvalVM?.load()
-            // Honour the user's Settings toggle — don't even fetch insight
-            // cards if they're disabled. Prevents a "pile up after weeks
-            // away" cluttered Home screen.
-            if deps.settings.proactiveInsightsEnabled,
-               let fetched = try? await deps.insightRepository.fetchUnread() {
-                unreadInsights = fetched
-            } else {
-                unreadInsights = []
-            }
-        }
-        // Refresh templates when an active workout ends (replaces the old
-        // double-call of loadTemplates from .task + .onAppear).
-        .onChange(of: appState.isWorkoutActive) { wasActive, isActive in
-            if wasActive && !isActive {
-                Task {
-                    await vm?.loadTemplates()
-                    // A workout just ended — a saved draft (Exit → "Save
-                    // progress as draft") becomes resumable right away (#75).
-                    await vm?.checkForResumableWorkout()
+                VStack(alignment: .leading, spacing: 16) {
+                    errorBanner
+                    hero(vm)
+                    statusCards(vm)
+                    templates(vm)
+                    reportsLink
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
+            // Pull-to-refresh is the manual path; `TodayRefreshTriggers` is
+            // the automatic one (UI-P7).
+            .refreshable { await reloadAll() }
+            .accessibilityIdentifier("todayScroll")
+        } else {
+            ProgressView("Loading today…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        // A draft can cross the idle threshold while the app sits in the
-        // background on Home (report 07B1AD96).
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, !appState.isWorkoutActive else { return }
-            Task {
-                await vm?.checkForResumableWorkout()
-                await autoFinishIdleDrafts()
-            }
-        }
-        .onChange(of: deps?.syncManager.pendingApprovals ?? []) { _, approvals in
-            approvalVM?.replaceApprovals(approvals)
-        }
-        .alert(
-            "Approval Error",
-            isPresented: Binding(
-                get: { approvalVM?.errorMessage != nil },
-                set: { if !$0 { approvalVM?.errorMessage = nil } }
+    }
+
+    @ViewBuilder
+    private func hero(_ vm: HomeViewModel) -> some View {
+        if let resumable = vm.resumableWorkout {
+            ResumeWorkoutCard(
+                workout: resumable,
+                onResume: { resumeWorkout(resumable) },
+                onDiscard: { Task { await vm.discardResumableWorkout() } }
             )
-        ) {
-            Button("OK", role: .cancel) {
-                approvalVM?.errorMessage = nil
-            }
-        } message: {
-            Text(approvalVM?.errorMessage ?? "")
-        }
-        .sheet(item: $generalReportContext) { context in
-            if let deps {
-                ReportSheetView(
-                    vm: ReportSheetViewModel(
-                        context: context,
-                        repository: deps.exerciseReportRepository,
-                        photoStore: deps.reportPhotoStore
-                    ),
-                    onSaved: { Task { await reportListVM?.load() } }
-                )
-            }
-        }
-        .sheet(isPresented: $showPendingChanges) {
-            if let approvalVM {
-                NavigationStack {
-                    PendingChangesView(vm: approvalVM)
-                }
-                // One batch, one sync, after the user is done deciding (#153).
-                .onDisappear { Task { await approvalVM.commit() } }
-            }
-        }
-        .sheet(isPresented: $showReports) {
-            if let reportListVM {
-                NavigationStack {
-                    ReportListView(vm: reportListVM)
-                }
-                // Reports are also closed out by the AI over MCP, so the
-                // count can be stale by the time this closes.
-                .onDisappear { Task { await reportListVM.load() } }
-            }
-        }
-        .sheet(isPresented: $showTemplateEditor) {
-            if let deps {
-                TemplateEditorView(
-                    vm: TemplateEditorViewModel(
-                        template: nil,
-                        templateRepository: deps.templateRepository
-                    )
-                )
-                .onDisappear { Task { await vm?.loadTemplates() } }
-            }
+        } else if let template = vm.todaysTemplate {
+            TodayHeroCard(
+                template: template,
+                isScheduledToday: vm.heroIsScheduledToday,
+                subtitle: vm.heroSubtitle(for: template),
+                onStart: { startWorkout(from: template) }
+            )
         }
     }
 
-    private var templatePickerView: some View {
-        VStack(spacing: 0) {
-            errorBanner
-            if let deps {
-                // Surfaces the silent-no-op state from `SyncManager.syncIfNeeded`'s
-                // serverURL guard. Rendered as a no-op for every other state, so
-                // the configured-and-working case adds no chrome here.
-                SyncStateBanner(state: deps.syncManager.state)
-            }
-            if let vm, let resumable = vm.resumableWorkout {
-                ResumeWorkoutCard(
-                    workout: resumable,
-                    onResume: { resumeWorkout(resumable) },
-                    onDiscard: { Task { await vm.discardResumableWorkout() } }
-                )
-            }
-            if let approvalVM, !approvalVM.approvals.isEmpty {
-                PendingChangesCard(
-                    count: approvalVM.approvals.count,
-                    headlines: approvalVM.approvals.map { operation in
-                        guard let preview = approvalVM.preview(for: operation) else {
-                            return "Loading change…"
-                        }
-                        return "\(preview.title) — \(preview.summary)"
-                    },
-                    onReview: { showPendingChanges = true }
-                )
-            }
-            if let reportListVM {
-                OpenReportsCard(
-                    count: reportListVM.openCount,
-                    acknowledgedCount: reportListVM.acknowledgedCount
-                ) {
-                    showReports = true
-                }
-            }
-            if let bodyWeightVM {
-                BodyWeightCard(vm: bodyWeightVM)
-            }
-            if !unreadInsights.isEmpty {
-                insightCardsSection
-            }
-            if let vm {
-                if vm.templates.isEmpty {
-                    emptyState(vm: vm)
-                } else {
-                    templateList(vm: vm)
-                }
-            } else {
-                ProgressView()
-            }
+    /// The card budget (UI-P2): four at most, none with nothing to say.
+    @ViewBuilder
+    private func statusCards(_ vm: HomeViewModel) -> some View {
+        if let needsYou {
+            NeedsYouCard(
+                summary: needsYou,
+                onReviewChanges: { showPendingChanges = true },
+                onOpenReports: { showReports = true }
+            )
+        }
+        if let volume = vm.weeklyVolume, volume.hasAnySets {
+            WeeklyVolumeCard(volume: volume)
+        }
+        if let bodyLine {
+            TodayBodyCard(line: bodyLine) { appState.show(.body) }
+        }
+        if !unreadInsights.isEmpty {
+            TodayInsightSection(insights: unreadInsights) { await dismissInsight($0) }
         }
     }
 
-    private var insightCardsSection: some View {
-        VStack(spacing: 8) {
-            ForEach(unreadInsights, id: \.id) { insight in
-                InsightCardView(insight: insight) {
-                    guard let deps, let vm else { return }
-                    if await vm.dismissInsight(insight, using: deps.insightRepository) {
-                        unreadInsights.removeAll { $0.id == insight.id }
-                    }
-                }
-            }
+    @ViewBuilder
+    private func templates(_ vm: HomeViewModel) -> some View {
+        if vm.templates.isEmpty {
+            emptyState
+        } else {
+            OtherWorkoutsSection(
+                templates: vm.otherTemplates,
+                lastDone: { vm.lastDoneDate(for: $0) },
+                onStart: { startWorkout(from: $0) },
+                onStartEmpty: { startAdHocWorkout() },
+                onNewTemplate: { showTemplateEditor = true }
+            )
         }
-        .padding(.horizontal)
-        .padding(.top, 8)
+    }
+
+    /// Reports stay reachable when nothing is open: acknowledged ones still
+    /// need resolving once their fix is installed (#154). A plain row, not a
+    /// card, so it doesn't count against the budget.
+    @ViewBuilder
+    private var reportsLink: some View {
+        if let reportListVM, !reportListVM.reports.isEmpty {
+            Button { showReports = true } label: {
+                HStack {
+                    Label("Reports", systemImage: "flag")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(reportsDetail(reportListVM))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+                .font(.subheadline)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("openReportsCard")
+        }
+    }
+
+    private func reportsDetail(_ reports: ReportListViewModel) -> String {
+        let waiting = reports.acknowledgedCount
+        return waiting > 0 ? "\(waiting) awaiting install" : "\(reports.reports.count) filed"
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("No templates yet", systemImage: "dumbbell")
+        } description: {
+            Text("Create a template, or start an empty workout.")
+        } actions: {
+            Button("Start Empty Workout") { startAdHocWorkout() }
+                .buttonStyle(.borderedProminent)
+            Button("New Template") { showTemplateEditor = true }
+                .buttonStyle(.bordered)
+        }
     }
 
     @ViewBuilder
     private var errorBanner: some View {
-        if let errorMessage = vm?.errorMessage {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-                Spacer()
-                Button {
-                    vm?.errorMessage = nil
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+        if let errorMessage = vm?.errorMessage ?? approvalLoadError {
+            TodayCard {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(BrandTheme.warning)
+                        .accessibilityHidden(true)
+                    Text(errorMessage)
+                        .font(.subheadline)
+                    Spacer(minLength: 8)
+                    Button("Retry") { Task { await reloadAll() } }
+                        .buttonStyle(.bordered)
+                        .tint(Color(.systemGray))
                 }
-                .accessibilityLabel("Dismiss error")
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(Color(.systemGray6))
             .accessibilityIdentifier("homeErrorBanner")
         }
     }
 
-    private func emptyState(vm: HomeViewModel) -> some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "dumbbell")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("No templates yet")
-                .font(.headline)
-            Text("Create a template or start an empty workout.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            actionButtons
-            Spacer()
-        }
-        .padding()
+    /// A failed approvals check, inline rather than as an alert (UI-E1,
+    /// UI-E3). Hidden when sync is off: `SyncStateBanner` already says so,
+    /// and "not configured" is the expected failure then.
+    private var approvalLoadError: String? {
+        guard let message = approvalVM?.loadErrorMessage else { return nil }
+        if case .disabled? = deps?.syncManager.state { return nil }
+        return "Couldn't check for changes to approve. \(message)"
     }
 
-    private func templateList(vm: HomeViewModel) -> some View {
-        List {
-            ForEach(vm.templates, id: \.id) { template in
-                NavigationLink {
-                    TemplatePreviewView(template: template) {
-                        startWorkout(from: template)
-                    }
-                } label: {
-                    TemplateRowView(template: template)
+    @ToolbarContentBuilder
+    private var todayToolbar: some ToolbarContent {
+        if appState.activeWorkoutVM == nil {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { showSettings = true } label: {
+                    Label("Settings", systemImage: "gear")
                 }
+                .accessibilityIdentifier("settingsButton")
             }
-            Section {
-                actionButtons
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { generalReportContext = .general() } label: {
+                    Label("Report a problem…", systemImage: "flag")
+                }
+                .accessibilityIdentifier("reportFromHome")
             }
         }
-        .listStyle(.plain)
-        .refreshable { await vm.loadTemplates() }
+    }
+
+    // MARK: - Derived rows
+
+    private var needsYou: NeedsYouSummary? {
+        NeedsYouSummary.make(
+            pendingApprovals: approvalVM?.pendingCount ?? 0,
+            openReports: reportListVM?.openCount ?? 0
+        )
+    }
+
+    private var bodyLine: TodayBodyLine? {
+        guard let bodyWeightVM,
+              let entry = bodyWeightVM.latest,
+              let weight = bodyWeightVM.latestDisplayWeight
+        else { return nil }
+        let now = Date.now
+        return TodayBodyLine(
+            text: TodayBodySummary.line(
+                weight: weight,
+                unit: bodyWeightVM.displayUnit,
+                recordedAt: entry.recordedAt,
+                status: bodyTrendVM?.goalStatus,
+                goalPercentPerWeek: bodyTrendVM?.goalPercentPerWeek,
+                now: now,
+                calendar: .current
+            ),
+            isStale: TodayBodySummary.isStale(recordedAt: entry.recordedAt, now: now, calendar: .current)
+        )
+    }
+
+    // MARK: - Loading
+
+    private func setUpAndReload() async {
+        guard let deps else { return }
+        if vm == nil {
+            vm = HomeViewModel(
+                templateRepository: deps.templateRepository,
+                workoutRepository: deps.workoutRepository
+            )
+        }
+        if bodyWeightVM == nil {
+            bodyWeightVM = BodyWeightViewModel(
+                repository: deps.bodyWeightRepository,
+                healthKit: deps.healthKitService,
+                settings: deps.settings
+            )
+        }
+        if bodyTrendVM == nil {
+            bodyTrendVM = BodyWeightTrendViewModel(
+                repository: deps.bodyWeightRepository,
+                settings: deps.settings
+            )
+        }
+        if reportListVM == nil {
+            reportListVM = ReportListViewModel(repository: deps.exerciseReportRepository)
+        }
+        if approvalVM == nil {
+            approvalVM = InboxApprovalViewModel(
+                manager: deps.syncManager,
+                previewBuilder: InboxChangePreviewBuilder(
+                    templateRepository: deps.templateRepository,
+                    exerciseRepository: deps.exerciseRepository,
+                    alternativeRepository: deps.exerciseAlternativeRepository
+                )
+            )
+        }
+        await reloadAll()
+        // Crash recovery (#75): an idle draft is finished, not offered.
+        if !appState.isWorkoutActive {
+            await autoFinishIdleDrafts()
+        }
+        // The weight card used to do this on Home; scale readings from
+        // Health should still reach the Body row without opening Body.
+        await bodyWeightVM?.importFromHealthKit()
+    }
+
+    private func reloadAll() async {
+        await vm?.loadToday()
+        await reportListVM?.load()
+        await approvalVM?.load()
+        await loadInsights()
+        await bodyWeightVM?.load()
+        await bodyTrendVM?.load()
+    }
+
+    /// A draft can cross the idle threshold while the app sits in the
+    /// background on Today (report 07B1AD96), and the week or the day may
+    /// have turned over.
+    private func reloadOnReturn() async {
+        guard !appState.isWorkoutActive else { return }
+        await reloadAll()
+        await autoFinishIdleDrafts()
+    }
+
+    /// An inbox apply can rename or edit templates and MCP can close reports,
+    /// so a finished sync refreshes both (#100, #154).
+    private func reloadAfterSync() async {
+        guard !appState.isWorkoutActive else { return }
+        await vm?.loadToday()
+        await reportListVM?.load()
+    }
+
+    /// Honours the Settings toggle: with insights off, none are fetched.
+    private func loadInsights() async {
+        guard let deps, deps.settings.proactiveInsightsEnabled else {
+            unreadInsights = []
+            return
+        }
+        do {
+            unreadInsights = try await deps.insightRepository.fetchUnread()
+        } catch {
+            // Keep whatever was showing; an insight is never essential (UI-E2).
+        }
+    }
+
+    private func dismissInsight(_ insight: ProactiveInsight) async {
+        guard let deps, let vm else { return }
+        if await vm.dismissInsight(insight, using: deps.insightRepository) {
+            unreadInsights.removeAll { $0.id == insight.id }
+        }
+    }
+
+    // MARK: - Sheets
+
+    private var completedSummaryBinding: Binding<WorkoutCompletionSummary?> {
+        Binding(
+            get: { appState.completedWorkoutSummary },
+            set: { appState.completedWorkoutSummary = $0 }
+        )
     }
 
     /// `summary` is @Observable, so both personalRecords and templateChangeSet
@@ -351,12 +405,14 @@ struct HomeView: View {
                 from: changeSet,
                 capturedRevision: changeSet.capturedRevision
             )
-            await vm?.loadTemplates()
+            await vm?.loadToday()
             return nil
         } catch {
             return error.localizedDescription
         }
     }
+
+    // MARK: - Starting and resuming
 
     private func startWorkout(from template: WorkoutTemplate) {
         guard let deps else { return }
@@ -408,7 +464,7 @@ struct HomeView: View {
     /// "Save progress as draft" and never resumed — is finished instead of
     /// being offered for Resume (report 07B1AD96). It is finished through a
     /// resumed `ActiveWorkoutViewModel`, so it is the same finish as a Finish
-    /// tap, and its receipt is presented over Home saying it was automatic.
+    /// tap, and its receipt is presented over Today saying it was automatic.
     ///
     /// One draft per pass: only one receipt can be on screen, and a second
     /// would replace the first unseen. Any older idle draft surfaces on the
@@ -432,8 +488,7 @@ struct HomeView: View {
         // not run. Nobody is waiting on a tap here, so wait for them.
         await finisher.awaitPostCommitWork()
         appState.completedWorkoutSummary = summary
-        await vm.checkForResumableWorkout()
-        await vm.loadTemplates()
+        await vm.loadToday()
     }
 
     private func startAdHocWorkout() {
@@ -450,34 +505,4 @@ struct HomeView: View {
         let workoutId = UUID()
         appState.startWorkout(id: workoutId, vm: workoutVM)
     }
-
-    private var actionButtons: some View {
-        VStack(spacing: 12) {
-            Button {
-                startAdHocWorkout()
-            } label: {
-                Label("Start Empty Workout", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                showTemplateEditor = true
-            } label: {
-                Label("New Template", systemImage: "plus.rectangle")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
-            NavigationLink {
-                TemplateListView()
-            } label: {
-                Label("Manage Templates", systemImage: "list.bullet")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding(.horizontal)
-    }
 }
-

@@ -7,34 +7,15 @@
  *
  * Required environment variables: FUNCTIONS_BASE_URL, FUNCTIONS_API_KEY.
  * See infra/mcp/README.md for Claude Code / Claude Desktop configuration.
+ * The claude.ai connector serves the same server over HTTP: azure/functions.ts.
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 
-import { TOOLS, handleToolCall } from "./registry.js";
+import { createWorkoutServer } from "./serverFactory.js";
 import { buildFreshness } from "./shared/build-info.js";
 
-const server = new Server(
-  { name: "workout", version: "2.0.0" },
-  { capabilities: { tools: {} } }
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: TOOLS,
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const result = await handleToolCall(
-    request.params.name,
-    request.params.arguments
-  );
-  return { content: result.content, isError: result.isError };
-});
+const server = createWorkoutServer();
 
 async function main() {
   // #138: warn on stderr before serving a single request. This is the only

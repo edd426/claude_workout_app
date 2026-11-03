@@ -11,7 +11,23 @@ import { existsSync, utimesSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { readBuildInfo, buildFreshness } from "../src/shared/build-info.js";
-import { newestSourceMtime } from "../src/shared/source-mtime.js";
+import { newestSourceMtime, sourceRootsFor } from "../src/shared/source-mtime.js";
+
+describe("source roots", () => {
+  const pkg = "/x/repo/infra/mcp";
+  const expected = [`${pkg}/src`, "/x/repo/ClaudeLifter/Resources/exercises.json"];
+
+  // The deployed Function App ships dist/ only (.funcignore drops src/), and
+  // its files carry the instance's start time as mtime. Counting dist/src as
+  // "source" made every cold start report a stale build (2026-11-03).
+  it("from the compiled module are the real sources, never dist/", () => {
+    expect(sourceRootsFor(`file://${pkg}/dist/src/shared/source-mtime.js`)).toEqual(expected);
+  });
+
+  it("from the TypeScript module are the same paths", () => {
+    expect(sourceRootsFor(`file://${pkg}/src/shared/source-mtime.ts`)).toEqual(expected);
+  });
+});
 
 const buildInfoPath = fileURLToPath(
   new URL("../dist/build-info.json", import.meta.url)

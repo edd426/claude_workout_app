@@ -16,19 +16,27 @@
 import { readdir, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-function sourceRoots(): string[] {
-  // Resolved relative to this module, which sits at either
-  // src/shared/source-mtime.ts or dist/src/shared/source-mtime.js — both are
-  // two levels below the package root.
-  const packageRoot = new URL("../../", import.meta.url);
-  const fromDist = new URL("../../../", import.meta.url);
+/**
+ * The real inputs of the build: `infra/mcp/src` and the app's exercise catalog.
+ * Never `dist/`: compiled output is not source, and on the deployed Function
+ * App (which ships dist/ only, per .funcignore) its mtimes are the instance's
+ * start time, which made every cold start report a stale build. There, neither
+ * root exists, so the check finds nothing newer than the build and stays quiet.
+ */
+export function sourceRootsFor(moduleUrl: string): string[] {
+  // This module is src/shared/source-mtime.ts (two levels below the package
+  // root) or dist/src/shared/source-mtime.js (three levels).
+  const compiled = new URL(moduleUrl).pathname.includes("/dist/src/shared/");
+  const packageRoot = new URL(compiled ? "../../../" : "../../", moduleUrl);
   const roots = [
     new URL("src", packageRoot),
-    new URL("src", fromDist),
     new URL("../../ClaudeLifter/Resources/exercises.json", packageRoot),
-    new URL("../../../ClaudeLifter/Resources/exercises.json", fromDist),
   ];
   return roots.map((url) => fileURLToPath(url).replace(/\/$/, ""));
+}
+
+function sourceRoots(): string[] {
+  return sourceRootsFor(import.meta.url);
 }
 
 async function newestUnder(path: string): Promise<number> {

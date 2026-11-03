@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "description": "MCP server for ClaudeLifter reads and durable inbox writes through the Azure Functions API",
   "type": "module",
-  "main": "dist/src/server.js",
+  "main": "dist/src/azure/functions.js",
   "scripts": {
     "build": "node scripts/build-catalog.mjs && tsc && node scripts/build-stamp.mjs",
     "watch": "tsc -w",
@@ -11,15 +11,18 @@
     "pretest": "node scripts/build-catalog.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "deploy:remote": "bash scripts/deploy-remote.sh"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@azure/functions": "^4.17.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "jose": "^6.2.15"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^1.0.0",
-    "@types/node": "^20.0.0"
+    "vitest": "^1.0.0"
   },
   "engines": {
     "node": ">=20.0.0"

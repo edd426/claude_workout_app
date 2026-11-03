@@ -57,7 +57,9 @@ sync DTOs + `SyncMapper`; `NetworkService`; `SyncManager`; Anthropic key proxied
 `InsightRepository`; Settings server URL + sync status).
 
 Phase 3 — MCP + Advanced AI: **done** except Live Activities. MCP server ships read
-tools (#79) and inbox-based writes (#88); proactive insights, 15 chat tools incl.
+tools (#79) and inbox-based writes (#88), over stdio locally and as a claude.ai
+connector at `https://func-workout-mcp-prod.azurewebsites.net/mcp` (#162, Entra
+OAuth; see `infra/mcp/README.md`); proactive insights, 15 chat tools incl.
 template/program generation, `PRDetectionService`, and `ChartsView` all exist.
 Also shipped beyond the original plan: body-weight tracking + HealthKit (#80),
 backup export/import (#72), crash recovery (#75), rest-timer notifications (#77).

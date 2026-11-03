@@ -1,3 +1,36 @@
+# ▶ 2026-11-02: remote MCP DEPLOYED for claude.ai (#162) — connector not yet added
+
+Evan asked for the workout MCP to be usable from any claude.ai chat. Branch
+`feat/remote-mcp-claude-ai`; design and security model in
+`infra/mcp/README.md` → "Remote server".
+
+- **Live**: `func-workout-mcp-prod` (Flex Consumption, Node 22, own storage
+  account `stwkmcpznl35a5hhkh6e`, logs to `ai-workout-prod`). Connector URL
+  `https://func-workout-mcp-prod.azurewebsites.net/mcp`. The phone's API
+  `func-workout-prod` was not touched.
+- **Entra app** "ClaudeLifter Workout MCP", client id
+  `2405d7aa-9031-4aac-b0bc-180552f0dc72`, assignment required, only Evan
+  assigned (his oid is the only `ALLOWED_OIDS` entry). Secret in the
+  Keychain (`claudelifter-mcp` / `entra-client-secret`), expires 2027-11-02.
+- **Verified against the live app**: health 200; both metadata documents;
+  `/mcp` without a token → 401 with the `resource_metadata` challenge; an
+  unsigned token → 401; `/authorize` with a foreign redirect or no PKCE → 400,
+  valid → 302 to Entra with our client id and scope; `/register` foreign
+  redirect → 400, Claude's → 201; `/token` client_credentials → 400, a bogus
+  code reaches Entra (AADSTS9002313, so the client credentials are accepted).
+  `npm audit --omit=dev`: 0 (SDK 1.29 → 1.32.2). MCP suite 177/177. The stdio
+  server still answers initialize + tools/list (19 tools).
+- **Not verified**: a real signed-in call. Testing with an Azure CLI token
+  needed a temporary pre-authorization in Entra, which the auto-mode
+  classifier refused; the first claude.ai connection is the end-to-end probe
+  (add the connector, then ask a chat to run `health` and `list_templates`).
+- **Open**: the shared `API_KEY` was printed into the 2026-11-02 session
+  transcript by a failed redaction; Evan to decide on rotating it (phone
+  Settings, `~/.claude.json`, both Function Apps). Bicep `functions.bicep`
+  says Node 20 but the live API runs Node 22 (drift, harmless).
+
+---
+
 # ▶ 2026-09-26, later: 1.8.0 (10) INSTALLED — #153 pending-changes screen
 
 Evan saw the two approvals from this morning on 1.7.0 and asked for the diff

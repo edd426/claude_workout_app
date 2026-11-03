@@ -1020,3 +1020,76 @@ describe("DELETE /api/inbox/{id} (#148)", () => {
     expect(inbox.docs.has("operation-1")).toBe(true);
   });
 });
+
+// ─── #169: per-exercise alternatives ────────────────────────────────────────
+// `alternatives: [{ externalId, note? }]` on a template exercise, tri-state on
+// the phone: absent keeps the slot's list, [] clears it, a list replaces it.
+// The Function checks structure only (layer 2); the MCP tool resolves every
+// externalId against the catalog and the phone resolves them strictly.
+describe("POST /api/inbox — template exercise alternatives (#169)", () => {
+  const legPress = { externalId: "Leg_Press", note: "if the rack is taken" };
+
+  test.each(["createTemplate", "updateTemplate"])(
+    "%s stores alternatives exactly as given",
+    async (op) => {
+      const exercise = {
+        ...templateExercise,
+        alternatives: [legPress, { externalId: "Smith_Machine_Squat" }],
+      };
+      const payload =
+        op === "createTemplate"
+          ? { name: "Legs", exercises: [exercise] }
+          : { id: "template-1", exercises: [exercise] };
+
+      const response = await enqueue({ op, payload });
+
+      expect(isOk(response.status)).toBe(true);
+      expect((response.jsonBody as Doc)["payload"]).toEqual(payload);
+    }
+  );
+
+  test("an empty alternatives array is kept (it clears the slot's list on the phone)", async () => {
+    const payload = {
+      id: "template-1",
+      exercises: [{ ...templateExercise, alternatives: [] }],
+    };
+
+    const response = await enqueue({ op: "updateTemplate", payload });
+
+    expect(isOk(response.status)).toBe(true);
+    const stored = (response.jsonBody as { payload: { exercises: Doc[] } }).payload;
+    expect(stored.exercises[0]["alternatives"]).toEqual([]);
+  });
+
+  test("an exercise without alternatives stays without the key (absent keeps the list)", async () => {
+    const payload = { id: "template-1", exercises: [templateExercise] };
+
+    const response = await enqueue({ op: "updateTemplate", payload });
+
+    const stored = (response.jsonBody as { payload: { exercises: Doc[] } }).payload;
+    expect(stored.exercises[0]).not.toHaveProperty("alternatives");
+  });
+
+  test.each([
+    ["null (ambiguous between keep and clear)", null],
+    ["an object", { externalId: "Leg_Press" }],
+    ["a string", "Leg_Press"],
+    ["a non-object entry", ["Leg_Press"]],
+    ["an entry without externalId", [{ note: "x" }]],
+    ["an empty externalId", [{ externalId: "  " }]],
+    ["a non-string externalId", [{ externalId: 7 }]],
+    ["a non-string note", [{ externalId: "Leg_Press", note: 3 }]],
+  ])("rejects alternatives that are %s before writing", async (_label, alternatives) => {
+    const response = await enqueue({
+      op: "createTemplate",
+      payload: {
+        name: "Legs",
+        exercises: [{ ...templateExercise, alternatives }],
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect((response.jsonBody as { error: string }).error).toContain("alternatives");
+    expect(inbox.create).not.toHaveBeenCalled();
+  });
+});

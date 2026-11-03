@@ -25,6 +25,17 @@ export interface TemplateExerciseWrite {
   defaultWeight?: number;
   defaultRestSeconds?: number;
   notes?: string;
+  /**
+   * Issue #169: substitutes for this slot, in order. Tri-state on the phone:
+   * absent keeps the slot's current list (update), [] clears it, a list
+   * replaces it. An absent key must therefore stay absent, never become [].
+   */
+  alternatives?: AlternativeWrite[];
+}
+
+export interface AlternativeWrite {
+  externalId: string;
+  note?: string;
 }
 
 export interface CreateTemplatePayload {
@@ -92,7 +103,10 @@ function optionalStringArray(value: unknown, field: string): void {
   }
 }
 
-async function assertKnownExternalId(externalId: string): Promise<void> {
+export async function assertKnownExternalId(
+  externalId: string,
+  field?: string
+): Promise<void> {
   if (await resolveExerciseByExternalId(externalId)) return;
 
   const humanized = externalId.replace(/[_:/-]+/g, " ");
@@ -100,9 +114,39 @@ async function assertKnownExternalId(externalId: string): Promise<void> {
     .map((exercise) => `${exercise.name} (${exercise.externalId})`)
     .join(", ");
   throw new Error(
-    `Unknown externalId "${externalId}". Suggestions: ${suggestions}. ` +
+    `${field ? `${field}: ` : ""}Unknown externalId "${externalId}". ` +
+      `Suggestions: ${suggestions}. ` +
       "Call search_exercises and use an exact externalId from its results."
   );
+}
+
+/**
+ * Validates one exercise's `alternatives` and returns them reduced to exactly
+ * the keys the phone reads, `{ externalId, note? }`. Every externalId resolves
+ * against the catalog (bundled or custom) the same way the main exercise does.
+ * `null` is refused: it is ambiguous between "keep" (omit) and "clear" ([]).
+ */
+async function validateAlternatives(
+  value: unknown,
+  field: string
+): Promise<AlternativeWrite[]> {
+  if (!Array.isArray(value)) {
+    throw new Error(
+      `${field} must be an array (omit it to keep the current list, [] to clear it)`
+    );
+  }
+  const alternatives: AlternativeWrite[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const path = `${field}[${index}]`;
+    const alternative = value[index];
+    if (!isObject(alternative)) throw new Error(`${path} must be an object`);
+    const externalId = nonEmptyString(alternative["externalId"], `${path}.externalId`);
+    optionalString(alternative["note"], `${path}.note`);
+    await assertKnownExternalId(externalId, path);
+    const note = alternative["note"] as string | undefined;
+    alternatives.push(note === undefined ? { externalId } : { externalId, note });
+  }
+  return alternatives;
 }
 
 async function validateTemplateExercises(
@@ -113,6 +157,7 @@ async function validateTemplateExercises(
     throw new Error(`${field} must be an array`);
   }
 
+  const validated: TemplateExerciseWrite[] = [];
   const orders = new Set<number>();
   for (let index = 0; index < value.length; index += 1) {
     const exercise = value[index];
@@ -161,9 +206,18 @@ async function validateTemplateExercises(
 
     // Resolution must finish before the caller performs the template POST.
     await assertKnownExternalId(externalId);
+
+    const written = { ...exercise } as unknown as TemplateExerciseWrite;
+    if (Object.prototype.hasOwnProperty.call(exercise, "alternatives")) {
+      written.alternatives = await validateAlternatives(
+        exercise["alternatives"],
+        `${path}.alternatives`
+      );
+    }
+    validated.push(written);
   }
 
-  return value as TemplateExerciseWrite[];
+  return validated;
 }
 
 async function validateCreateTemplate(
@@ -173,8 +227,11 @@ async function validateCreateTemplate(
   if (!isObject(value)) throw new Error(`${field} must be an object`);
   nonEmptyString(value["name"], `${field}.name`);
   optionalString(value["notes"], `${field}.notes`);
-  await validateTemplateExercises(value["exercises"], `${field}.exercises`);
-  return value as unknown as CreateTemplatePayload;
+  const exercises = await validateTemplateExercises(
+    value["exercises"],
+    `${field}.exercises`
+  );
+  return { ...value, exercises } as unknown as CreateTemplatePayload;
 }
 
 async function validateUpdateTemplate(
@@ -187,10 +244,11 @@ async function validateUpdateTemplate(
   }
   optionalString(value["notes"], "updateTemplate.notes");
   if (value["exercises"] !== undefined) {
-    await validateTemplateExercises(
+    const exercises = await validateTemplateExercises(
       value["exercises"],
       "updateTemplate.exercises"
     );
+    return { ...value, exercises } as unknown as UpdateTemplatePayload;
   }
   return value as unknown as UpdateTemplatePayload;
 }

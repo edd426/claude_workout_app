@@ -140,6 +140,16 @@ export interface InboxTemplateExercisePayload {
   defaultWeight?: number;
   defaultRestSeconds?: number;
   notes?: string;
+  /**
+   * Issue #169: substitutes for this slot, in order. Absent keeps the slot's
+   * current list (update), [] clears it, a list replaces it. Never null.
+   */
+  alternatives?: InboxAlternativePayload[];
+}
+
+export interface InboxAlternativePayload {
+  externalId: string;
+  note?: string;
 }
 
 export interface CreateTemplatePayload {
@@ -321,6 +331,17 @@ export interface TemplateExercise {
   defaultWeight?: number;
   defaultRestSeconds: number;
   notes?: string;
+  /**
+   * Issue #169, joined by GET /api/templates/{id} from `exerciseAlternatives`
+   * once v5 is mirrored. Absent = unknown (not yet mirrored), [] = none.
+   */
+  alternatives?: TemplateExerciseAlternative[];
+}
+
+export interface TemplateExerciseAlternative {
+  externalId: string;
+  order: number;
+  note?: string;
 }
 
 export interface Workout {

@@ -46,6 +46,29 @@ const templateExerciseSchema = {
     defaultWeight: { type: "number" },
     defaultRestSeconds: { type: "integer", minimum: 0 },
     notes: { type: "string" },
+    alternatives: {
+      type: "array",
+      description:
+        "Substitutes for this slot when the machine is taken, in preference " +
+        "order; the app offers them as a one-tap swap for that session only. " +
+        "Each externalId is validated like the main exercise's. Omit to keep " +
+        "the slot's current alternatives (update_template), [] clears them, " +
+        "a list replaces them. Never null.",
+      items: {
+        type: "object",
+        properties: {
+          externalId: {
+            type: "string",
+            description: "Exact externalId from search_exercises",
+          },
+          note: {
+            type: "string",
+            description: 'When to use it, e.g. "if the rack is taken"',
+          },
+        },
+        required: ["externalId"],
+      },
+    },
   },
   required: ["externalId", "order", "defaultSets", "defaultReps"],
 };

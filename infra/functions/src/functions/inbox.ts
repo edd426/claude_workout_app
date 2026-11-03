@@ -199,8 +199,45 @@ function validateTemplateExercises(
         `Malformed payload: ${field}[${index}].notes must be a string`
       );
     }
+    if (Object.prototype.hasOwnProperty.call(exercise, "alternatives")) {
+      const alternativesError = validateAlternatives(
+        exercise["alternatives"],
+        `${field}[${index}].alternatives`
+      );
+      if (alternativesError) return alternativesError;
+    }
   }
 
+  return null;
+}
+
+/**
+ * Issue #169. Tri-state on the phone: an absent key keeps the slot's list, []
+ * clears it, a list replaces it. `null` would be ambiguous between the first
+ * two, so it is refused rather than guessed at. Structure only: the MCP tool
+ * resolves each externalId against the catalog, and the phone resolves them
+ * strictly, failing the whole operation on an unknown one.
+ */
+function validateAlternatives(value: unknown, field: string): HttpResponseInit | null {
+  if (!Array.isArray(value)) {
+    return badRequest(
+      `Malformed payload: ${field} must be an array (omit it to keep the current list, [] to clear it)`
+    );
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const alternative = value[index];
+    if (!isObject(alternative)) {
+      return badRequest(`Malformed payload: ${field}[${index}] must be an object`);
+    }
+    if (!isNonEmptyString(alternative["externalId"])) {
+      return badRequest(
+        `Malformed payload: ${field}[${index}].externalId must be a non-empty string`
+      );
+    }
+    if (!isOptionalString(alternative["note"])) {
+      return badRequest(`Malformed payload: ${field}[${index}].note must be a string`);
+    }
+  }
   return null;
 }
 

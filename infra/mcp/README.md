@@ -178,6 +178,12 @@ and the Entra client id and secret from the Keychain (service
 prints none of them. The secret expires **2027-11-02**: rotate with the command
 at the top of `setup-mcp-entra-app.sh`, then run a full deploy.
 
+To rotate the shared API key, run `infra/scripts/rotate-api-key.sh`. It updates
+the Keychain (`claudelifter-mcp` / `functions-api-key`), both Function Apps and
+`~/.claude.json`, and checks that the new key gets 200 and the old one 401. Then
+`--copy` puts the key on the clipboard for the phone's Settings → Server API Key.
+Last rotated 2026-11-03.
+
 The local Functions host (`func start`) needs Node 22; the dev Mac runs Node 26,
 which it refuses, so check routes against the deployed app instead.
 

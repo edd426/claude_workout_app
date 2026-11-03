@@ -1,3 +1,47 @@
+# ▶ 2026-11-03: 1.9.0 in progress on `release/1.9.0`
+
+Evan asked to gather every issue and request and start the next version, plus
+10 new enhancement ideas for him to choose from.
+- `release/1.9.0` = `origin/main` + `feat/remote-mcp-claude-ai` (PR #163, the
+  claude.ai connector work).
+- The 2026-11-02 entry below is resolved: the connector is live and signed in
+  from claude.ai, and the API key was rotated on 2026-11-03 with
+  `infra/scripts/rotate-api-key.sh`.
+
+**Scope (requested):**
+- #164 medication log
+- #165 body measurements (waist, height, waist-to-height ratio)
+- #152 weight chart and rate goal, plus #111 protein target, per the
+  2026-09-28 report
+- #167 "last done" panel on the exercise card
+- #166 Jefit backfill. The CSV is at
+  `~/Documents/Analysis/fitness_and_wellness/jefit_export/`; never commit it.
+- Schema: #164 and #165 are new models, so they go into **V5**. Nutrition
+  (#110) moves to V6.
+
+**Proposed for 1.9.0, waiting on Evan:** #144, #155, #143, and his picks from
+the 10 ideas. These are listed in the 2026-11-03 session reply. Track them in
+issues once picked.
+
+**Environment (verified 2026-11-03):**
+- Xcode was updated to **27.2** and the simulator runtimes were wiped: no
+  runtimes and no devices.
+- A generic iOS build succeeds.
+- The iOS 26.6 runtime is not downloadable; downloading 26.5. Recreate the
+  iPhone 13 Pro Max simulator once it lands, and run the baseline unit suite
+  before any change.
+
+**Waiting on Evan's phone:**
+- 5 template updates (program v3: Mon Legs 1 … Fri Machines).
+- 2 report resolutions (standing calf, cable rear-delt fly).
+- His new report from 2026-11-03, which hadn't synced when checked.
+
+**Claude Code now uses the claude.ai connector** (`mcp__claude_ai_ClaudeLifter__*`
+from the next session on). The local `workout` stdio entry was removed from
+`~/.claude.json`.
+
+---
+
 # ▶ 2026-11-02: remote MCP DEPLOYED for claude.ai (#162) — connector not yet added
 
 Evan asked for the workout MCP to be usable from any claude.ai chat. Branch

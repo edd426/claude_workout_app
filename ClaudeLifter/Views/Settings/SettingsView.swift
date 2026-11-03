@@ -2,8 +2,15 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+/// Settings, presented as a sheet from Today's gear (1.9.0).
+///
+/// No gesture sits on the `Form`. A Form-wide tap gesture to dismiss the
+/// keyboard won every tap, so Restore, Export and Import fired only on a
+/// press-and-hold (#171). The keyboard goes with a scroll or the keyboard
+/// toolbar's Done instead.
 struct SettingsView: View {
     @Environment(\.dependencies) private var deps
+    @Environment(\.dismiss) private var dismiss
     // Build the VM on first appear so it binds to DependencyContainer's
     // SettingsManager (the same one ChatViewModel reads). Previously this
     // view created its own SettingsManager instance, so the two were
@@ -16,6 +23,10 @@ struct SettingsView: View {
     // Backup UI state.
     @State private var shareItem: ShareItem?
     @State private var isImporting = false
+    /// What the one file importer is picking. Two `.fileImporter`s in one
+    /// view hierarchy fight, so backup and Jefit share this one.
+    @State private var importKind: ImportKind = .backup
+    @State private var jefitFile: PickedFile?
     @State private var alertMessage: String?
     // Cloud restore UI state (issue #78). Destructive, so gated behind an
     // explicit confirmation dialog.
@@ -32,54 +43,84 @@ struct SettingsView: View {
         case apiKey
     }
 
+    enum ImportKind {
+        case backup
+        case jefit
+
+        var contentTypes: [UTType] {
+            switch self {
+            case .backup: return [.json]
+            case .jefit: return [.commaSeparatedText, .plainText, .text]
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 if let vm {
-                    Form {
-                        weightUnitSection(vm: vm)
-                        aiModelSection(vm: vm)
-                        insightsSection(vm: vm)
-                        apiKeySection(vm: vm)
-                        if let deps {
-                            syncStatusSection(syncManager: deps.syncManager)
-                            backupSection(deps: deps)
-                        }
-                        if let quarantinePath {
-                            quarantineSection(path: quarantinePath)
-                        }
-                        buildInfoSection
-                    }
-                    // Dismiss keyboard on scroll (interactive) or on tap
-                    // anywhere outside a field. Plenty discoverable — no
-                    // separate Done button needed.
-                    .scrollDismissesKeyboard(.interactively)
-                    .onTapGesture { focusedField = nil }
-                    .sheet(item: $shareItem) { item in
-                        ShareSheet(items: [item.url])
-                    }
-                    .fileImporter(
-                        isPresented: $isImporting,
-                        allowedContentTypes: [.json],
-                        allowsMultipleSelection: false
-                    ) { result in
-                        handleImport(result: result)
-                    }
-                    .alert("Data", isPresented: alertPresented) {
-                        Button("OK", role: .cancel) { alertMessage = nil }
-                    } message: {
-                        Text(alertMessage ?? "")
-                    }
+                    form(vm: vm)
                 } else {
                     ProgressView()
                 }
             }
             .navigationTitle("Settings")
+            .toolbar { toolbar }
+            .navigationDestination(item: $jefitFile) { file in
+                JefitImportView(fileURL: file.url)
+            }
         }
         .task {
             quarantinePath = UserDefaults.standard.string(forKey: "lastStoreQuarantinePath")
             guard vm == nil, let deps else { return }
             vm = SettingsViewModel(settingsManager: deps.settings)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        // Settings is a sheet; Done is its visible way out (UI-P4).
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Done") { dismiss() }
+                .accessibilityIdentifier("settingsDone")
+        }
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done") { focusedField = nil }
+        }
+    }
+
+    private func form(vm: SettingsViewModel) -> some View {
+        Form {
+            weightUnitSection(vm: vm)
+            aiModelSection(vm: vm)
+            insightsSection(vm: vm)
+            if let deps {
+                syncStatusSection(syncManager: deps.syncManager)
+                backupSection(deps: deps)
+            }
+            advancedSection(vm: vm)
+            if let quarantinePath {
+                quarantineSection(path: quarantinePath)
+            }
+            buildInfoSection
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .sheet(item: $shareItem) { item in
+            ShareSheet(items: [item.url])
+                .accessibilityIdentifier("backupShareSheet")
+        }
+        .fileImporter(
+            isPresented: $isImporting,
+            allowedContentTypes: importKind.contentTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            handleImport(result: result)
+        }
+        .alert("Data", isPresented: alertPresented) {
+            Button("OK", role: .cancel) { alertMessage = nil }
+        } message: {
+            Text(alertMessage ?? "")
         }
     }
 
@@ -92,33 +133,56 @@ struct SettingsView: View {
             } label: {
                 Label("Export Backup", systemImage: "square.and.arrow.up")
             }
+            .accessibilityIdentifier("exportBackup")
             Button {
+                importKind = .backup
                 isImporting = true
             } label: {
                 Label("Import Backup", systemImage: "square.and.arrow.down")
             }
+            Button {
+                #if DEBUG
+                if let path = Self.uiTestJefitFixturePath {
+                    jefitFile = PickedFile(url: URL(fileURLWithPath: path))
+                    return
+                }
+                #endif
+                importKind = .jefit
+                isImporting = true
+            } label: {
+                Label("Import Jefit History…", systemImage: "clock.arrow.circlepath")
+            }
+            .accessibilityIdentifier("importJefitHistory")
         } header: {
             Text("Backup")
         } footer: {
-            Text("Export writes a JSON file of all workouts, templates, custom exercises, and preferences that you can save off-device. Import merges a backup file, skipping anything already on this device.")
-                .font(.caption)
+            Text("Export writes a JSON file of all workouts, templates, custom exercises, and preferences that you can save off-device. Import merges a backup file, skipping anything already on this device. Jefit import reads the CSV from Jefit's Export Data and shows what it will add before it writes anything.")
         }
     }
 
+    #if DEBUG
+    /// UI tests can't drive the system file picker. Under `-UITesting` only,
+    /// the `-UITestJefitFixturePath <path>` launch argument stands in for a
+    /// picked file. Debug builds only; a release build has no such path.
+    private static var uiTestJefitFixturePath: String? {
+        guard ProcessInfo.processInfo.arguments.contains("-UITesting") else { return nil }
+        return UserDefaults.standard.string(forKey: "UITestJefitFixturePath")
+    }
+    #endif
+
     private func quarantineSection(path: String) -> some View {
         Section {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("A previous database failed to open and was recovered. Your old data was moved here (not deleted):")
-                    .font(.caption)
+                    .font(.subheadline)
                 Text(path)
-                    .font(.caption2)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                Button("Dismiss") {
-                    UserDefaults.standard.removeObject(forKey: "lastStoreQuarantinePath")
-                    quarantinePath = nil
-                }
-                .font(.caption)
+            }
+            Button("Dismiss") {
+                UserDefaults.standard.removeObject(forKey: "lastStoreQuarantinePath")
+                quarantinePath = nil
             }
         } header: {
             Text("Store Recovery")
@@ -142,6 +206,21 @@ struct SettingsView: View {
     }
 
     private func handleImport(result: Result<[URL], Error>) {
+        switch importKind {
+        case .jefit:
+            // The import screen handles reading and every error itself.
+            if case .success(let urls) = result, let url = urls.first {
+                jefitFile = PickedFile(url: url)
+            } else if case .failure(let error) = result,
+                      (error as? CocoaError)?.code != .userCancelled {
+                alertMessage = "Couldn't open the file: \(error.localizedDescription)"
+            }
+        case .backup:
+            importBackup(result: result)
+        }
+    }
+
+    private func importBackup(result: Result<[URL], Error>) {
         guard let deps else { return }
         switch result {
         case .success(let urls):
@@ -186,73 +265,64 @@ struct SettingsView: View {
     private func aiModelSection(vm: SettingsViewModel) -> some View {
         Section("AI Model") {
             ForEach(vm.availableModels, id: \.self) { model in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.displayName)
-                        Text(model.costIndicator)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if vm.aiModel == model {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.blue)
-                    }
+                AIModelRow(model: model, isSelected: vm.aiModel == model) {
+                    vm.aiModel = model
                 }
-                .contentShape(Rectangle())
-                .onTapGesture { vm.aiModel = model }
             }
         }
     }
 
+    /// Developer configuration, below the user's own preferences (§3.12).
     @ViewBuilder
-    private func apiKeySection(vm: SettingsViewModel) -> some View {
+    private func advancedSection(vm: SettingsViewModel) -> some View {
         @Bindable var vm = vm
         Section {
-            HStack {
-                TextField("https://your-server.azurewebsites.net", text: $vm.serverURL)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .focused($focusedField, equals: .serverURL)
+            HStack(spacing: 8) {
+                TextField(
+                    "Server URL",
+                    text: $vm.serverURL,
+                    prompt: Text("https://your-server.azurewebsites.net")
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                .focused($focusedField, equals: .serverURL)
                 if !vm.serverURL.isEmpty {
                     Button {
                         vm.serverURL = ""
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
+                        Label("Clear server URL", systemImage: "xmark.circle.fill")
+                            .labelStyle(.iconOnly)
                             .foregroundStyle(.secondary)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
             }
+            SecureField("Server API Key", text: $vm.apiKey, prompt: Text("Server API key"))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .focused($focusedField, equals: .apiKey)
         } header: {
-            Text("Server URL")
+            Text("Advanced")
         } footer: {
             Text(vm.serverURL.isEmpty
                  ? "No server configured — using API key directly (Phase 1 mode)."
                  : "Chat and sync routed through \(vm.serverURL)")
-                .font(.caption)
-        }
-
-        Section("Server API Key") {
-            SecureField("sk-ant-... or Azure function key", text: $vm.apiKey)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .focused($focusedField, equals: .apiKey)
         }
     }
 
     private func insightsSection(vm: SettingsViewModel) -> some View {
         @Bindable var vm = vm
         return Section {
-            Toggle("Proactive insights on Home", isOn: $vm.proactiveInsightsEnabled)
+            Toggle("Proactive insights on Today", isOn: $vm.proactiveInsightsEnabled)
         } header: {
-            Text("Home Screen")
+            Text("Today Screen")
         } footer: {
             Text(vm.proactiveInsightsEnabled
-                 ? "Shows Coach-generated suggestion cards on the home screen (\u{201C}You haven’t trained legs in 2 weeks”, etc.). Turn off if they pile up when you’re away from the app."
-                 : "Home screen will not show insight cards. No new insights will be generated either.")
-                .font(.caption)
+                 ? "Shows Coach-generated suggestion cards on Today (\u{201C}You haven’t trained legs in 2 weeks”, etc.). Turn off if they pile up when you’re away from the app."
+                 : "Today will not show insight cards. No new insights will be generated either.")
         }
     }
 
@@ -281,7 +351,6 @@ struct SettingsView: View {
             Text("Sync Status")
         } footer: {
             Text("Sync mirrors this phone's data to the cloud — the phone is the source of truth. Restore is for disaster recovery on a fresh install.")
-                .font(.caption)
         }
     }
 
@@ -306,6 +375,7 @@ struct SettingsView: View {
         }
     }
 
+    /// The version footer: the visible proof a new build landed.
     private var buildInfoSection: some View {
         Section {
             Button {
@@ -313,17 +383,54 @@ struct SettingsView: View {
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(BuildInfo.summary)
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                     Text("Tap to copy")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("buildInfo")
         } header: {
             Text("About")
         }
+    }
+}
+
+/// A model choice. A Button, not a tap gesture, so it has the button trait
+/// and VoiceOver activation (UI-T4); the checkmark is the accent colour,
+/// and "selected" is announced (UI-C4).
+private struct AIModelRow: View {
+    let model: AIModel
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.displayName)
+                        .foregroundStyle(.primary)
+                    Text(model.costIndicator)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(BrandTheme.accent)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("aiModel_\(model.rawValue)")
     }
 }
 
@@ -331,6 +438,12 @@ struct SettingsView: View {
 
 /// Identifiable wrapper so a freshly-exported file URL can drive `.sheet(item:)`.
 private struct ShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+/// A picked file, so it can drive `.navigationDestination(item:)`.
+struct PickedFile: Identifiable, Hashable {
     let id = UUID()
     let url: URL
 }
@@ -363,16 +476,18 @@ struct SyncStateRow: View {
             Image(systemName: iconName)
                 .font(.title3)
                 .foregroundStyle(iconColor)
-                .frame(width: 24)
+                .frame(minWidth: 24)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline)
                 Text(detail)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 
     private var iconName: String {
@@ -388,10 +503,10 @@ struct SyncStateRow: View {
 
     private var iconColor: Color {
         switch state {
-        case .disabled: return .orange
+        case .disabled: return BrandTheme.warning
         case .offline:  return .secondary
         case .syncing:  return BrandTheme.info
-        case .error:    return .red
+        case .error:    return BrandTheme.destructive
         case .synced:   return BrandTheme.success
         case .pending:  return .secondary
         }
@@ -411,7 +526,7 @@ struct SyncStateRow: View {
     private var detail: String {
         switch state {
         case .disabled:
-            return "Set the Server URL above to enable cloud sync."
+            return "Set the Server URL under Advanced to enable cloud sync."
         case .offline:
             return "Will resume when network returns."
         case .syncing:
@@ -445,21 +560,22 @@ struct SyncStateBanner: View {
 
     var body: some View {
         if case .disabled = state {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(BrandTheme.warning)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Cloud sync is off")
                         .font(.subheadline.weight(.medium))
                     Text("Workouts are saved on this device only. Open Settings to set the server URL.")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
-            .padding(12)
-            .background(BrandTheme.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(16)
+            .background(BrandTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityElement(children: .combine)
             .padding(.horizontal)
             .padding(.top, 8)
         } else {

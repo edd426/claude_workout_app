@@ -118,6 +118,10 @@ final class SyncManager: InboxApprovalManaging {
     /// Uploads report photos kept offline (#141). Optional so existing
     /// construction sites keep compiling; nil means photos never upload.
     private let reportPhotoUploader: (any ReportPhotoUploading)?
+    /// Downloads blob-path exercise photos into the local cache the exercise
+    /// screens read (#170). Optional so existing construction sites keep
+    /// compiling; nil means such photos never download.
+    private let exercisePhotoFetcher: (any ExercisePhotoFetching)?
 
     private var pathMonitor: NWPathMonitor?
     private let monitorQueue = DispatchQueue(label: "com.claudelifter.sync.monitor")
@@ -135,8 +139,10 @@ final class SyncManager: InboxApprovalManaging {
         networkService: any NetworkServiceProtocol,
         settings: SettingsManager,
         inboxApplier: InboxApplier,
-        reportPhotoUploader: (any ReportPhotoUploading)? = nil
+        reportPhotoUploader: (any ReportPhotoUploading)? = nil,
+        exercisePhotoFetcher: (any ExercisePhotoFetching)? = nil
     ) {
+        self.exercisePhotoFetcher = exercisePhotoFetcher
         self.workoutRepository = workoutRepository
         self.templateRepository = templateRepository
         self.exerciseRepository = exerciseRepository
@@ -211,6 +217,9 @@ final class SyncManager: InboxApprovalManaging {
             // Never throws — a photo that fails waits for the next sync and
             // must not hold the rest of sync back.
             await reportPhotoUploader?.uploadPending()
+            // Never throws either. A photo the MCP attached (#170) that has
+            // not downloaded yet gets another chance on every sync.
+            await exercisePhotoFetcher?.fetchMissing()
 
             // Any record turning .pending means a snapshot push is due. The
             // snapshot itself is always FULL state — pending is only the trigger.
@@ -358,8 +367,11 @@ final class SyncManager: InboxApprovalManaging {
             }
 
             // Applied batch-mates are pushed before a failure is reported, so
-            // one bad operation never strands the others locally.
+            // one bad operation never strands the others locally. An approved
+            // photo (#170) downloads first, so the exercise card shows it
+            // without waiting for the next sync; that step never throws.
             if anyApplied {
+                await exercisePhotoFetcher?.fetchMissing()
                 try await pushSnapshot()
             }
             if let ackValidationError {
@@ -695,6 +707,9 @@ final class SyncManager: InboxApprovalManaging {
             }
 
             recordSuccess(revision: response.revision, serverTime: response.serverTime)
+            // Restored overlays can point at blob photos (#170) that this
+            // phone has never downloaded. Never throws.
+            await exercisePhotoFetcher?.fetchMissing()
             return summary
         } catch {
             syncError = error.localizedDescription

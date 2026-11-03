@@ -156,6 +156,31 @@ struct BackupV5Tests {
         #expect(restored.medication?.tabletStrengthMg == 25)
     }
 
+    /// #170: an MCP-attached photo on a BUNDLED exercise lives only in the
+    /// #140 overlay, keyed by externalId — a reinstall re-imports the catalog
+    /// with fresh UUIDs, and the photo must still find its exercise.
+    @Test("A bundled exercise's blob photo round-trips through backup as an overlay")
+    func overlayPhotoRoundTrips() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = try makeStore(documents: dir)
+        let original = Exercise(name: "Leg Extensions", isCustom: false, externalId: "Leg_Extensions")
+        original.photoURL = "exercises/ext/Leg_Extensions.jpg"
+        source.context.insert(original)
+        try source.context.save()
+        let url = try await source.service.exportBackup()
+
+        let destination = try makeStore(documents: dir)
+        let reimported = Exercise(name: "Leg Extensions", isCustom: false, externalId: "Leg_Extensions")
+        destination.context.insert(reimported)
+        try destination.context.save()
+        let summary = try await destination.service.importBackup(from: url)
+
+        #expect(reimported.id != original.id)
+        #expect(summary.exerciseOverlays.imported == 1)
+        #expect(reimported.photoURL == "exercises/ext/Leg_Extensions.jpg")
+    }
+
     @Test("Importing the same backup twice skips every existing V5 record")
     func importTwiceSkips() async throws {
         let dir = try tempDirectory()

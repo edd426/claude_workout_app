@@ -297,6 +297,8 @@ final class InboxChangePreviewBuilder: InboxChangePreviewBuilding {
             return await updatePreview(operation)
         case "deleteTemplate":
             return await deletePreview(operation)
+        case "setExercisePhoto":
+            return await photoPreview(operation)
         default:
             return InboxChangePreview(
                 title: "Apply proposed change",
@@ -368,6 +370,42 @@ final class InboxChangePreviewBuilder: InboxChangePreviewBuilding {
             summary: "Removes the template and \(what) from this phone and the cloud.",
             lines: [],
             isDestructive: true
+        )
+    }
+
+    /// One line per op (#170): the title names the exercise, the summary says
+    /// what approving does — including when it is going to fail, in the same
+    /// order the applier checks.
+    private func photoPreview(_ operation: InboxOperationDTO) async -> InboxChangePreview {
+        guard let payload = try? operation.payload.decode(SetExercisePhotoPayload.self) else {
+            return InboxChangePreview(
+                title: "Set photo",
+                summary: "The change could not be read; approving it will fail.",
+                lines: [],
+                isDestructive: false
+            )
+        }
+        let exercise = try? await exerciseRepository.fetchByExternalId(payload.externalId)
+        let name = exercise?.name ?? TemplateUpdateDiff.humanized(payload.externalId)
+        let summary: String
+        if payload.blobPath != SetExercisePhotoPayload.expectedBlobPath(for: payload.externalId) {
+            summary = "The photo path does not match this exercise; approving it will fail."
+        } else if let exercise {
+            if exercise.photoURL == payload.blobPath {
+                summary = "This photo is already on the exercise card."
+            } else if exercise.photoURL?.isEmpty == false {
+                summary = "Replaces the photo already on the exercise card."
+            } else {
+                summary = "Adds a photo to the exercise card."
+            }
+        } else {
+            summary = "This exercise is not on this phone; approving it will fail."
+        }
+        return InboxChangePreview(
+            title: "Set photo · \(name)",
+            summary: summary,
+            lines: [],
+            isDestructive: false
         )
     }
 

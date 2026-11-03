@@ -29,6 +29,10 @@ final class DependencyContainer {
     let medicationDoseRepository: any MedicationDoseRepository
     /// "If the machine is taken" substitutes on template exercises.
     let exerciseAlternativeRepository: any ExerciseAlternativeRepository
+    /// Downloads exercise photos that live in blob storage (#170) into the
+    /// local cache `LocalPhotoStorage` reads. SyncManager runs it on every
+    /// sync and after an approval; a view may also call it.
+    let exercisePhotoFetcher: any ExercisePhotoFetching
     /// Report photos kept on the phone until they upload (#141).
     let reportPhotoStore: any ReportPhotoStoring
     let inboxApplier: InboxApplier
@@ -111,6 +115,11 @@ final class DependencyContainer {
         self.networkService = network
         let imageUploadService = ImageUploadService(networkService: network)
         self.imageUploadService = imageUploadService
+        let exercisePhotoFetcher = ExercisePhotoDownloader(
+            exerciseRepository: exerciseRepo,
+            imageService: imageUploadService
+        )
+        self.exercisePhotoFetcher = exercisePhotoFetcher
         let bodyWeightRepo = SwiftDataBodyWeightRepository(context: modelContext)
         self.bodyWeightRepository = bodyWeightRepo
         let reportRepo = SwiftDataExerciseReportRepository(context: modelContext)
@@ -160,7 +169,8 @@ final class DependencyContainer {
                 reportRepository: reportRepo,
                 photoStore: reportPhotoStore,
                 imageUploadService: imageUploadService
-            )
+            ),
+            exercisePhotoFetcher: exercisePhotoFetcher
         )
     }
 }

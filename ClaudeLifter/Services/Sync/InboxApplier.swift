@@ -11,6 +11,7 @@ enum InboxApplyError: Error, LocalizedError {
     case invalidReportId(String)
     case reportNotFound(String)
     case invalidReportStatus(String)
+    case invalidPhotoPath(String)
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +35,8 @@ enum InboxApplyError: Error, LocalizedError {
             return "Report not found: \(id)"
         case .invalidReportStatus(let status):
             return "Invalid report status: \(status) (expected acknowledged or resolved)"
+        case .invalidPhotoPath(let path):
+            return "Invalid photo path: \"\(path)\" (expected exercises/ext/{externalId}.jpg)"
         }
     }
 }
@@ -187,6 +190,10 @@ final class InboxApplier {
             try validateDeletePayload(payload)
             try await deleteTemplate(payload)
 
+        case "setExercisePhoto":
+            let payload = try decode(SetExercisePhotoPayload.self, from: operation.payload)
+            try await setExercisePhoto(payload)
+
         default:
             throw InboxApplyError.unknownOperation(operation.op)
         }
@@ -290,9 +297,32 @@ final class InboxApplier {
         try await reportRepository.save(report)
     }
 
+    /// Points an exercise's photo at the blob the MCP uploaded (#170).
+    ///
+    /// The path is checked BEFORE the exercise is looked up, and must be
+    /// exactly `exercises/ext/{externalId}.jpg`: whatever the server let
+    /// through, an op can never attach another exercise's photo or a blob
+    /// from another family. Bundled and custom exercises resolve the same way
+    /// (`fetchByExternalId` covers catalog and `custom:` ids); on a bundled
+    /// one the photo then travels as its #140 overlay. The image itself is
+    /// fetched by `ExercisePhotoDownloader`.
+    private func setExercisePhoto(_ payload: SetExercisePhotoPayload) async throws {
+        guard !payload.externalId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw InboxApplyError.malformedPayload("Exercise externalId must not be empty")
+        }
+        guard payload.blobPath == SetExercisePhotoPayload.expectedBlobPath(for: payload.externalId) else {
+            throw InboxApplyError.invalidPhotoPath(payload.blobPath)
+        }
+        guard let exercise = try await exerciseRepository.fetchByExternalId(payload.externalId) else {
+            throw InboxApplyError.unresolvedExerciseIds([payload.externalId])
+        }
+        exercise.photoURL = payload.blobPath
+        try await exerciseRepository.save(exercise)
+    }
+
     private func approvalRequirement(for operation: String) throws -> Bool {
         switch operation {
-        case "updateTemplate", "deleteTemplate":
+        case "updateTemplate", "deleteTemplate", "setExercisePhoto":
             return true
         case "createTemplate", "createCustomExercise", "resolveExerciseReport":
             return false

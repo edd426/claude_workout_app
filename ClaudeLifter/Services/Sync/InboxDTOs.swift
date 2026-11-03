@@ -110,6 +110,19 @@ struct CreateCustomExercisePayload: Codable, Sendable, Equatable {
     let notes: String?
 }
 
+/// Points an exercise's photo at a blob the MCP uploaded (#170). `blobPath` is
+/// always exactly `exercises/ext/{externalId}.jpg`; anything else is refused.
+/// Requires approval.
+struct SetExercisePhotoPayload: Codable, Sendable, Equatable {
+    let externalId: String
+    let blobPath: String
+
+    /// The only blob path a `setExercisePhoto` for `externalId` may carry.
+    static func expectedBlobPath(for externalId: String) -> String {
+        "exercises/ext/\(externalId).jpg"
+    }
+}
+
 /// Closes out a user-filed report (issue #135). `status` is the terminal
 /// state the AI is asserting — "resolved" for done, "acknowledged" for seen
 /// but still outstanding (a GitHub issue exists, say).

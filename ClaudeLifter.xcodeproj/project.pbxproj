@@ -57,6 +57,7 @@
 		993187B0CF7E42685D2DDB56 /* BodyMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA772622CD2DF9BA173605D /* BodyMetrics.swift */; };
 		56FC117BE7FA737C2077C039 /* DoseCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA674D607D5003CB218E00C /* DoseCalculator.swift */; };
 		2C771E09004CA25C30507D6D /* ExerciseImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D93FFC0D359C347B05570ADB /* ExerciseImportService.swift */; };
+		2421D553235F18C908838149 /* ExercisePhotoDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C71E28167AF821E5E0E73D /* ExercisePhotoDownloader.swift */; };
 		0BF118DF627AB92457864FF3 /* HealthKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AADE7F745A0615FA0E311FA /* HealthKitService.swift */; };
 		77D1BDDCFB898B669902026C /* ImageUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050AB0BAF86C67AFDD6015F8 /* ImageUploadService.swift */; };
 		34DF7262F9CD14DC65255D34 /* ImageUploadServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3446E7E1633E041806CC3D50 /* ImageUploadServiceProtocol.swift */; };
@@ -209,6 +210,7 @@
 		F6103383559FD5F2FC1F941C /* ChatToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D8413498DFA6B11B17332D /* ChatToolTests.swift */; };
 		F1AA44F35D8429333F07B307 /* DoseCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6F797EF629788A5742ADDC4 /* DoseCalculatorTests.swift */; };
 		707EF5220C619208E9562C65 /* ExerciseImportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1699F48EE9B58D4C4FFD8188 /* ExerciseImportServiceTests.swift */; };
+		DC6BC7E1FBFB7C9083626D6F /* ExercisePhotoInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0929F00685EC081A90E11D76 /* ExercisePhotoInboxTests.swift */; };
 		E642BBC14F550A5DA05C9CF2 /* HeightSettingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE30693266C6DB236C713816 /* HeightSettingTests.swift */; };
 		2D5A983A04F68C5DB57AB82C /* ImageUploadServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAA6CFA06236E0849598A44 /* ImageUploadServiceTests.swift */; };
 		AF30F74A9CABA222EFF29284 /* InboxAlternativesPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39658BB948F60C7638E85927 /* InboxAlternativesPreviewTests.swift */; };
@@ -342,6 +344,7 @@
 		4BA772622CD2DF9BA173605D /* BodyMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyMetrics.swift; sourceTree = "<group>"; };
 		FAA674D607D5003CB218E00C /* DoseCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoseCalculator.swift; sourceTree = "<group>"; };
 		D93FFC0D359C347B05570ADB /* ExerciseImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseImportService.swift; sourceTree = "<group>"; };
+		18C71E28167AF821E5E0E73D /* ExercisePhotoDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisePhotoDownloader.swift; sourceTree = "<group>"; };
 		8AADE7F745A0615FA0E311FA /* HealthKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitService.swift; sourceTree = "<group>"; };
 		050AB0BAF86C67AFDD6015F8 /* ImageUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageUploadService.swift; sourceTree = "<group>"; };
 		3446E7E1633E041806CC3D50 /* ImageUploadServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageUploadServiceProtocol.swift; sourceTree = "<group>"; };
@@ -494,6 +497,7 @@
 		C8D8413498DFA6B11B17332D /* ChatToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatToolTests.swift; sourceTree = "<group>"; };
 		A6F797EF629788A5742ADDC4 /* DoseCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoseCalculatorTests.swift; sourceTree = "<group>"; };
 		1699F48EE9B58D4C4FFD8188 /* ExerciseImportServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseImportServiceTests.swift; sourceTree = "<group>"; };
+		0929F00685EC081A90E11D76 /* ExercisePhotoInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisePhotoInboxTests.swift; sourceTree = "<group>"; };
 		EE30693266C6DB236C713816 /* HeightSettingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeightSettingTests.swift; sourceTree = "<group>"; };
 		EEAA6CFA06236E0849598A44 /* ImageUploadServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageUploadServiceTests.swift; sourceTree = "<group>"; };
 		39658BB948F60C7638E85927 /* InboxAlternativesPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxAlternativesPreviewTests.swift; sourceTree = "<group>"; };
@@ -700,6 +704,7 @@
 				4BA772622CD2DF9BA173605D,
 				FAA674D607D5003CB218E00C,
 				D93FFC0D359C347B05570ADB,
+				18C71E28167AF821E5E0E73D,
 				8AADE7F745A0615FA0E311FA,
 				050AB0BAF86C67AFDD6015F8,
 				3446E7E1633E041806CC3D50,
@@ -1000,6 +1005,7 @@
 				C8D8413498DFA6B11B17332D,
 				A6F797EF629788A5742ADDC4,
 				1699F48EE9B58D4C4FFD8188,
+				0929F00685EC081A90E11D76,
 				EE30693266C6DB236C713816,
 				EEAA6CFA06236E0849598A44,
 				39658BB948F60C7638E85927,
@@ -1241,6 +1247,7 @@
 				993187B0CF7E42685D2DDB56 /* BodyMetrics.swift in Sources */,
 				56FC117BE7FA737C2077C039 /* DoseCalculator.swift in Sources */,
 				2C771E09004CA25C30507D6D /* ExerciseImportService.swift in Sources */,
+				2421D553235F18C908838149 /* ExercisePhotoDownloader.swift in Sources */,
 				0BF118DF627AB92457864FF3 /* HealthKitService.swift in Sources */,
 				77D1BDDCFB898B669902026C /* ImageUploadService.swift in Sources */,
 				34DF7262F9CD14DC65255D34 /* ImageUploadServiceProtocol.swift in Sources */,
@@ -1400,6 +1407,7 @@
 				F6103383559FD5F2FC1F941C /* ChatToolTests.swift in Sources */,
 				F1AA44F35D8429333F07B307 /* DoseCalculatorTests.swift in Sources */,
 				707EF5220C619208E9562C65 /* ExerciseImportServiceTests.swift in Sources */,
+				DC6BC7E1FBFB7C9083626D6F /* ExercisePhotoInboxTests.swift in Sources */,
 				E642BBC14F550A5DA05C9CF2 /* HeightSettingTests.swift in Sources */,
 				2D5A983A04F68C5DB57AB82C /* ImageUploadServiceTests.swift in Sources */,
 				AF30F74A9CABA222EFF29284 /* InboxAlternativesPreviewTests.swift in Sources */,

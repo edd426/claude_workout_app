@@ -1634,3 +1634,140 @@ struct SyncManagerV5Tests {
         #expect(env.settings.heightCm == 182.88)
     }
 }
+
+// MARK: - #170: setExercisePhoto through sync
+
+@MainActor
+final class CountingPhotoFetcher: ExercisePhotoFetching {
+    var calls = 0
+    func fetchMissing() async -> Int {
+        calls += 1
+        return 0
+    }
+}
+
+@Suite("SyncManager — exercise photos set through the inbox (#170)")
+@MainActor
+struct SyncManagerExercisePhotoTests {
+
+    private func photoApproval(id: String = "photo-1", externalId: String) -> InboxOperationDTO {
+        InboxOperationDTO(
+            id: id,
+            createdAt: "2026-11-03T09:00:00.000Z",
+            op: "setExercisePhoto",
+            payload: .object([
+                "externalId": .string(externalId),
+                "blobPath": .string("exercises/ext/\(externalId).jpg"),
+            ]),
+            requiresApproval: true,
+            status: "awaitingApproval",
+            appliedAt: nil,
+            error: nil
+        )
+    }
+
+    private func applied(_ id: String) -> InboxAckResponse {
+        InboxAckResponse(
+            counts: InboxAckCounts(updated: 1, unchanged: 0, notFound: 0, invalid: 0),
+            results: [InboxAckOperationResult(
+                id: id, requestedStatus: .applied, resultingStatus: "applied", outcome: .updated, conflict: nil
+            )]
+        )
+    }
+
+    @Test("An approved photo on a bundled exercise is pushed as its overlay photoURL")
+    func approvedPhotoIsPushedAsOverlay() async throws {
+        let env = try SyncTestEnv()
+        env.context.insert(Exercise(name: "Leg Extensions", isCustom: false, externalId: "Leg_Extensions"))
+        try env.context.save()
+        env.network.ackInboxResult = applied("photo-1")
+        env.network.pushSnapshotResult = makePushResponse()
+
+        try await env.manager.decide([
+            InboxDecision(operation: photoApproval(externalId: "Leg_Extensions"), verdict: .approve)
+        ])
+
+        let overlays = try #require(env.network.lastSnapshotRequest?.snapshot.exerciseOverlays)
+        #expect(overlays == [
+            ExerciseOverlayDTO(id: "Leg_Extensions", notes: nil, photoURL: "exercises/ext/Leg_Extensions.jpg")
+        ])
+    }
+
+    @Test("Restore puts an overlay's blob photo back on the re-imported bundled exercise")
+    func restoreAppliesOverlayPhoto() async throws {
+        let env = try SyncTestEnv()
+        let exercise = Exercise(name: "Leg Extensions", isCustom: false, externalId: "Leg_Extensions")
+        env.context.insert(exercise)
+        try env.context.save()
+        env.network.fetchSnapshotResult = SnapshotFetchResponse(
+            revision: 7,
+            serverTime: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            snapshot: SyncSnapshot(
+                workouts: [], templates: [], customExercises: [], bodyWeightEntries: [],
+                exerciseOverlays: [ExerciseOverlayDTO(
+                    id: "Leg_Extensions", notes: nil, photoURL: "exercises/ext/Leg_Extensions.jpg"
+                )]
+            )
+        )
+
+        _ = try await env.manager.restoreFromSnapshot()
+
+        #expect(exercise.photoURL == "exercises/ext/Leg_Extensions.jpg")
+    }
+
+    @Test("Approving a photo fetches it straight away, so the card shows it")
+    func approvalFetchesPhoto() async throws {
+        let env = try SyncTestEnv()
+        env.context.insert(Exercise(name: "Leg Extensions", isCustom: false, externalId: "Leg_Extensions"))
+        try env.context.save()
+        env.network.ackInboxResult = applied("photo-1")
+        env.network.pushSnapshotResult = makePushResponse()
+        let fetcher = CountingPhotoFetcher()
+        let manager = SyncManager(
+            workoutRepository: env.workoutRepo,
+            templateRepository: env.templateRepo,
+            exerciseRepository: env.exerciseRepo,
+            bodyWeightRepository: env.bodyWeightRepo,
+            exerciseReportRepository: env.reportRepo,
+            bodyMeasurementRepository: env.measurementRepo,
+            medicationRepository: env.medicationRepo,
+            medicationDoseRepository: env.doseRepo,
+            exerciseAlternativeRepository: env.alternativeRepo,
+            networkService: env.network,
+            settings: env.settings,
+            inboxApplier: env.inboxApplier,
+            exercisePhotoFetcher: fetcher
+        )
+
+        try await manager.decide([
+            InboxDecision(operation: photoApproval(externalId: "Leg_Extensions"), verdict: .approve)
+        ])
+
+        #expect(fetcher.calls == 1)
+    }
+
+    @Test("Every sync gives missing photos another chance to download")
+    func syncFetchesMissingPhotos() async throws {
+        let env = try SyncTestEnv()
+        let fetcher = CountingPhotoFetcher()
+        let manager = SyncManager(
+            workoutRepository: env.workoutRepo,
+            templateRepository: env.templateRepo,
+            exerciseRepository: env.exerciseRepo,
+            bodyWeightRepository: env.bodyWeightRepo,
+            exerciseReportRepository: env.reportRepo,
+            bodyMeasurementRepository: env.measurementRepo,
+            medicationRepository: env.medicationRepo,
+            medicationDoseRepository: env.doseRepo,
+            exerciseAlternativeRepository: env.alternativeRepo,
+            networkService: env.network,
+            settings: env.settings,
+            inboxApplier: env.inboxApplier,
+            exercisePhotoFetcher: fetcher
+        )
+
+        await manager.syncIfNeeded()
+
+        #expect(fetcher.calls == 1)
+    }
+}

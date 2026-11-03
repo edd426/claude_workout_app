@@ -71,12 +71,12 @@ struct ChartsView: View {
                             x: .value("Date", point.date),
                             y: .value("Volume (kg)", point.volume)
                         )
-                        .foregroundStyle(BrandTheme.terracotta)
+                        .foregroundStyle(BrandTheme.accent)
                         AreaMark(
                             x: .value("Date", point.date),
                             y: .value("Volume (kg)", point.volume)
                         )
-                        .foregroundStyle(BrandTheme.terracotta.opacity(0.15))
+                        .foregroundStyle(BrandTheme.accent.opacity(0.15))
                     }
                 }
                 .frame(height: 200)
@@ -107,12 +107,12 @@ struct ChartsView: View {
                             x: .value("Date", point.date),
                             y: .value("1RM (kg)", point.estimated1RM)
                         )
-                        .foregroundStyle(BrandTheme.terracotta)
+                        .foregroundStyle(BrandTheme.accent)
                         PointMark(
                             x: .value("Date", point.date),
                             y: .value("1RM (kg)", point.estimated1RM)
                         )
-                        .foregroundStyle(BrandTheme.terracotta)
+                        .foregroundStyle(BrandTheme.accent)
                     }
                 }
                 .frame(height: 200)
@@ -137,7 +137,7 @@ struct ChartsView: View {
                 systemImage: "chevron.down"
             )
             .font(.caption)
-            .foregroundStyle(BrandTheme.terracotta)
+            .foregroundStyle(BrandTheme.accent)
         }
     }
 

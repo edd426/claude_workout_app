@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// One day of the heatmap. The calendar wraps it in a Button with the full
+/// label, so this is only the drawing.
 struct CalendarDayCellView: View {
     let day: Int
     let intensity: CalendarViewModel.WorkoutIntensity
@@ -8,36 +10,44 @@ struct CalendarDayCellView: View {
     let isInMonth: Bool
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(cellBackground)
-            if isToday && !isSelected {
+        Text("\(day)")
+            .font(.subheadline.weight(isToday || isSelected ? .semibold : .regular))
+            .monospacedDigit()
+            .foregroundStyle(labelColor)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background {
                 Circle()
-                    .strokeBorder(BrandTheme.terracotta, lineWidth: 1.5)
+                    .fill(cellBackground)
+                    .overlay { ring }
+                    .padding(2)
             }
-            Text("\(day)")
-                .font(.system(size: 14, weight: isToday || isSelected ? .semibold : .regular))
-                .foregroundStyle(labelColor)
+            .contentShape(Rectangle())
+            .opacity(isInMonth ? 1.0 : 0.3)
+    }
+
+    /// Selected: a primary ring. Today: an accent ring. Colour is never the
+    /// only signal; the button label carries the counts (UI-C4).
+    @ViewBuilder
+    private var ring: some View {
+        if isSelected {
+            Circle().strokeBorder(Color.primary, lineWidth: 2)
+        } else if isToday {
+            Circle().strokeBorder(BrandTheme.accent, lineWidth: 1.5)
         }
-        .frame(width: 36, height: 36)
-        .opacity(isInMonth ? 1.0 : 0.3)
     }
 
     private var cellBackground: Color {
-        if isSelected {
-            return BrandTheme.terracotta
-        }
         switch intensity {
         case .none: return .clear
-        case .light: return BrandTheme.terracotta.opacity(0.3)
-        case .medium: return BrandTheme.terracotta.opacity(0.6)
-        case .heavy: return BrandTheme.terracotta.opacity(1.0)
+        case .light: return BrandTheme.accent.opacity(0.3)
+        case .medium: return BrandTheme.accent.opacity(0.6)
+        case .heavy: return BrandTheme.accent
         }
     }
 
+    /// White on the full accent fill is 3.1:1; the dark palette colour is
+    /// 5.9:1 in either appearance (UI-C3).
     private var labelColor: Color {
-        if isSelected { return .white }
-        if intensity == .heavy { return .white }
-        return .primary
+        intensity == .heavy ? BrandTheme.dark : .primary
     }
 }

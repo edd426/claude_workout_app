@@ -6,6 +6,9 @@ import Observation
 final class CalendarViewModel {
     var currentMonth: Date = .now
     var workoutDays: [Date: WorkoutIntensity] = [:]
+    /// Finished workouts and completed sets per day (start of day), for the
+    /// day cells' VoiceOver labels (UI-A5).
+    var daySummaries: [Date: DaySummary] = [:]
     var selectedDate: Date? = nil
     var selectedDayWorkouts: [Workout] = []
     var workoutsThisWeek: Int = 0
@@ -26,6 +29,11 @@ final class CalendarViewModel {
         }
     }
 
+    struct DaySummary: Equatable, Sendable {
+        let workouts: Int
+        let sets: Int
+    }
+
     private let workoutRepository: any WorkoutRepository
     private let calendar = Calendar.current
 
@@ -39,6 +47,7 @@ final class CalendarViewModel {
         do {
             let workouts = try await workoutRepository.fetchByDateRange(from: range.start, to: range.end)
             workoutDays = buildIntensityMap(from: workouts, in: range)
+            daySummaries = buildDaySummaries(from: workouts)
             workoutsThisWeek = countWorkoutsThisWeek(from: workouts)
         } catch {
             errorMessage = error.localizedDescription
@@ -69,7 +78,35 @@ final class CalendarViewModel {
         Task { await loadMonth() }
     }
 
+    /// "Thursday 8 October, 1 workout, 12 sets" (UI-A5).
+    static func accessibilityLabel(
+        for date: Date,
+        summary: DaySummary?,
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        var style = Date.FormatStyle(date: .omitted, time: .omitted, locale: locale, calendar: calendar)
+        style.timeZone = calendar.timeZone
+        let day = date.formatted(style.weekday(.wide).day().month(.wide))
+            .replacingOccurrences(of: ",", with: "")
+        guard let summary, summary.workouts > 0 else { return "\(day), no workout" }
+        let workouts = summary.workouts == 1 ? "1 workout" : "\(summary.workouts) workouts"
+        let sets = summary.sets == 1 ? "1 set" : "\(summary.sets) sets"
+        return "\(day), \(workouts), \(sets)"
+    }
+
     // MARK: - Private helpers
+
+    private func buildDaySummaries(from workouts: [Workout]) -> [Date: DaySummary] {
+        var summaries: [Date: DaySummary] = [:]
+        for workout in workouts where workout.completedAt != nil {
+            let day = calendar.startOfDay(for: workout.startedAt)
+            let sets = workout.exercises.flatMap(\.sets).filter(\.isCompleted).count
+            let current = summaries[day] ?? DaySummary(workouts: 0, sets: 0)
+            summaries[day] = DaySummary(workouts: current.workouts + 1, sets: current.sets + sets)
+        }
+        return summaries
+    }
 
     private func monthDateRange(for date: Date) -> (start: Date, end: Date) {
         // Non-nil under the Gregorian calendar, but `Calendar` makes no such

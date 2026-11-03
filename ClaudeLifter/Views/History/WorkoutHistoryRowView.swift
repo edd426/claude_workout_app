@@ -3,30 +3,21 @@ import SwiftUI
 struct WorkoutHistoryRowView: View {
     let workout: Workout
 
-    var exerciseCount: Int { workout.exercises.count }
-    var completedSets: Int { workout.exercises.flatMap(\.sets).filter(\.isCompleted).count }
+    /// Done exercises and completed sets only, not the plan (#176).
+    private var summary: WorkoutHistorySummary { WorkoutHistorySummary(workout) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(workout.name)
                 .font(.headline)
-            HStack {
-                Text(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("·")
-                    .foregroundStyle(.secondary)
-                Text("\(exerciseCount) exercises")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("·")
-                    .foregroundStyle(.secondary)
-                Text("\(completedSets) sets")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                .foregroundStyle(.primary)
+            Text("\(workout.startedAt.formatted(date: .abbreviated, time: .omitted)) · \(summary.rowDetail)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
-        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.vertical, 4)
         // One addressable element per logged workout. Combining also gives
         // VoiceOver the whole row as a single announcement instead of five
         // disconnected fragments.

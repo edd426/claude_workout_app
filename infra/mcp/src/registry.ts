@@ -147,7 +147,8 @@ export const TOOLS = [
     name: "list_workouts",
     description:
       "List workout session summaries with optional date filtering " +
-      "(most recent first)",
+      "(most recent first). isDraft: true means an in-progress session the " +
+      "phone pushed mid-workout (no completedAt yet), not a failed Finish.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -163,7 +164,8 @@ export const TOOLS = [
   {
     name: "get_workout",
     description:
-      "Get full detail of a specific workout session (exercises, sets, weights)",
+      "Get full detail of a specific workout session (exercises, sets, weights). " +
+      "isDraft: true means it is still in progress on the phone.",
     inputSchema: {
       type: "object" as const,
       properties: {

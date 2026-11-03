@@ -9,6 +9,8 @@ export interface WorkoutTemplate {
   exercises: TemplateExercise[];
   lastModified?: string;
   syncStatus?: string;
+  /** Derived by the MCP read tools (#143): true when completedAt is absent. */
+  isDraft?: boolean;
 }
 
 export interface TemplateExercise {
@@ -77,6 +79,8 @@ export interface WorkoutSummary {
   exerciseCount: number;
   totalSets: number;
   totalVolume: number;
+  /** Derived by the MCP read tools (#143): true when completedAt is absent. */
+  isDraft?: boolean;
 }
 
 export interface ExerciseHistoryEntry {

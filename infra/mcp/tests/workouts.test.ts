@@ -113,3 +113,28 @@ describe("getWorkout", () => {
     await expect(getWorkout("w-1")).rejects.toThrow("Unauthorized");
   });
 });
+
+// #143: a workout with no completedAt is a draft the phone pushed mid-session
+// (crash resilience), not a Finish that failed. Readers must not have to infer.
+describe("draft marking (#143)", () => {
+  const { completedAt: _omit, ...draftSummary } = sampleSummary;
+  const { completedAt: _omit2, ...draftWorkout } = sampleWorkout;
+
+  it("list_workouts marks a workout without completedAt as a draft", async () => {
+    mockApiGet.mockResolvedValue({ workouts: [sampleSummary, { ...draftSummary, id: "w-2" }] });
+
+    const result = await listWorkouts();
+
+    expect(result.map((w) => [w.id, w.isDraft])).toEqual([
+      ["w-1", false],
+      ["w-2", true],
+    ]);
+  });
+
+  it("get_workout marks a draft and leaves a finished workout unmarked as draft", async () => {
+    mockApiGet.mockResolvedValueOnce(draftWorkout).mockResolvedValueOnce(sampleWorkout);
+
+    expect((await getWorkout("w-1"))?.isDraft).toBe(true);
+    expect((await getWorkout("w-1"))?.isDraft).toBe(false);
+  });
+});

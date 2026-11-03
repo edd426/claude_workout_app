@@ -106,6 +106,9 @@ struct SettingsView: View {
             buildInfoSection
         }
         .scrollDismissesKeyboard(.interactively)
+        // Row buttons (Export, Import, Jefit) are tinted text at body size;
+        // the accent is 3.1:1 there, accentText 5.9:1 light, 5.5:1 dark (UI-C3).
+        .tint(BrandTheme.accentText)
         .sheet(item: $shareItem) { item in
             ShareSheet(items: [item.url])
                 .accessibilityIdentifier("backupShareSheet")
@@ -411,12 +414,15 @@ private struct AIModelRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack {
+                // Concrete colours: inside a Form button the hierarchical
+                // `.primary` resolves to the tint, which drew the names in
+                // terracotta at 3.1:1.
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.displayName)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.primary)
                     Text(model.costIndicator)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondary)
                 }
                 Spacer()
                 if isSelected {

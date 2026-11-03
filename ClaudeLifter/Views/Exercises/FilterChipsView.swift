@@ -36,7 +36,7 @@ struct FilterChipsView: View {
             .font(.subheadline)
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
-            .foregroundStyle(.primary)
+            .foregroundStyle(Color.primary)
             .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
             .contentShape(Capsule())
             .accessibilityIdentifier("clearAllFilters")
@@ -88,7 +88,7 @@ struct FilterChipsView: View {
             .font(.subheadline)
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
-            .foregroundStyle(isActive ? BrandTheme.accentText : .primary)
+            .foregroundStyle(isActive ? BrandTheme.accentText : Color.primary)
             .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
             .contentShape(Capsule())
         }

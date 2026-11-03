@@ -59,6 +59,47 @@ He also asked for a **UX/UI evaluation that raises the standards**.
 - **Results:** iOS unit tests 1062/1062; infra/functions 418/418; infra/mcp
   278/278.
 
+**More merged:**
+- **E:** the Jefit import service (#166), with a dry run on the real file:
+  - 896 workouts, 2019-02 → 2025-10;
+  - the lb→kg switch on 2025-06-12;
+  - 151 names map to the catalog, 41 become 38 custom exercises, 0
+    unmapped.
+  The UI isn't built yet.
+- **D:** the snapshot push now skips unchanged docs (`mirrorContentHash`):
+  - each sync writes only the docs that changed, and the first push after
+    the deploy writes all of them once;
+  - a throttled push returns 500, never 400.
+  - Results: functions 447/447, mcp 304/304, iOS 1115/1115 (before C's merge).
+- **C:** UX evaluation at `scratchpad/ux_evaluation.md` (123 screenshots in
+  `ux_screens/`).
+  - The draft **`.claude/rules/ui-standards.md` is merged.**
+  - The screenshot harness is at `ClaudeLifterUITests/ScreenshotHarness/`.
+    Its seeder and mock read a snapshot path you pass in; never commit
+    snapshot data.
+  - The seeder still targets V4.
+  - **Bugs filed:**
+    - #171 Settings buttons dead (Form-level onTapGesture; confirm on the
+      phone);
+    - #172 the workout screen pins the CPU at ~100% in a layout loop;
+    - #173 false PRs after a restore;
+    - #174 ghost weights log as bodyweight;
+    - #175 visual glitches;
+    - #176 planned vs done counts and stale "Last:".
+    - #154 and #119 got comments.
+  - **Top 10 improvements (waiting on Evan's scope call):**
+    1. an any-order workout (overview strip, collapsible cards, visible
+       Skip and Remove);
+    2. Machine taken (#169);
+    3. Today plus a Body tab;
+    4. decide at the change (#150);
+    5. follow the system appearance, plus contrast tokens;
+    6. thumb zone and timer;
+    7. glanceable set rows;
+    8. never swipe-only;
+    9. accessibility (#119);
+    10. a gym-aware library.
+
 **Deploy order (not yet deployed; details in D's report):**
 1. Create the Cosmos containers `bodyMeasurements`, `medications`,
    `medicationDoses` and `exerciseAlternatives` in `workout-db`, partition key

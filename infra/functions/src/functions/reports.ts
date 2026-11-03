@@ -19,7 +19,7 @@ import {
 } from "@azure/functions";
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
-import { parseLimit } from "../shared/readHelpers";
+import { parseLimit, stripSystemProps } from "../shared/readHelpers";
 import { ExerciseReport, ExerciseReportListResponse } from "../shared/types";
 
 const CONTAINER = "exerciseReports";
@@ -97,7 +97,7 @@ app.http("reportsList", {
         .fetchAll();
 
       const response: ExerciseReportListResponse = {
-        reports: resources as ExerciseReport[],
+        reports: (resources as ExerciseReport[]).map(stripSystemProps),
       };
       return { jsonBody: response };
     } catch (error) {

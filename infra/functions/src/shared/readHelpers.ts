@@ -6,6 +6,7 @@
 
 import { Container } from "@azure/cosmos";
 import { HttpRequest, HttpResponseInit } from "@azure/functions";
+import { SERVER_FIELDS } from "./contentHash";
 
 export type ParseResult<T> =
   | { ok: true; value: T }
@@ -96,12 +97,14 @@ export function parseIsoDateBound(
   return { ok: true, value: new Date(millis).toISOString() };
 }
 
-const COSMOS_SYSTEM_PROPS = ["_rid", "_self", "_etag", "_attachments", "_ts"];
-
-/** Returns a copy of a Cosmos document without its system properties. */
+/**
+ * Returns a copy of a stored document as readers should see it: without
+ * Cosmos system properties and without the snapshot push's server-owned
+ * `_contentHash`.
+ */
 export function stripSystemProps<T extends object>(doc: T): T {
   const clean: Record<string, unknown> = { ...(doc as Record<string, unknown>) };
-  for (const prop of COSMOS_SYSTEM_PROPS) delete clean[prop];
+  for (const field of SERVER_FIELDS) delete clean[field];
   return clean as T;
 }
 

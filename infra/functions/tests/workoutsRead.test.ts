@@ -216,6 +216,19 @@ describe("GET /api/workouts/{id} — detail", () => {
     expect(res.jsonBody).toEqual(sampleWorkout);
   });
 
+  test("never serves the snapshot's content hash or Cosmos system fields", async () => {
+    mockItemRead.mockResolvedValue({
+      resource: { ...sampleWorkout, _contentHash: "a".repeat(64), _rid: "r", _ts: 1 },
+    });
+
+    const res = await findHandler("workoutsGet")(
+      makeRequest({ params: { id: "w-1" } }),
+      new InvocationContext()
+    );
+
+    expect(res.jsonBody).toStrictEqual(sampleWorkout);
+  });
+
   test("returns 404 when not found", async () => {
     mockItemRead.mockResolvedValue({ resource: undefined });
 

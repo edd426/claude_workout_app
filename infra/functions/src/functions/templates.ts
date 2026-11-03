@@ -16,7 +16,7 @@ import {
 } from "@azure/functions";
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
-import { parseLimit, readItemOrNull } from "../shared/readHelpers";
+import { parseLimit, readItemOrNull, stripSystemProps } from "../shared/readHelpers";
 import { hasV5Mirror, readSyncMeta } from "../shared/syncMeta";
 import { TemplateExerciseAlternative, WorkoutTemplate } from "../shared/types";
 
@@ -119,7 +119,7 @@ app.http("templatesList", {
         })
         .fetchAll();
 
-      return { jsonBody: { templates: resources as WorkoutTemplate[] } };
+      return { jsonBody: { templates: (resources as WorkoutTemplate[]).map(stripSystemProps) } };
     } catch (error) {
       context.error("Template list failed:", error);
       return { status: 500, jsonBody: { error: "Failed to list templates" } };
@@ -149,7 +149,7 @@ app.http("templatesGet", {
       if (!template) {
         return { status: 404, jsonBody: { error: `Template not found: ${id}` } };
       }
-      return { jsonBody: await withAlternatives(template, context) };
+      return { jsonBody: await withAlternatives(stripSystemProps(template), context) };
     } catch (error) {
       context.error("Template read failed:", error);
       return { status: 500, jsonBody: { error: "Failed to read template" } };

@@ -9,13 +9,25 @@
  * POST /api/sync/snapshot
  *   Body: { schemaVersion: 2, snapshot: { workouts, templates,
  *           customExercises, bodyWeightEntries } }
- *   For each container: upsert every doc in the snapshot, then delete every
- *   doc whose id is not in the snapshot (deletions propagate — no
+ *   For each container: make every doc in the snapshot present, then delete
+ *   every doc whose id is not in the snapshot (deletions propagate — no
  *   tombstones). Idempotent: re-pushing the same snapshot converges to the
- *   same end state; the revision still increments (it counts pushes, it does
- *   not hash content). Individual operation failures do not abort the push —
- *   they are collected and reported with accurate counts in a 500 response;
- *   the client retries the full snapshot later and converges.
+ *   same end state; the revision still increments (it counts pushes).
+ *   Individual operation failures do not abort the push — they are collected
+ *   and reported with accurate counts in a 500 response; the client retries
+ *   the full snapshot later and converges.
+ *
+ *   Only new or changed docs are written (#166 scaling: the Jefit history
+ *   makes every push ~950 docs). Each stored doc carries `_contentHash`, and
+ *   one projected query per container (`id`, `_contentHash`) serves both the
+ *   change check and delete-absent. A doc stored before hashing has no hash,
+ *   so it is written once and gains one. `counts.upserted` still counts every
+ *   snapshot doc now in the mirror, written or already identical, exactly as
+ *   before; the number actually written goes to the function log. A
+ *   throttled (429) write that outlasts the SDK's retries is a 500, which the
+ *   phone retries — never a 400, which would make it step down a wire
+ *   version — and docs written before it keep their hash, so the retry
+ *   writes only what is still missing.
  *
  * GET /api/sync/snapshot
  *   Returns { revision, serverTime, snapshot } — the full current mirror,
@@ -45,6 +57,12 @@ import {
 } from "@azure/functions";
 import { Container } from "@azure/cosmos";
 import { authenticate } from "../shared/auth";
+import {
+  clientContent,
+  CONTENT_HASH_FIELD,
+  contentHash,
+  SERVER_FIELDS,
+} from "../shared/contentHash";
 import { getDatabase } from "../shared/cosmos";
 import { hasV5Mirror, readSyncMeta, SYNC_META_CONTAINER, SYNC_META_ID } from "../shared/syncMeta";
 import {
@@ -122,9 +140,6 @@ function collectionsToRead(meta: SyncMetaDoc | null): SnapshotCollectionMapping[
 
 /** Cosmos query page size. Pages are looped until exhausted — never a cap. */
 const PAGE_SIZE = 100;
-
-/** Cosmos system properties stripped from restore reads. */
-const COSMOS_SYSTEM_PROPS = ["_rid", "_self", "_etag", "_attachments", "_ts"];
 
 function badRequest(message: string): HttpResponseInit {
   return { status: 400, jsonBody: { error: message } };
@@ -231,24 +246,29 @@ function nextMeta(
 }
 
 /**
- * Queries all ids in a container, looping pages until exhausted. The
- * delete-absent reconciliation step must see EVERY existing id — a capped
- * scan would silently leave deleted records in the mirror.
+ * Every stored id with its content hash (undefined for a doc written before
+ * hashing), looping pages until exhausted. One projected query serves both
+ * the change check and delete-absent, which must see EVERY existing id — a
+ * capped scan would silently leave deleted records in the mirror.
  */
-async function queryAllIds(container: Container): Promise<string[]> {
+async function queryAllIdHashes(
+  container: Container
+): Promise<Map<string, string | undefined>> {
   const iterator = container.items.query(
-    { query: "SELECT c.id FROM c" },
+    { query: `SELECT c.id, c.${CONTENT_HASH_FIELD} FROM c` },
     { maxItemCount: PAGE_SIZE }
   );
-  const ids: string[] = [];
+  const hashes = new Map<string, string | undefined>();
   while (iterator.hasMoreResults()) {
     const { resources } = await iterator.fetchNext();
     for (const row of resources ?? []) {
-      const id = (row as { id?: unknown }).id;
-      if (typeof id === "string") ids.push(id);
+      const { id, [CONTENT_HASH_FIELD]: hash } = row as Record<string, unknown>;
+      if (typeof id === "string") {
+        hashes.set(id, typeof hash === "string" ? hash : undefined);
+      }
     }
   }
-  return ids;
+  return hashes;
 }
 
 /** Queries all docs in a container, looping pages until exhausted. */
@@ -269,50 +289,65 @@ async function queryAllDocs(
   return docs;
 }
 
-function stripSystemProps(doc: Record<string, unknown>): Record<string, unknown> {
+/** A stored doc as a reader sees it: no Cosmos system fields, no hash. */
+function stripServerFields(doc: Record<string, unknown>): Record<string, unknown> {
   const clean: Record<string, unknown> = { ...doc };
-  for (const prop of COSMOS_SYSTEM_PROPS) {
-    delete clean[prop];
-  }
+  for (const field of SERVER_FIELDS) delete clean[field];
   return clean;
 }
 
+/** Writes per push, for the function log: counts only, never content. */
+interface WriteTally {
+  written: number;
+  docs: number;
+}
+
 /**
- * Reconciles one Cosmos container to exactly the snapshot's doc set: upsert
- * everything in the snapshot, then delete everything absent from it. A
- * failed operation is recorded in `failures` and never aborts the rest.
+ * Reconciles one Cosmos container to exactly the snapshot's doc set: write
+ * every new or changed doc, skip identical ones, then delete everything
+ * absent. A failed operation is recorded in `failures` and never aborts the
+ * rest. `counts.upserted` counts every snapshot doc now in the mirror.
  */
 async function reconcileContainer(
   containerName: string,
   docs: Record<string, unknown>[],
-  failures: string[]
+  failures: string[],
+  tally: WriteTally
 ): Promise<SnapshotContainerCounts> {
   const container = getDatabase().container(containerName);
   const counts: SnapshotContainerCounts = { upserted: 0, deleted: 0 };
 
+  let existing: Map<string, string | undefined> | null;
+  try {
+    existing = await queryAllIdHashes(container);
+  } catch (err) {
+    // No scan: nothing can be skipped (write everything, as before hashing)
+    // and delete-absent cannot run safely; the client's retry converges.
+    failures.push(`scan ${containerName}: ${errorMessage(err)}`);
+    existing = null;
+  }
+
   for (const doc of docs) {
     const id = doc["id"] as string;
-    try {
-      await container.items.upsert(doc);
+    const hash = contentHash(doc);
+    tally.docs += 1;
+    if (existing !== null && existing.has(id) && existing.get(id) === hash) {
       counts.upserted += 1;
+      continue;
+    }
+    try {
+      await container.items.upsert({ ...clientContent(doc), [CONTENT_HASH_FIELD]: hash });
+      counts.upserted += 1;
+      tally.written += 1;
     } catch (err) {
       failures.push(`upsert ${containerName}/${id}: ${errorMessage(err)}`);
     }
   }
 
+  if (existing === null) return counts;
+
   const snapshotIds = new Set(docs.map((doc) => doc["id"] as string));
-
-  let existingIds: string[];
-  try {
-    existingIds = await queryAllIds(container);
-  } catch (err) {
-    // Without a complete scan the delete-absent step cannot run safely for
-    // this container; report it and let the client's retry converge.
-    failures.push(`scan ${containerName}: ${errorMessage(err)}`);
-    return counts;
-  }
-
-  for (const id of existingIds) {
+  for (const id of existing.keys()) {
     if (snapshotIds.has(id)) continue;
     try {
       await container.item(id, id).delete();
@@ -353,6 +388,7 @@ app.http("syncSnapshotPush", {
 
     const failures: string[] = [];
     const counts = {} as SnapshotCounts;
+    const tally: WriteTally = { written: 0, docs: 0 };
 
     try {
       for (const { field, container } of SNAPSHOT_COLLECTIONS_BY_VERSION[
@@ -361,9 +397,13 @@ app.http("syncSnapshotPush", {
         counts[field] = await reconcileContainer(
           container,
           body.snapshot[field] ?? [],
-          failures
+          failures,
+          tally
         );
       }
+      context.log(
+        `Snapshot push v${body.schemaVersion}: wrote ${tally.written} of ${tally.docs} docs`
+      );
 
       if (failures.length > 0) {
         // Revision is NOT advanced on a failed push — it counts successful
@@ -421,7 +461,7 @@ app.http("syncSnapshotGet", {
       const snapshot = {} as SnapshotCollections;
       for (const { field, container } of collectionsToRead(meta)) {
         const docs = await queryAllDocs(getDatabase().container(container));
-        snapshot[field] = docs.map(stripSystemProps);
+        snapshot[field] = docs.map(stripServerFields);
       }
       if (hasV5Mirror(meta)) {
         // Present (possibly null) exactly when the v5 arrays are.

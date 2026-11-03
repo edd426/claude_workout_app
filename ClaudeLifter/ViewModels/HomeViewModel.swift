@@ -208,15 +208,18 @@ final class InboxApprovalViewModel {
         previews[operation.id]
     }
 
+    /// Keeps the last known approvals on failure, and leaves
+    /// `errorMessage` alone: a background reload must neither raise the
+    /// decision alert nor clear one the user hasn't read yet.
     func load() async {
         isLoading = true
-        errorMessage = nil
+        loadErrorMessage = nil
         defer { isLoading = false }
         do {
             approvals = try await manager.fetchPendingApprovals()
             await refreshPreviews()
         } catch {
-            errorMessage = error.localizedDescription
+            loadErrorMessage = error.localizedDescription
         }
     }
 

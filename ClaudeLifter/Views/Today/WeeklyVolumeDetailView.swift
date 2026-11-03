@@ -9,6 +9,10 @@ struct WeeklyVolumeDetailView: View {
     /// Lowest first, the same order as the card. Built once, not in `body`
     /// (UI-E5).
     private let ordered: [WeeklyMuscleVolume.Muscle]
+    /// Muscles with sets get a section each; the rest share one line, so a
+    /// Tuesday isn't seven sections of "No sets yet".
+    private let trained: [WeeklyMuscleVolume.Muscle]
+    private let untrainedNames: String
 
     init(volume: WeeklyMuscleVolume) {
         self.volume = volume
@@ -17,7 +21,13 @@ struct WeeklyVolumeDetailView: View {
         let rest = volume.muscles
             .filter { !underIds.contains($0.id) }
             .sorted { $0.sets < $1.sets }
-        ordered = under + rest
+        let ordered = under + rest
+        self.ordered = ordered
+        trained = ordered.filter { $0.sets > 0 }
+        untrainedNames = ordered
+            .filter { $0.sets == 0 }
+            .map(\.muscle.displayName)
+            .joined(separator: ", ")
     }
 
     var body: some View {
@@ -36,7 +46,14 @@ struct WeeklyVolumeDetailView: View {
             } footer: {
                 Text("A set counts 1 for each muscle the exercise works most and ½ for each it works less. Only finished workouts count.")
             }
-            ForEach(ordered) { muscle in
+            if !untrainedNames.isEmpty {
+                Section("No sets yet") {
+                    Text(untrainedNames)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            ForEach(trained) { muscle in
                 MuscleContributionSection(muscle: muscle)
             }
         }
@@ -136,14 +153,8 @@ private struct MuscleContributionSection: View {
 
     var body: some View {
         Section {
-            if muscle.contributions.isEmpty {
-                Text("No sets yet this week")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(muscle.contributions) { contribution in
-                    ContributionRow(contribution: contribution)
-                }
+            ForEach(muscle.contributions) { contribution in
+                ContributionRow(contribution: contribution)
             }
         } header: {
             HStack {

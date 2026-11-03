@@ -111,7 +111,7 @@ struct ChatView: View {
         if let errorMsg = viewModel.errorMessage {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(BrandTheme.warning)
                 Text(errorMsg)
                     .font(.caption)
                     .foregroundStyle(.primary)
@@ -170,7 +170,7 @@ struct ChatView: View {
             markdownText(viewModel.currentStreamingText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(BrandTheme.lightGray)
+                .background(BrandTheme.cardBackground)
                 .foregroundStyle(.primary)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: 280, alignment: .leading)
@@ -214,7 +214,7 @@ struct ChatView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(BrandTheme.lightGray)
+            .background(BrandTheme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 18))
             Spacer()
         }
@@ -226,7 +226,7 @@ struct ChatView: View {
                 .scaleEffect(0.8)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(BrandTheme.lightGray)
+                .background(BrandTheme.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
             Spacer()
         }

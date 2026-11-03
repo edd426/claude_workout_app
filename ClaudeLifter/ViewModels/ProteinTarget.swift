@@ -74,3 +74,19 @@ enum ProteinTargetCalculator {
         )
     }
 }
+
+extension ProteinTarget {
+    /// "Target 140 g a day (1.6 g/kg × 87.9 kg)" for the Body tab (#111).
+    var summaryText: String {
+        let multiplierText = multiplier.formatted(.number.precision(.fractionLength(1)))
+        let weightText = basisKilograms.formatted(.number.precision(.fractionLength(1)))
+        return "Target \(grams) g a day (\(multiplierText) g/kg × \(weightText) kg)"
+    }
+
+    /// Why a stale target is still shown, nil when it is current.
+    func staleText(now: Date, calendar: Calendar) -> String? {
+        guard isStale else { return nil }
+        let age = BodyFormat.age(of: basisDate, now: now, calendar: calendar)
+        return "From your last weigh-in, \(age). Log one to update it."
+    }
+}

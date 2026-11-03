@@ -107,6 +107,7 @@
 		0B71D39860B245530CD3B22B /* LocalPhotoStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6FF0D1EB078F5CF438D6195 /* LocalPhotoStorage.swift */; };
 		39320B32AAB849DA6F4142BC /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB5C6DF96590C72CEA77BD4 /* SettingsManager.swift */; };
 		B902261B25F991B27E8726CE /* ActiveWorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB1106CAB595E0F873B0E4E /* ActiveWorkoutViewModel.swift */; };
+		E9CA76FEAB89C989E40B535D /* BodyFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF7F965D48D79A92BB9A788 /* BodyFormat.swift */; };
 		DC8670B09213E30C41AD10CA /* BodyWeightTrend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D3CC2C84199AB8FC372FAF /* BodyWeightTrend.swift */; };
 		444A15FEEAEBB9AE5F856062 /* BodyWeightTrendViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24213EDB6077D899B03C4163 /* BodyWeightTrendViewModel.swift */; };
 		8B39AD114C8A22CA4A12F63D /* BodyWeightViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A915220457843657F447086 /* BodyWeightViewModel.swift */; };
@@ -118,6 +119,13 @@
 		8F24AE7B3CEFFBEF345BEE57 /* ExerciseRecency.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F277AE002881B45FCFB7E75 /* ExerciseRecency.swift */; };
 		A18AFE68B9F7A6C5DA63C7B7 /* HistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83B65EEC4D65C7299EC739E6 /* HistoryViewModel.swift */; };
 		831BCA92C9335364B839B29E /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44408B76370ECDD1BBB38427 /* HomeViewModel.swift */; };
+		027D092B6153945AAFB5E085 /* MeasurementHeight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0266C5C5C5021B57C545E79C /* MeasurementHeight.swift */; };
+		46F444A023939935710F414C /* MeasurementsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09007D51EE97379352247BC8 /* MeasurementsViewModel.swift */; };
+		A2A1439C9CE20ECB6FDDFF3F /* MedicationDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9D5896590FBFAA11C21E6E /* MedicationDetailViewModel.swift */; };
+		86DA1CBACEADB5BBA154B677 /* MedicationDoseFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2351AEFC743EE9DBB9020D1C /* MedicationDoseFormatter.swift */; };
+		558F8A984E0961E5E8B799FC /* MedicationDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBE49DD2FF41C0CDE4EEA85A /* MedicationDraft.swift */; };
+		E6D2B783AC57CD48A6A964DE /* MedicationListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603AC8515D637B0377488262 /* MedicationListViewModel.swift */; };
+		0E0232DE086DBE791574D0E2 /* MedicationUsualDose.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75200F538EF9326918CE6AA /* MedicationUsualDose.swift */; };
 		AFB61D6A7330C78EAF1CE4C0 /* ProgressChartsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FFEBACB7D0929B1ADBBAD73 /* ProgressChartsViewModel.swift */; };
 		92BE1F39048FD148C6402666 /* ProteinTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39A555BEDF9FC83093D8202 /* ProteinTarget.swift */; };
 		4846E886CAD6B57A39E22797 /* ReportListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 224167822A323D284DE3CC52 /* ReportListViewModel.swift */; };
@@ -127,7 +135,14 @@
 		8F0C66D0DB17D96C05B52072 /* TemplateEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EB00D1C9712594526486A75 /* TemplateEditorViewModel.swift */; };
 		CCE185F5CDFE404D29055941 /* TemplateListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED7DA3C8168497F0DAEAAC17 /* TemplateListViewModel.swift */; };
 		79296A6352563B20FA8C08A4 /* WorkoutCompletionSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20E59C316D5D955F0E978F2 /* WorkoutCompletionSummary.swift */; };
+		0045ED4879FADBAD741C9D07 /* BodyCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB11451660C93BFC93FE02C2 /* BodyCard.swift */; };
+		58ACFBE0F1E6571D6C4D376E /* BodyScreenshotSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7785533DDDC7EEE8A99CB6 /* BodyScreenshotSeed.swift */; };
 		508ECAD5436C3677DB3F4E1B /* BodyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D0AB90B8172C307D20CCEE /* BodyView.swift */; };
+		C2FACDAD2367E6EB830A8657 /* BodyWeightSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5006C5B8F58804F019BFD007 /* BodyWeightSection.swift */; };
+		65E70BE9A428BD63F018BAF5 /* MeasurementsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71D74F0AF846264D3DEA87F1 /* MeasurementsSection.swift */; };
+		6ADA30F0C86EA9128AF08286 /* MedicationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ACAD6190F586911BD611DB9 /* MedicationDetailView.swift */; };
+		496DE4846E3DA1BEAF987A91 /* MedicationSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BB674859E3A546B007AAA2A /* MedicationSheets.swift */; };
+		6AB4C95C825601B8A67A70F0 /* MedicationsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823C63ED777DE4DA2566E5DA /* MedicationsSection.swift */; };
 		EB9E00C84758623B715B6097 /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5364572CD0945B9DF34712 /* ChatInputView.swift */; };
 		11DFC7181F7270821F944347 /* ChatMessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F46741BA3580C948FD432F3B /* ChatMessageBubbleView.swift */; };
 		1A30DE9F3233FF21726315FD /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFF909A710BB9CD11A583E7 /* ChatView.swift */; };
@@ -176,6 +191,7 @@
 		DF783602F1EE4A6F19FC47EB /* JefitFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9993EC7457B4D020FC9D8FCE /* JefitFixtures.swift */; };
 		67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED5C3AB824D34919DA2D319 /* MockAnthropicService.swift */; };
 		ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91456C9AD6483E9EC173B6F /* MockAutoFillService.swift */; };
+		79859C7FAE6DFD892ADAA6F8 /* MockBodyMeasurementRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3770311AC9BEEEE1B9068A /* MockBodyMeasurementRepository.swift */; };
 		F93E421766D5BAA185A5D97A /* MockBodyWeightRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41EEE4F98213103358D5CAD5 /* MockBodyWeightRepository.swift */; };
 		EF0190BDBED8D17D8409E895 /* MockChatMessageRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21483199A38B51BC7C2521CF /* MockChatMessageRepository.swift */; };
 		0063611710BE35E7D91E79AC /* MockExercisePhotoStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2234A5D7496F3A79D4F68721 /* MockExercisePhotoStorage.swift */; };
@@ -184,6 +200,7 @@
 		2458247201216B2D168155DC /* MockImageUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E43F0552150DFE1A459FF1 /* MockImageUploadService.swift */; };
 		57B50D38BFC35B9CE81137C1 /* MockInsightGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF9E610DA69697073FA94F75 /* MockInsightGenerationService.swift */; };
 		8DF037FDBBFA11DCD4918753 /* MockInsightRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF5085E2591D9D33466039F /* MockInsightRepository.swift */; };
+		621ACC35B6F89A7337903A10 /* MockMedicationRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A0E3A48527156DDB8C914E5 /* MockMedicationRepository.swift */; };
 		C443511381F97AA1A4AF91DF /* MockNetworkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32EB615C09D872B5642099AE /* MockNetworkService.swift */; };
 		ED11E6E44FEBA57CF6B25039 /* MockNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2A4B1B64DC6C4A0351FED4 /* MockNotificationScheduler.swift */; };
 		4A511DC84B22381F76C649F3 /* MockPRDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E536544FD38BA651DBDA6B /* MockPRDetectionService.swift */; };
@@ -261,6 +278,7 @@
 		ABF6205F7428FC8856011767 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC4BA4258EB06839B1EB14BE /* AppStateTests.swift */; };
 		6FFE47AAAA7449058E9C42B3 /* AutoFinishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2EE8E66038FB41E761810C /* AutoFinishTests.swift */; };
 		61D87BFD5D753A149B14B4B7 /* BodyGoalSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA2ABF31C40AE4B1E8180A3 /* BodyGoalSettingsTests.swift */; };
+		8129E1EA8E44EF248221E4F1 /* BodyWeightCardSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69DCA4F6C98C03F8C274A34F /* BodyWeightCardSummaryTests.swift */; };
 		B45CD9EF83FD5469A830CC2F /* BodyWeightTrendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CEFFD123E79219EFEF5365F /* BodyWeightTrendTests.swift */; };
 		F698D18D8853773F1E419E5C /* BodyWeightTrendViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26EE47F91517F6B126D7B8DD /* BodyWeightTrendViewModelTests.swift */; };
 		BD88CA8763EA48B6DF5EA1C0 /* BodyWeightViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A754765C32959052E27AC76D /* BodyWeightViewModelTests.swift */; };
@@ -275,6 +293,11 @@
 		4813B1ECDEF37E3FECE94FD5 /* HistoryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27F62B35213EBC9B0E172B26 /* HistoryViewModelTests.swift */; };
 		22808144F86FCDCD4967FD58 /* HomeViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C44B0FA03C14D20C9389468 /* HomeViewModelTests.swift */; };
 		6B23B904FEB12E4CC377B8E2 /* LocalPhotoStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C999AB43A1EBD631D51A1240 /* LocalPhotoStorageTests.swift */; };
+		49773CCFD3DABE31003EF059 /* MeasurementsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B308448A233778899E020BCA /* MeasurementsViewModelTests.swift */; };
+		529ADE09888F3ED6728160DE /* MedicationDetailViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE199F13BECD9575E10EDEF7 /* MedicationDetailViewModelTests.swift */; };
+		FD8F5D074FF0E32D7EA4903C /* MedicationDoseFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F9DA44B1A6E619F77382D73 /* MedicationDoseFormatterTests.swift */; };
+		3B6C720F8D60D586E4C41B46 /* MedicationDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD57F4C5EFAC3E0BF280A23 /* MedicationDraftTests.swift */; };
+		FF86E882A7991E197D9CF93A /* MedicationListViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D0474DFD5FD0D53E3CEDE3 /* MedicationListViewModelTests.swift */; };
 		BC062055415B9F5F2AA218D4 /* ProgressChartsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7146F35021932829001C2176 /* ProgressChartsViewModelTests.swift */; };
 		F46FDBBB846D954DD4AD9F86 /* ProteinTargetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60B9243CE4DE4A41F90134F4 /* ProteinTargetTests.swift */; };
 		11BCB4FAEB0CF65CB75E4B9C /* ReportListViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36FBA282E430397FDB1DAB7 /* ReportListViewModelTests.swift */; };
@@ -285,6 +308,7 @@
 		F32875CBA3923465ACB2286C /* TemplateEditorViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53EAC91BAAC97F5A12CBFB4 /* TemplateEditorViewModelTests.swift */; };
 		AAED9BD1AE943448932273DE /* TemplateListViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99B98944B5CFB52B6AEE2801 /* TemplateListViewModelTests.swift */; };
 		85AD5280F04B67A530F5AA5F /* TemplateNoteEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F742A5878D38F8D3E422379E /* TemplateNoteEditingTests.swift */; };
+		CCC6E52224767FF5AB168BE0 /* BodyScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D631C4F644180FDFEDA709B1 /* BodyScreenshotTests.swift */; };
 		0726F6EC7D8FA05F9E813813 /* ChatCoachTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04EE550AEB750B7D31001C33 /* ChatCoachTests.swift */; };
 		55FA3AC88857A75E2E176E03 /* EdgeCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F739CE4AA8271F7F5AFA567 /* EdgeCaseTests.swift */; };
 		C174A9B05E9F11B8A0AB09D4 /* ExerciseLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55F28519E3AB8FA28E83AB69 /* ExerciseLibraryTests.swift */; };
@@ -423,6 +447,7 @@
 		C6FF0D1EB078F5CF438D6195 /* LocalPhotoStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPhotoStorage.swift; sourceTree = "<group>"; };
 		2BB5C6DF96590C72CEA77BD4 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		BFB1106CAB595E0F873B0E4E /* ActiveWorkoutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutViewModel.swift; sourceTree = "<group>"; };
+		6DF7F965D48D79A92BB9A788 /* BodyFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyFormat.swift; sourceTree = "<group>"; };
 		E9D3CC2C84199AB8FC372FAF /* BodyWeightTrend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrend.swift; sourceTree = "<group>"; };
 		24213EDB6077D899B03C4163 /* BodyWeightTrendViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrendViewModel.swift; sourceTree = "<group>"; };
 		0A915220457843657F447086 /* BodyWeightViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightViewModel.swift; sourceTree = "<group>"; };
@@ -434,6 +459,13 @@
 		0F277AE002881B45FCFB7E75 /* ExerciseRecency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseRecency.swift; sourceTree = "<group>"; };
 		83B65EEC4D65C7299EC739E6 /* HistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewModel.swift; sourceTree = "<group>"; };
 		44408B76370ECDD1BBB38427 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
+		0266C5C5C5021B57C545E79C /* MeasurementHeight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementHeight.swift; sourceTree = "<group>"; };
+		09007D51EE97379352247BC8 /* MeasurementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementsViewModel.swift; sourceTree = "<group>"; };
+		FE9D5896590FBFAA11C21E6E /* MedicationDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationDetailViewModel.swift; sourceTree = "<group>"; };
+		2351AEFC743EE9DBB9020D1C /* MedicationDoseFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationDoseFormatter.swift; sourceTree = "<group>"; };
+		BBE49DD2FF41C0CDE4EEA85A /* MedicationDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationDraft.swift; sourceTree = "<group>"; };
+		603AC8515D637B0377488262 /* MedicationListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationListViewModel.swift; sourceTree = "<group>"; };
+		C75200F538EF9326918CE6AA /* MedicationUsualDose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationUsualDose.swift; sourceTree = "<group>"; };
 		8FFEBACB7D0929B1ADBBAD73 /* ProgressChartsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressChartsViewModel.swift; sourceTree = "<group>"; };
 		A39A555BEDF9FC83093D8202 /* ProteinTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProteinTarget.swift; sourceTree = "<group>"; };
 		224167822A323D284DE3CC52 /* ReportListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportListViewModel.swift; sourceTree = "<group>"; };
@@ -443,7 +475,14 @@
 		8EB00D1C9712594526486A75 /* TemplateEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateEditorViewModel.swift; sourceTree = "<group>"; };
 		ED7DA3C8168497F0DAEAAC17 /* TemplateListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateListViewModel.swift; sourceTree = "<group>"; };
 		F20E59C316D5D955F0E978F2 /* WorkoutCompletionSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutCompletionSummary.swift; sourceTree = "<group>"; };
+		FB11451660C93BFC93FE02C2 /* BodyCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyCard.swift; sourceTree = "<group>"; };
+		CD7785533DDDC7EEE8A99CB6 /* BodyScreenshotSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyScreenshotSeed.swift; sourceTree = "<group>"; };
 		C5D0AB90B8172C307D20CCEE /* BodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyView.swift; sourceTree = "<group>"; };
+		5006C5B8F58804F019BFD007 /* BodyWeightSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightSection.swift; sourceTree = "<group>"; };
+		71D74F0AF846264D3DEA87F1 /* MeasurementsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementsSection.swift; sourceTree = "<group>"; };
+		8ACAD6190F586911BD611DB9 /* MedicationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationDetailView.swift; sourceTree = "<group>"; };
+		5BB674859E3A546B007AAA2A /* MedicationSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationSheets.swift; sourceTree = "<group>"; };
+		823C63ED777DE4DA2566E5DA /* MedicationsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationsSection.swift; sourceTree = "<group>"; };
 		7A5364572CD0945B9DF34712 /* ChatInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputView.swift; sourceTree = "<group>"; };
 		F46741BA3580C948FD432F3B /* ChatMessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageBubbleView.swift; sourceTree = "<group>"; };
 		7DFF909A710BB9CD11A583E7 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
@@ -492,6 +531,7 @@
 		9993EC7457B4D020FC9D8FCE /* JefitFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JefitFixtures.swift; sourceTree = "<group>"; };
 		2ED5C3AB824D34919DA2D319 /* MockAnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAnthropicService.swift; sourceTree = "<group>"; };
 		A91456C9AD6483E9EC173B6F /* MockAutoFillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAutoFillService.swift; sourceTree = "<group>"; };
+		4C3770311AC9BEEEE1B9068A /* MockBodyMeasurementRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBodyMeasurementRepository.swift; sourceTree = "<group>"; };
 		41EEE4F98213103358D5CAD5 /* MockBodyWeightRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBodyWeightRepository.swift; sourceTree = "<group>"; };
 		21483199A38B51BC7C2521CF /* MockChatMessageRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockChatMessageRepository.swift; sourceTree = "<group>"; };
 		2234A5D7496F3A79D4F68721 /* MockExercisePhotoStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockExercisePhotoStorage.swift; sourceTree = "<group>"; };
@@ -500,6 +540,7 @@
 		17E43F0552150DFE1A459FF1 /* MockImageUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockImageUploadService.swift; sourceTree = "<group>"; };
 		AF9E610DA69697073FA94F75 /* MockInsightGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockInsightGenerationService.swift; sourceTree = "<group>"; };
 		FEF5085E2591D9D33466039F /* MockInsightRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockInsightRepository.swift; sourceTree = "<group>"; };
+		8A0E3A48527156DDB8C914E5 /* MockMedicationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockMedicationRepository.swift; sourceTree = "<group>"; };
 		32EB615C09D872B5642099AE /* MockNetworkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockNetworkService.swift; sourceTree = "<group>"; };
 		8E2A4B1B64DC6C4A0351FED4 /* MockNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockNotificationScheduler.swift; sourceTree = "<group>"; };
 		D8E536544FD38BA651DBDA6B /* MockPRDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPRDetectionService.swift; sourceTree = "<group>"; };
@@ -577,6 +618,7 @@
 		BC4BA4258EB06839B1EB14BE /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		3E2EE8E66038FB41E761810C /* AutoFinishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFinishTests.swift; sourceTree = "<group>"; };
 		FCA2ABF31C40AE4B1E8180A3 /* BodyGoalSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyGoalSettingsTests.swift; sourceTree = "<group>"; };
+		69DCA4F6C98C03F8C274A34F /* BodyWeightCardSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightCardSummaryTests.swift; sourceTree = "<group>"; };
 		9CEFFD123E79219EFEF5365F /* BodyWeightTrendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrendTests.swift; sourceTree = "<group>"; };
 		26EE47F91517F6B126D7B8DD /* BodyWeightTrendViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightTrendViewModelTests.swift; sourceTree = "<group>"; };
 		A754765C32959052E27AC76D /* BodyWeightViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyWeightViewModelTests.swift; sourceTree = "<group>"; };
@@ -591,6 +633,11 @@
 		27F62B35213EBC9B0E172B26 /* HistoryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewModelTests.swift; sourceTree = "<group>"; };
 		1C44B0FA03C14D20C9389468 /* HomeViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModelTests.swift; sourceTree = "<group>"; };
 		C999AB43A1EBD631D51A1240 /* LocalPhotoStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPhotoStorageTests.swift; sourceTree = "<group>"; };
+		B308448A233778899E020BCA /* MeasurementsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementsViewModelTests.swift; sourceTree = "<group>"; };
+		EE199F13BECD9575E10EDEF7 /* MedicationDetailViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationDetailViewModelTests.swift; sourceTree = "<group>"; };
+		5F9DA44B1A6E619F77382D73 /* MedicationDoseFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationDoseFormatterTests.swift; sourceTree = "<group>"; };
+		6FD57F4C5EFAC3E0BF280A23 /* MedicationDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationDraftTests.swift; sourceTree = "<group>"; };
+		62D0474DFD5FD0D53E3CEDE3 /* MedicationListViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationListViewModelTests.swift; sourceTree = "<group>"; };
 		7146F35021932829001C2176 /* ProgressChartsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressChartsViewModelTests.swift; sourceTree = "<group>"; };
 		60B9243CE4DE4A41F90134F4 /* ProteinTargetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProteinTargetTests.swift; sourceTree = "<group>"; };
 		E36FBA282E430397FDB1DAB7 /* ReportListViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportListViewModelTests.swift; sourceTree = "<group>"; };
@@ -601,6 +648,7 @@
 		A53EAC91BAAC97F5A12CBFB4 /* TemplateEditorViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateEditorViewModelTests.swift; sourceTree = "<group>"; };
 		99B98944B5CFB52B6AEE2801 /* TemplateListViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateListViewModelTests.swift; sourceTree = "<group>"; };
 		F742A5878D38F8D3E422379E /* TemplateNoteEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateNoteEditingTests.swift; sourceTree = "<group>"; };
+		D631C4F644180FDFEDA709B1 /* BodyScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyScreenshotTests.swift; sourceTree = "<group>"; };
 		04EE550AEB750B7D31001C33 /* ChatCoachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCoachTests.swift; sourceTree = "<group>"; };
 		4F739CE4AA8271F7F5AFA567 /* EdgeCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeCaseTests.swift; sourceTree = "<group>"; };
 		55F28519E3AB8FA28E83AB69 /* ExerciseLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseLibraryTests.swift; sourceTree = "<group>"; };
@@ -848,6 +896,7 @@
 			isa = PBXGroup;
 			children = (
 				BFB1106CAB595E0F873B0E4E,
+				6DF7F965D48D79A92BB9A788,
 				E9D3CC2C84199AB8FC372FAF,
 				24213EDB6077D899B03C4163,
 				0A915220457843657F447086,
@@ -859,6 +908,13 @@
 				0F277AE002881B45FCFB7E75,
 				83B65EEC4D65C7299EC739E6,
 				44408B76370ECDD1BBB38427,
+				0266C5C5C5021B57C545E79C,
+				09007D51EE97379352247BC8,
+				FE9D5896590FBFAA11C21E6E,
+				2351AEFC743EE9DBB9020D1C,
+				BBE49DD2FF41C0CDE4EEA85A,
+				603AC8515D637B0377488262,
+				C75200F538EF9326918CE6AA,
 				8FFEBACB7D0929B1ADBBAD73,
 				A39A555BEDF9FC83093D8202,
 				224167822A323D284DE3CC52,
@@ -890,7 +946,14 @@
 		5556D1667F6B925847D96871 /* Body */ = {
 			isa = PBXGroup;
 			children = (
+				FB11451660C93BFC93FE02C2,
+				CD7785533DDDC7EEE8A99CB6,
 				C5D0AB90B8172C307D20CCEE,
+				5006C5B8F58804F019BFD007,
+				71D74F0AF846264D3DEA87F1,
+				8ACAD6190F586911BD611DB9,
+				5BB674859E3A546B007AAA2A,
+				823C63ED777DE4DA2566E5DA,
 			);
 			path = Body;
 			sourceTree = "<group>";
@@ -1025,6 +1088,7 @@
 				9993EC7457B4D020FC9D8FCE,
 				2ED5C3AB824D34919DA2D319,
 				A91456C9AD6483E9EC173B6F,
+				4C3770311AC9BEEEE1B9068A,
 				41EEE4F98213103358D5CAD5,
 				21483199A38B51BC7C2521CF,
 				2234A5D7496F3A79D4F68721,
@@ -1033,6 +1097,7 @@
 				17E43F0552150DFE1A459FF1,
 				AF9E610DA69697073FA94F75,
 				FEF5085E2591D9D33466039F,
+				8A0E3A48527156DDB8C914E5,
 				32EB615C09D872B5642099AE,
 				8E2A4B1B64DC6C4A0351FED4,
 				D8E536544FD38BA651DBDA6B,
@@ -1138,6 +1203,7 @@
 				BC4BA4258EB06839B1EB14BE,
 				3E2EE8E66038FB41E761810C,
 				FCA2ABF31C40AE4B1E8180A3,
+				69DCA4F6C98C03F8C274A34F,
 				9CEFFD123E79219EFEF5365F,
 				26EE47F91517F6B126D7B8DD,
 				A754765C32959052E27AC76D,
@@ -1152,6 +1218,11 @@
 				27F62B35213EBC9B0E172B26,
 				1C44B0FA03C14D20C9389468,
 				C999AB43A1EBD631D51A1240,
+				B308448A233778899E020BCA,
+				EE199F13BECD9575E10EDEF7,
+				5F9DA44B1A6E619F77382D73,
+				6FD57F4C5EFAC3E0BF280A23,
+				62D0474DFD5FD0D53E3CEDE3,
 				7146F35021932829001C2176,
 				60B9243CE4DE4A41F90134F4,
 				E36FBA282E430397FDB1DAB7,
@@ -1171,6 +1242,7 @@
 			children = (
 				BB29794E39749807DA59AC05,
 				6D1B02CF291F97FB56A74AA5,
+				D631C4F644180FDFEDA709B1,
 				04EE550AEB750B7D31001C33,
 				4F739CE4AA8271F7F5AFA567,
 				55F28519E3AB8FA28E83AB69,
@@ -1409,6 +1481,7 @@
 				0B71D39860B245530CD3B22B /* LocalPhotoStorage.swift in Sources */,
 				39320B32AAB849DA6F4142BC /* SettingsManager.swift in Sources */,
 				B902261B25F991B27E8726CE /* ActiveWorkoutViewModel.swift in Sources */,
+				E9CA76FEAB89C989E40B535D /* BodyFormat.swift in Sources */,
 				DC8670B09213E30C41AD10CA /* BodyWeightTrend.swift in Sources */,
 				444A15FEEAEBB9AE5F856062 /* BodyWeightTrendViewModel.swift in Sources */,
 				8B39AD114C8A22CA4A12F63D /* BodyWeightViewModel.swift in Sources */,
@@ -1420,6 +1493,13 @@
 				8F24AE7B3CEFFBEF345BEE57 /* ExerciseRecency.swift in Sources */,
 				A18AFE68B9F7A6C5DA63C7B7 /* HistoryViewModel.swift in Sources */,
 				831BCA92C9335364B839B29E /* HomeViewModel.swift in Sources */,
+				027D092B6153945AAFB5E085 /* MeasurementHeight.swift in Sources */,
+				46F444A023939935710F414C /* MeasurementsViewModel.swift in Sources */,
+				A2A1439C9CE20ECB6FDDFF3F /* MedicationDetailViewModel.swift in Sources */,
+				86DA1CBACEADB5BBA154B677 /* MedicationDoseFormatter.swift in Sources */,
+				558F8A984E0961E5E8B799FC /* MedicationDraft.swift in Sources */,
+				E6D2B783AC57CD48A6A964DE /* MedicationListViewModel.swift in Sources */,
+				0E0232DE086DBE791574D0E2 /* MedicationUsualDose.swift in Sources */,
 				AFB61D6A7330C78EAF1CE4C0 /* ProgressChartsViewModel.swift in Sources */,
 				92BE1F39048FD148C6402666 /* ProteinTarget.swift in Sources */,
 				4846E886CAD6B57A39E22797 /* ReportListViewModel.swift in Sources */,
@@ -1429,7 +1509,14 @@
 				8F0C66D0DB17D96C05B52072 /* TemplateEditorViewModel.swift in Sources */,
 				CCE185F5CDFE404D29055941 /* TemplateListViewModel.swift in Sources */,
 				79296A6352563B20FA8C08A4 /* WorkoutCompletionSummary.swift in Sources */,
+				0045ED4879FADBAD741C9D07 /* BodyCard.swift in Sources */,
+				58ACFBE0F1E6571D6C4D376E /* BodyScreenshotSeed.swift in Sources */,
 				508ECAD5436C3677DB3F4E1B /* BodyView.swift in Sources */,
+				C2FACDAD2367E6EB830A8657 /* BodyWeightSection.swift in Sources */,
+				65E70BE9A428BD63F018BAF5 /* MeasurementsSection.swift in Sources */,
+				6ADA30F0C86EA9128AF08286 /* MedicationDetailView.swift in Sources */,
+				496DE4846E3DA1BEAF987A91 /* MedicationSheets.swift in Sources */,
+				6AB4C95C825601B8A67A70F0 /* MedicationsSection.swift in Sources */,
 				EB9E00C84758623B715B6097 /* ChatInputView.swift in Sources */,
 				11DFC7181F7270821F944347 /* ChatMessageBubbleView.swift in Sources */,
 				1A30DE9F3233FF21726315FD /* ChatView.swift in Sources */,
@@ -1485,6 +1572,7 @@
 				DF783602F1EE4A6F19FC47EB /* JefitFixtures.swift in Sources */,
 				67F2BC41FA8B4BD6EF7D26B6 /* MockAnthropicService.swift in Sources */,
 				ED5F7FB462E07461B1B2D14B /* MockAutoFillService.swift in Sources */,
+				79859C7FAE6DFD892ADAA6F8 /* MockBodyMeasurementRepository.swift in Sources */,
 				F93E421766D5BAA185A5D97A /* MockBodyWeightRepository.swift in Sources */,
 				EF0190BDBED8D17D8409E895 /* MockChatMessageRepository.swift in Sources */,
 				0063611710BE35E7D91E79AC /* MockExercisePhotoStorage.swift in Sources */,
@@ -1493,6 +1581,7 @@
 				2458247201216B2D168155DC /* MockImageUploadService.swift in Sources */,
 				57B50D38BFC35B9CE81137C1 /* MockInsightGenerationService.swift in Sources */,
 				8DF037FDBBFA11DCD4918753 /* MockInsightRepository.swift in Sources */,
+				621ACC35B6F89A7337903A10 /* MockMedicationRepository.swift in Sources */,
 				C443511381F97AA1A4AF91DF /* MockNetworkService.swift in Sources */,
 				ED11E6E44FEBA57CF6B25039 /* MockNotificationScheduler.swift in Sources */,
 				4A511DC84B22381F76C649F3 /* MockPRDetectionService.swift in Sources */,
@@ -1570,6 +1659,7 @@
 				ABF6205F7428FC8856011767 /* AppStateTests.swift in Sources */,
 				6FFE47AAAA7449058E9C42B3 /* AutoFinishTests.swift in Sources */,
 				61D87BFD5D753A149B14B4B7 /* BodyGoalSettingsTests.swift in Sources */,
+				8129E1EA8E44EF248221E4F1 /* BodyWeightCardSummaryTests.swift in Sources */,
 				B45CD9EF83FD5469A830CC2F /* BodyWeightTrendTests.swift in Sources */,
 				F698D18D8853773F1E419E5C /* BodyWeightTrendViewModelTests.swift in Sources */,
 				BD88CA8763EA48B6DF5EA1C0 /* BodyWeightViewModelTests.swift in Sources */,
@@ -1584,6 +1674,11 @@
 				4813B1ECDEF37E3FECE94FD5 /* HistoryViewModelTests.swift in Sources */,
 				22808144F86FCDCD4967FD58 /* HomeViewModelTests.swift in Sources */,
 				6B23B904FEB12E4CC377B8E2 /* LocalPhotoStorageTests.swift in Sources */,
+				49773CCFD3DABE31003EF059 /* MeasurementsViewModelTests.swift in Sources */,
+				529ADE09888F3ED6728160DE /* MedicationDetailViewModelTests.swift in Sources */,
+				FD8F5D074FF0E32D7EA4903C /* MedicationDoseFormatterTests.swift in Sources */,
+				3B6C720F8D60D586E4C41B46 /* MedicationDraftTests.swift in Sources */,
+				FF86E882A7991E197D9CF93A /* MedicationListViewModelTests.swift in Sources */,
 				BC062055415B9F5F2AA218D4 /* ProgressChartsViewModelTests.swift in Sources */,
 				F46FDBBB846D954DD4AD9F86 /* ProteinTargetTests.swift in Sources */,
 				11BCB4FAEB0CF65CB75E4B9C /* ReportListViewModelTests.swift in Sources */,
@@ -1601,6 +1696,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CCC6E52224767FF5AB168BE0 /* BodyScreenshotTests.swift in Sources */,
 				0726F6EC7D8FA05F9E813813 /* ChatCoachTests.swift in Sources */,
 				55FA3AC88857A75E2E176E03 /* EdgeCaseTests.swift in Sources */,
 				C174A9B05E9F11B8A0AB09D4 /* ExerciseLibraryTests.swift in Sources */,

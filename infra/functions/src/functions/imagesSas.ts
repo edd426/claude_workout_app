@@ -11,6 +11,7 @@ import {
   StorageSharedKeyCredential,
 } from "@azure/storage-blob";
 import { authenticate } from "../shared/auth";
+import { isExercisePhotoPath } from "../shared/exercisePhotoPath";
 import { getBlobServiceClient, IMAGES_CONTAINER } from "../shared/storage";
 import { SasResponse } from "../shared/types";
 
@@ -32,8 +33,18 @@ const BLOB_PATH_PATTERNS: readonly RegExp[] = [
   new RegExp(`^reports/${UUID}\\.jpg$`),
 ];
 
+/**
+ * Issue #170 adds a third family, exercises/ext/{externalId}.jpg: a photo
+ * attached by an exercise's stable externalId (written by the MCP tool
+ * attach_exercise_photo, read by the phone). Its id is not a UUID, so it is
+ * checked by an exact character allow-list instead — see exercisePhotoPath.ts.
+ * Upload and download both, like the other families.
+ */
 function isAllowedBlobPath(path: string): boolean {
-  return BLOB_PATH_PATTERNS.some((pattern) => pattern.test(path));
+  return (
+    BLOB_PATH_PATTERNS.some((pattern) => pattern.test(path)) ||
+    isExercisePhotoPath(path)
+  );
 }
 
 function getStorageCredential(): StorageSharedKeyCredential {
@@ -86,7 +97,9 @@ app.http("imagesSas", {
         jsonBody: {
           error:
             'Invalid path: must match "exercises/{exerciseId}.jpg" or ' +
-            '"reports/{reportId}.jpg", where the id is a UUID',
+            '"reports/{reportId}.jpg", where the id is a UUID, or ' +
+            '"exercises/ext/{externalId}.jpg", where the id is a catalog ' +
+            "externalId or a custom:{slug}:{uuid} id",
         },
       };
     }

@@ -32,18 +32,22 @@ slim build-time catalog before any write request is sent.
 | Tool | Description |
 |------|-------------|
 | `list_templates` | List all workout templates |
-| `get_template` | Get a template with its exercises |
+| `get_template` | Get a template with its exercises, each with its `alternatives` (#169) once the phone has mirrored v5 data; bundled alternatives are named from the catalog |
 | `list_workouts` | List workout session summaries (optional `startDate`/`endDate`/`limit`) |
 | `get_workout` | Full workout detail (exercises, sets, weights) |
 | `get_exercise_history` | Past sets for one exercise across workouts |
 | `get_stats` | Summary statistics: totals, PRs, workouts/week |
 | `get_calendar` | Per-day workout frequency for a date range |
 | `search_exercises` | Ranked bundled-catalog search merged with synced custom exercises |
-| `create_template` | Validate exercise IDs and enqueue a template |
-| `update_template` | Enqueue a template update for approval |
+| `create_template` | Validate exercise IDs (alternatives included) and enqueue a template |
+| `update_template` | Enqueue a template update for approval. Per exercise, `alternatives` omitted keeps the slot's list, `[]` clears it, a list replaces it (#169) |
 | `delete_template` | Enqueue a template deletion for approval |
 | `create_program` | Validate all templates, then enqueue each |
 | `create_custom_exercise` | Enqueue a custom exercise |
+| `attach_exercise_photo` | Attach a JPEG (`externalId`, `imageBase64`, ≤ 3.75 MB) to an exercise: uploads it, then enqueues `setExercisePhoto` for approval on the phone (#170) |
+| `list_body_measurements` | Circumference log (`site`, `startDate`, `endDate`, `limit`), the stored height, and the current waist-to-height ratio with its NICE NG246 band (#165) |
+| `list_medications` | The medication log's medications (`includeArchived`), with each one's current concentration (#164) |
+| `list_medication_logs` | Logged doses (`medicationId`, `startDate`, `endDate`, `limit`) with medication names; `computedMg` and the `…AtLog` values exactly as logged (#164) |
 | `list_exercise_reports` | Read the complaint backlog filed from the app (defaults to unresolved); a non-null `photoURL` means a photo is attached |
 | `get_report_photo` | View the photo attached to a report (`id`): a caption naming the report plus the JPEG as image content. No `photoURL` means no photo, or one the phone has not uploaded yet |
 | `resolve_exercise_report` | Enqueue a close-out for one report (`resolved` / `acknowledged`) |
@@ -208,9 +212,46 @@ except health:
 | `/api/calendar` | `startDate`, `endDate` (both required) |
 | `/api/sync/snapshot` | supplies `snapshot.customExercises` for catalog search |
 | `/api/reports` | `status` (open/acknowledged/resolved/all), `category`, `exerciseExternalId`, `limit` (default 100, max 500) |
-| `/api/images/sas` | `path` (`reports/{reportId}.jpg` for report photos), `mode=download`; returns `{ sasUrl, expiresAt }` |
+| `/api/body-measurements` | `site`, `startDate`, `endDate`, `limit` (default 100, max 500); returns `{ mirrored, heightCm, measurements, latestWaist }` |
+| `/api/medications` | `includeArchived` (`true`/`false`, default false); returns `{ mirrored, medications }` sorted by name |
+| `/api/medication-doses` | `medicationId` (404 if unknown), `startDate`, `endDate`, `limit` (default 100, max 500); returns `{ mirrored, doses }` newest first, each with `medicationName` |
+| `/api/images/sas` | `path` (`reports/{reportId}.jpg` for report photos, `exercises/ext/{externalId}.jpg` for exercise photos), `mode` (`download`/`upload`); returns `{ sasUrl, expiresAt }` |
 | `/api/inbox` | `GET ?status=` lists operations; `POST` enqueues one |
 | `/api/health` | — (anonymous) |
+
+The three v5 reads answer `mirrored: false` (and read nothing) until the phone
+has pushed snapshot wire v5 at least once, so "not synced yet" is never
+reported as "none". Their date bounds are UTC; a date alone as `endDate`
+includes that whole day. Medication and measurement data is health data: the
+Functions log errors only, never documents.
+
+### Exercise photos (`attach_exercise_photo`, #170)
+
+1. The externalId must match the photo-path grammar exactly: a catalog id
+   (`[A-Za-z0-9][A-Za-z0-9_-]{0,127}`) or a custom id
+   (`custom:{slug}:{lowercase uuid}`). No `/`, `.`, `%` or whitespace, so it
+   cannot leave `exercises/ext/`. The image must be base64 of a JPEG of at
+   most 3.75 MB. Both are checked before any request.
+2. The exercise must exist: the bundled catalog, or a synced or queued
+   custom exercise.
+3. A **write** SAS for `exercises/ext/{externalId}.jpg` comes from
+   `/api/images/sas`; the tool refuses one for any other blob, uploads
+   **directly to Blob Storage** with that SAS only (never the API key), and
+   never prints the SAS URL.
+4. Only after the upload, it enqueues `setExercisePhoto { externalId, blobPath }`.
+   The Function marks it `requiresApproval`; the phone applies it on approval
+   and downloads the photo with a read SAS for the same path.
+
+A 400 from `/api/images/sas` or from the enqueue usually means the deployed
+Functions app predates #170. The claude.ai transport accepts request bodies up
+to 6 MiB (the SDK default is 4 MiB) so a photo at the limit fits.
+
+**Known limit.** The image travels as a tool argument, so the model has to
+write out its whole base64 text: a typical 200 KB photo is ~270,000
+characters of output. That suits a few photos per conversation, not a bulk
+import of a whole gym, and claude.ai has no way to hand an uploaded image's
+bytes to a tool at all. A bulk path needs a different input, for example a
+local-file argument served only by the stdio server.
 
 ### Report photos (`get_report_photo`, #141)
 

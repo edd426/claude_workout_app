@@ -30,6 +30,7 @@ describe("tool listing", () => {
     const names = TOOLS.map((t) => t.name).sort();
     expect(names).toEqual(
       [
+        "attach_exercise_photo",
         "create_custom_exercise",
         "create_program",
         "create_template",
@@ -42,7 +43,10 @@ describe("tool listing", () => {
         "get_template",
         "get_workout",
         "health",
+        "list_body_measurements",
         "list_exercise_reports",
+        "list_medication_logs",
+        "list_medications",
         "list_pending_writes",
         "list_templates",
         "list_workouts",
@@ -628,5 +632,81 @@ describe("read tool dispatch", () => {
     const result = await handleToolCall("does_not_exist", {});
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Unknown tool");
+  });
+});
+
+describe("health-data read dispatch (#164, #165)", () => {
+  it("list_body_measurements dispatches every filter and returns JSON with the ratio", async () => {
+    const waist = {
+      id: "M-1",
+      site: "waist",
+      valueCm: 90,
+      recordedAt: "2026-11-03T07:00:00.000Z",
+      lastModified: "2026-11-03T07:00:00.000Z",
+    };
+    mockApiGet.mockResolvedValue({
+      mirrored: true,
+      heightCm: 180,
+      measurements: [waist],
+      latestWaist: waist,
+    });
+
+    const result = await handleToolCall("list_body_measurements", {
+      site: "waist",
+      startDate: "2026-10-01",
+      endDate: "2026-11-03",
+      limit: 5,
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiGet).toHaveBeenCalledWith("body-measurements", {
+      site: "waist",
+      startDate: "2026-10-01",
+      endDate: "2026-11-03",
+      limit: 5,
+    });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.waistToHeight).toEqual(
+      expect.objectContaining({ ratio: 0.5, band: "increased" })
+    );
+  });
+
+  it("list_medications passes includeArchived only when it is the boolean true", async () => {
+    mockApiGet.mockResolvedValue({ mirrored: true, medications: [] });
+
+    await handleToolCall("list_medications", { includeArchived: true });
+    await handleToolCall("list_medications", {});
+
+    expect(mockApiGet).toHaveBeenNthCalledWith(1, "medications", {
+      includeArchived: "true",
+    });
+    expect(mockApiGet).toHaveBeenNthCalledWith(2, "medications", {
+      includeArchived: undefined,
+    });
+  });
+
+  it("list_medication_logs dispatches medicationId and the date window", async () => {
+    mockApiGet.mockResolvedValue({ mirrored: true, doses: [] });
+
+    const result = await handleToolCall("list_medication_logs", {
+      medicationId: "MED-1",
+      startDate: "2026-11-01",
+      endDate: "2026-11-03",
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(mockApiGet).toHaveBeenCalledWith("medication-doses", {
+      medicationId: "MED-1",
+      startDate: "2026-11-01",
+      endDate: "2026-11-03",
+      limit: undefined,
+    });
+  });
+
+  it("the medication tools tell the model computedMg is as logged", () => {
+    const logs = TOOLS.find((tool) => tool.name === "list_medication_logs");
+    expect(logs?.description).toMatch(/as logged/i);
+    expect(logs?.description).toMatch(/never recompute/i);
+    expect(logs?.description).toContain("tabletStrengthMgAtLog");
   });
 });

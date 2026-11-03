@@ -116,6 +116,27 @@ var containers = [
     name: 'exerciseOverlays'
     partitionKeyPath: '/id'
   }
+  // Snapshot sync wire v5 (issues #164, #165, #169). One container per
+  // collection for the same reason as exerciseOverlays: reconcileContainer
+  // deletes every doc absent from that collection's snapshot array.
+  // Medications and doses are health data; the Functions never log them.
+  // Height is a scalar on the syncMeta doc, not a container.
+  {
+    name: 'bodyMeasurements'
+    partitionKeyPath: '/id'
+  }
+  {
+    name: 'medications'
+    partitionKeyPath: '/id'
+  }
+  {
+    name: 'medicationDoses'
+    partitionKeyPath: '/id'
+  }
+  {
+    name: 'exerciseAlternatives'
+    partitionKeyPath: '/id'
+  }
   // MCP write path (issue #88): durable operations drained by the phone.
   // Deliberately separate from the snapshot-reconciled containers.
   {

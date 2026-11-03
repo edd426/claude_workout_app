@@ -21,6 +21,18 @@ export interface TemplateExercise {
   defaultWeight?: number;
   defaultRestSeconds: number;
   notes?: string;
+  /**
+   * Issue #169: absent until the phone has mirrored v5 data (unknown), then a
+   * list ([] = none), sorted by order. `name` is added from the catalog.
+   */
+  alternatives?: TemplateExerciseAlternative[];
+}
+
+export interface TemplateExerciseAlternative {
+  externalId: string;
+  order: number;
+  note?: string;
+  name?: string;
 }
 
 export interface Workout {

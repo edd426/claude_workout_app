@@ -11,6 +11,7 @@
 import { app, HttpRequest, InvocationContext } from "@azure/functions";
 import { authenticate } from "../src/shared/auth";
 import {
+  mockDatabase,
   mockItems,
   mockItemRead,
   mockFetchAll,
@@ -188,5 +189,148 @@ describe("GET /api/templates/{id} — detail", () => {
   test("returns 400 when id route param is missing", async () => {
     const res = await findHandler("templatesGet")(makeRequest(), new InvocationContext());
     expect(res.status).toBe(400);
+  });
+});
+
+// ─── #169: alternatives joined onto each template exercise ───────────────────
+// The mirror stores alternatives in their own container, keyed by
+// `templateExerciseId`. get_template joins them, in `order`, once a v5 push
+// has landed; before that the key is omitted (unknown), never [] (none).
+describe("GET /api/templates/{id} — alternatives (#169)", () => {
+  type Doc = Record<string, unknown>;
+
+  const legs = {
+    id: "TMPL-LEGS",
+    name: "Legs",
+    createdAt: "2026-11-01T00:00:00Z",
+    updatedAt: "2026-11-01T00:00:00Z",
+    timesPerformed: 0,
+    exercises: [
+      {
+        id: "TE-SQUAT",
+        order: 0,
+        exerciseId: "ex-1",
+        exerciseName: "Barbell Squat",
+        defaultSets: 3,
+        defaultReps: 5,
+        defaultRestSeconds: 180,
+      },
+      {
+        id: "TE-CURL",
+        order: 1,
+        exerciseId: "ex-2",
+        exerciseName: "Leg Curl",
+        defaultSets: 3,
+        defaultReps: 12,
+        defaultRestSeconds: 90,
+      },
+    ],
+  };
+
+  const smith = {
+    id: "ALT-2",
+    templateExerciseId: "TE-SQUAT",
+    externalId: "Smith_Machine_Squat",
+    order: 1,
+    lastModified: "2026-11-03T08:00:00Z",
+    _rid: "x",
+    _ts: 1,
+  };
+  const legPress = {
+    id: "ALT-1",
+    templateExerciseId: "TE-SQUAT",
+    externalId: "Leg_Press",
+    order: 0,
+    note: "if the rack is taken",
+    lastModified: "2026-11-03T08:00:00Z",
+  };
+
+  let meta: Doc | undefined;
+  let alternatives: Doc[];
+  let alternativesQuery: jest.Mock;
+
+  beforeEach(() => {
+    meta = {
+      id: "snapshot",
+      revision: 4,
+      serverTime: "2026-11-03T09:00:00Z",
+      schemaVersion: 5,
+      highestSchemaVersion: 5,
+    };
+    alternatives = [smith, legPress];
+    alternativesQuery = jest.fn(() => ({
+      fetchAll: async () => ({ resources: alternatives }),
+    }));
+    mockDatabase.container.mockImplementation((name: string) => {
+      if (name === "templates") {
+        return { item: () => ({ read: async () => ({ resource: legs }) }) };
+      }
+      if (name === "syncMeta") {
+        return { item: () => ({ read: async () => ({ resource: meta }) }) };
+      }
+      if (name === "exerciseAlternatives") {
+        return { items: { query: alternativesQuery } };
+      }
+      throw new Error(`unexpected container ${name}`);
+    });
+  });
+
+  async function getLegs() {
+    return findHandler("templatesGet")(
+      makeRequest({ params: { id: "TMPL-LEGS" } }),
+      new InvocationContext()
+    );
+  }
+
+  test("each exercise carries its alternatives in order, without Cosmos system props", async () => {
+    const res = await getLegs();
+
+    expect(res.status ?? 200).toBe(200);
+    const body = res.jsonBody as { exercises: Doc[] };
+    expect(body.exercises[0]["alternatives"]).toEqual([
+      { externalId: "Leg_Press", note: "if the rack is taken", order: 0 },
+      { externalId: "Smith_Machine_Squat", order: 1 },
+    ]);
+  });
+
+  test("an exercise with no alternatives gets [] once v5 is mirrored", async () => {
+    const res = await getLegs();
+    const body = res.jsonBody as { exercises: Doc[] };
+    expect(body.exercises[1]["alternatives"]).toEqual([]);
+  });
+
+  test("queries only this template's exercise ids", async () => {
+    await getLegs();
+    const [[spec]] = alternativesQuery.mock.calls as unknown as [[{
+      query: string;
+      parameters: { name: string; value: unknown }[];
+    }]];
+    expect(spec.query).toContain("ARRAY_CONTAINS(@ids, c.templateExerciseId)");
+    expect(spec.parameters).toEqual([{ name: "@ids", value: ["TE-SQUAT", "TE-CURL"] }]);
+  });
+
+  test("before any v5 push the alternatives key is omitted and the container is not read", async () => {
+    meta = { id: "snapshot", revision: 2, serverTime: "x", highestSchemaVersion: 4 };
+
+    const res = await getLegs();
+
+    const body = res.jsonBody as { exercises: Doc[] };
+    expect(body.exercises[0]).not.toHaveProperty("alternatives");
+    expect(alternativesQuery).not.toHaveBeenCalled();
+  });
+
+  test("a failed alternatives read still returns the template, without the key", async () => {
+    alternativesQuery.mockImplementation(() => ({
+      fetchAll: async () => {
+        throw new Error("boom");
+      },
+    }));
+
+    const res = await getLegs();
+
+    expect(res.status ?? 200).toBe(200);
+    const body = res.jsonBody as { name: string; exercises: Doc[] };
+    expect(body.name).toBe("Legs");
+    expect(body.exercises[0]).not.toHaveProperty("alternatives");
   });
 });

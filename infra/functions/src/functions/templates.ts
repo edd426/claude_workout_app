@@ -17,10 +17,81 @@ import {
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
 import { parseLimit, readItemOrNull } from "../shared/readHelpers";
-import { WorkoutTemplate } from "../shared/types";
+import { hasV5Mirror, readSyncMeta } from "../shared/syncMeta";
+import { TemplateExerciseAlternative, WorkoutTemplate } from "../shared/types";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
+
+const ALTERNATIVES_CONTAINER = "exerciseAlternatives";
+
+interface StoredAlternative {
+  templateExerciseId?: unknown;
+  externalId?: unknown;
+  order?: unknown;
+  note?: unknown;
+}
+
+/**
+ * Issue #169: joins each template exercise's alternatives (their own mirrored
+ * container, keyed by `templateExerciseId`), sorted by `order`.
+ *
+ * Only once a v5 push has landed: before that the key is left off — unknown —
+ * rather than set to [], which would claim the slot has none. A failed read
+ * degrades the same way instead of failing get_template, which the template
+ * write path depends on.
+ */
+async function withAlternatives(
+  template: WorkoutTemplate,
+  context: InvocationContext
+): Promise<WorkoutTemplate> {
+  const exercises = Array.isArray(template.exercises) ? template.exercises : [];
+  const ids = exercises.map((exercise) => exercise.id).filter((id) => typeof id === "string");
+  if (ids.length === 0) return template;
+
+  let stored: StoredAlternative[];
+  try {
+    if (!hasV5Mirror(await readSyncMeta())) return template;
+    const { resources } = await getDatabase()
+      .container(ALTERNATIVES_CONTAINER)
+      .items.query({
+        query: "SELECT * FROM c WHERE ARRAY_CONTAINS(@ids, c.templateExerciseId)",
+        parameters: [{ name: "@ids", value: ids }],
+      })
+      .fetchAll();
+    stored = resources as StoredAlternative[];
+  } catch (error) {
+    context.warn("Template alternatives read failed; serving the template without them:", error);
+    return template;
+  }
+
+  const bySlot = new Map<string, TemplateExerciseAlternative[]>();
+  for (const alternative of stored) {
+    if (
+      typeof alternative.templateExerciseId !== "string" ||
+      typeof alternative.externalId !== "string" ||
+      typeof alternative.order !== "number"
+    ) {
+      continue;
+    }
+    const entry: TemplateExerciseAlternative = {
+      externalId: alternative.externalId,
+      order: alternative.order,
+    };
+    if (typeof alternative.note === "string") entry.note = alternative.note;
+    const list = bySlot.get(alternative.templateExerciseId) ?? [];
+    list.push(entry);
+    bySlot.set(alternative.templateExerciseId, list);
+  }
+
+  return {
+    ...template,
+    exercises: exercises.map((exercise) => ({
+      ...exercise,
+      alternatives: (bySlot.get(exercise.id) ?? []).sort((a, b) => a.order - b.order),
+    })),
+  };
+}
 
 app.http("templatesList", {
   methods: ["GET"],
@@ -78,7 +149,7 @@ app.http("templatesGet", {
       if (!template) {
         return { status: 404, jsonBody: { error: `Template not found: ${id}` } };
       }
-      return { jsonBody: template };
+      return { jsonBody: await withAlternatives(template, context) };
     } catch (error) {
       context.error("Template read failed:", error);
       return { status: 500, jsonBody: { error: "Failed to read template" } };

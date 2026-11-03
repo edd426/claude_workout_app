@@ -64,6 +64,47 @@ export function parseIsoDate(
   return { ok: true, value: raw };
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parses an optional date bound and normalizes it to `toISOString()` form.
+ *
+ * The mirror stores the phone's dates as UTC ISO strings and Cosmos compares
+ * them as strings, so a bound has to be in the same form to compare
+ * correctly: "2026-11-03T10:00:00+01:00" is normalized to 09:00Z. A date-only
+ * `end` bound ("2026-11-03") covers that whole UTC day, which is what a
+ * caller asking for "up to the 3rd" means; as a bare string it would sort
+ * before every timestamp on the 3rd and silently drop that day.
+ */
+export function parseIsoDateBound(
+  request: HttpRequest,
+  name: string,
+  bound: "start" | "end"
+): ParseResult<string | undefined> {
+  const raw = request.query.get(name);
+  if (raw === null || raw === "") return { ok: true, value: undefined };
+  const millis = Date.parse(raw);
+  if (Number.isNaN(millis)) {
+    return {
+      ok: false,
+      error: badRequest(`Invalid ${name}: must be an ISO-8601 date`),
+    };
+  }
+  if (bound === "end" && DATE_ONLY.test(raw)) {
+    return { ok: true, value: `${raw}T23:59:59.999Z` };
+  }
+  return { ok: true, value: new Date(millis).toISOString() };
+}
+
+const COSMOS_SYSTEM_PROPS = ["_rid", "_self", "_etag", "_attachments", "_ts"];
+
+/** Returns a copy of a Cosmos document without its system properties. */
+export function stripSystemProps<T extends object>(doc: T): T {
+  const clean: Record<string, unknown> = { ...(doc as Record<string, unknown>) };
+  for (const prop of COSMOS_SYSTEM_PROPS) delete clean[prop];
+  return clean as T;
+}
+
 /**
  * Point-reads a document by id (id == partition key for all our containers).
  * Returns null on 404 — the SDK either resolves with an undefined resource or

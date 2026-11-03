@@ -34,6 +34,7 @@ import { randomUUID } from "node:crypto";
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
 import { customExerciseExternalId } from "../shared/customExerciseIdentity";
+import { exercisePhotoPath, isPhotoExternalId } from "../shared/exercisePhotoPath";
 import { readItemOrNull } from "../shared/readHelpers";
 import {
   InboxAckCounts,
@@ -60,6 +61,7 @@ const OPERATION_TYPES: readonly InboxOperationType[] = [
   "deleteTemplate",
   "createCustomExercise",
   "resolveExerciseReport",
+  "setExercisePhoto",
 ];
 
 const OPERATION_STATUSES: readonly InboxOperationStatus[] = [
@@ -199,8 +201,45 @@ function validateTemplateExercises(
         `Malformed payload: ${field}[${index}].notes must be a string`
       );
     }
+    if (Object.prototype.hasOwnProperty.call(exercise, "alternatives")) {
+      const alternativesError = validateAlternatives(
+        exercise["alternatives"],
+        `${field}[${index}].alternatives`
+      );
+      if (alternativesError) return alternativesError;
+    }
   }
 
+  return null;
+}
+
+/**
+ * Issue #169. Tri-state on the phone: an absent key keeps the slot's list, []
+ * clears it, a list replaces it. `null` would be ambiguous between the first
+ * two, so it is refused rather than guessed at. Structure only: the MCP tool
+ * resolves each externalId against the catalog, and the phone resolves them
+ * strictly, failing the whole operation on an unknown one.
+ */
+function validateAlternatives(value: unknown, field: string): HttpResponseInit | null {
+  if (!Array.isArray(value)) {
+    return badRequest(
+      `Malformed payload: ${field} must be an array (omit it to keep the current list, [] to clear it)`
+    );
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const alternative = value[index];
+    if (!isObject(alternative)) {
+      return badRequest(`Malformed payload: ${field}[${index}] must be an object`);
+    }
+    if (!isNonEmptyString(alternative["externalId"])) {
+      return badRequest(
+        `Malformed payload: ${field}[${index}].externalId must be a non-empty string`
+      );
+    }
+    if (!isOptionalString(alternative["note"])) {
+      return badRequest(`Malformed payload: ${field}[${index}].note must be a string`);
+    }
+  }
   return null;
 }
 
@@ -298,6 +337,30 @@ function validateResolveExerciseReport(
 }
 
 /**
+ * Issue #170. The photo is already in blob storage when this is enqueued
+ * (attach_exercise_photo uploads first); the op asks the phone to point the
+ * exercise's photoURL at it. `blobPath` must be exactly the externalId's own
+ * photo path, so an op can never aim one exercise at another's photo or at a
+ * path outside the family.
+ */
+function validateSetExercisePhoto(
+  payload: Record<string, unknown>
+): HttpResponseInit | null {
+  const externalId = payload["externalId"];
+  if (!isNonEmptyString(externalId) || !isPhotoExternalId(externalId)) {
+    return badRequest(
+      "Malformed payload: externalId must be a catalog externalId or a custom:{slug}:{uuid} id"
+    );
+  }
+  if (payload["blobPath"] !== exercisePhotoPath(externalId)) {
+    return badRequest(
+      `Malformed payload: blobPath must be exactly "${exercisePhotoPath(externalId)}"`
+    );
+  }
+  return null;
+}
+
+/**
  * Validates the complete enqueue body before Cosmos is accessed. Top-level
  * id/requiresApproval fields are deliberately not read; the Function owns
  * the operation envelope.
@@ -345,12 +408,21 @@ function validateEnqueueBody(
     case "resolveExerciseReport":
       validationError = validateResolveExerciseReport(payload);
       break;
+    case "setExercisePhoto":
+      validationError = validateSetExercisePhoto(payload);
+      break;
   }
   if (validationError) return { ok: false, error: validationError };
 
+  // setExercisePhoto is stored as exactly the two keys the phone reads.
+  const stored =
+    op === "setExercisePhoto"
+      ? { externalId: payload["externalId"], blobPath: payload["blobPath"] }
+      : payload;
+
   return {
     ok: true,
-    value: { op, payload } as unknown as InboxEnqueueRequest,
+    value: { op, payload: stored } as unknown as InboxEnqueueRequest,
   };
 }
 
@@ -441,8 +513,17 @@ async function queryAllByStatus(
   );
 }
 
+/**
+ * Server-computed, never taken from the client. setExercisePhoto (#170) needs
+ * approval: it changes what an exercise card shows, and the phone fails the
+ * op with "approval flag mismatch" if this is false.
+ */
 function requiresApproval(op: InboxOperationType): boolean {
-  return op === "updateTemplate" || op === "deleteTemplate";
+  return (
+    op === "updateTemplate" ||
+    op === "deleteTemplate" ||
+    op === "setExercisePhoto"
+  );
 }
 
 function transitionError(

@@ -19,9 +19,14 @@ Evan asked to gather every issue and request and start the next version, plus
 - Schema: #164 and #165 are new models, so they go into **V5**. Nutrition
   (#110) moves to V6.
 
-**Proposed for 1.9.0, waiting on Evan:** #144, #155, #143, and his picks from
-the 10 ideas. These are listed in the 2026-11-03 session reply. Track them in
-issues once picked.
+**Evan's picks from the 10 ideas (2026-11-03):**
+- #168 weekly muscle-volume card;
+- #169 "machine taken" swap (its `ExerciseAlternative` model was added to
+  agent A's V5 scope);
+- #170 bulk gym photos via MCP.
+He also asked for a **UX/UI evaluation that raises the standards**.
+
+**Still unanswered:** #144, #155 and #143 as small fixes.
 
 **Environment (verified 2026-11-03):**
 - Xcode was updated to **27.2**, which wiped all simulator runtimes.
@@ -35,8 +40,14 @@ issues once picked.
 - A (`data-v5`): schema V5, models, repos, conversions, backup and sync for
   #164 and #165.
 - B (`ui-body`): #152 and #111 (display), and #167.
-- Next, after A: the UI for #164 and #165, infra (snapshot acceptance plus MCP
-  read tools), and the Jefit import (#166).
+- C (`ux-eval`, simulator `(C)` 7C5BB45B…): screenshot-backed UX evaluation
+  (`scratchpad/ux_evaluation.md`) plus a draft `.claude/rules/ui-standards.md`.
+- Next, after A:
+  - the UI for #164, #165, #168 and #169;
+  - infra: snapshot acceptance, MCP read tools, #169 alternatives in the
+    template tools, and the #170 photo tool;
+  - the Jefit import (#166).
+  All new UI work follows the reviewed ui-standards.
 
 **Waiting on Evan's phone:**
 - 5 template updates (program v3: Mon Legs 1 … Fri Machines).

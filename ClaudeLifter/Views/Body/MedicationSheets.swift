@@ -56,9 +56,9 @@ struct MedicationDoseSheet: View {
                         .disabled(!draft.isValid || isSaving)
                         .accessibilityIdentifier("saveDose")
                 }
+                KeyboardDoneItem(identifier: "doseKeyboardDone") { amountFocused = false }
             }
-            .keyboardDoneButton(identifier: "doseKeyboardDone") { amountFocused = false }
-            .task { amountFocused = true }
+            .focusAfterPresentation { amountFocused = true }
         }
         .quickEntryDetents(height: showsMakeUsual ? 470 : 400)
     }
@@ -144,9 +144,9 @@ struct MedicationEditorSheet: View {
                         .disabled(!draft.isValid || isSaving)
                         .accessibilityIdentifier("saveMedication")
                 }
+                KeyboardDoneItem(identifier: "medicationKeyboardDone") { focus = nil }
             }
-            .keyboardDoneButton(identifier: "medicationKeyboardDone") { focus = nil }
-            .task { focus = .name }
+            .focusAfterPresentation { focus = .name }
         }
         .presentationDetents([.large])
     }

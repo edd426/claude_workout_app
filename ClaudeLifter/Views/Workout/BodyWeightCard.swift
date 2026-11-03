@@ -157,14 +157,14 @@ struct BodyWeightEntrySheet: View {
                     .disabled(parsedWeight == nil)
                     .accessibilityIdentifier("saveBodyWeight")
                 }
+                KeyboardDoneItem(identifier: "bodyWeightKeyboardDone") { fieldFocused = false }
             }
-            .keyboardDoneButton(identifier: "bodyWeightKeyboardDone") { fieldFocused = false }
             .task {
                 if let last = vm.latestDisplayWeight {
                     weightText = last.formatted(.number.precision(.fractionLength(1)))
                 }
-                fieldFocused = true
             }
+            .focusAfterPresentation { fieldFocused = true }
         }
     }
 

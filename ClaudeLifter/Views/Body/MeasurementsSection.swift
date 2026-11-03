@@ -207,13 +207,13 @@ struct WaistEntrySheet: View {
                         .disabled(MeasurementsViewModel.parseWaist(text) == nil || isSaving)
                         .accessibilityIdentifier("saveWaist")
                 }
+                KeyboardDoneItem(identifier: "waistKeyboardDone") { focused = false }
             }
-            .keyboardDoneButton(identifier: "waistKeyboardDone") { focused = false }
             .task {
                 vm.clearEntryError()
                 text = vm.waistPrefill
-                focused = true
             }
+            .focusAfterPresentation { focused = true }
         }
     }
 
@@ -276,10 +276,10 @@ struct HeightEntrySheet: View {
                         .disabled(enteredCm == nil)
                         .accessibilityIdentifier("saveHeight")
                 }
+                KeyboardDoneItem(identifier: "heightKeyboardDone") { focus = nil }
             }
-            .keyboardDoneButton(identifier: "heightKeyboardDone") { focus = nil }
             .onChange(of: style) { oldStyle, newStyle in convert(from: oldStyle, to: newStyle) }
-            .task { focus = .first }
+            .focusAfterPresentation { focus = .first }
         }
     }
 

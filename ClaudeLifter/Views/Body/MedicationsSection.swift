@@ -175,6 +175,9 @@ struct MedicationRowView: View {
             Button(action: onLog) {
                 Text(row.logTitle)
                     .monospacedDigit()
+                    // Beside the summary the label keeps one line and the
+                    // summary wraps; stacked at accessibility sizes it may wrap.
+                    .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
                     .frame(minHeight: 44)
             }
             .secondaryActionStyle()
@@ -197,11 +200,16 @@ struct MedicationRowView: View {
     /// One tap logs; one more undoes it (UI-P6: a reversible action prefers
     /// undo over a confirmation).
     private func undoBanner(_ undoable: UndoableDose) -> some View {
-        HStack(spacing: 12) {
+        // Stacked at accessibility sizes, so the message never breaks mid-word.
+        let isAccessibilitySize = dynamicTypeSize.isAccessibilitySize
+        let layout = isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
             Label(undoable.text, systemImage: "checkmark.circle.fill")
                 .font(.subheadline)
                 .foregroundStyle(BrandTheme.success)
-            Spacer(minLength: 0)
+            if !isAccessibilitySize { Spacer(minLength: 0) }
             Button("Undo", action: onUndo)
                 .secondaryActionStyle()
                 .accessibilityIdentifier("undoDose-\(row.name)")

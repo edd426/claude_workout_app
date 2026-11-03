@@ -46,10 +46,16 @@ final class BodyScreenshotTests: XCTestCase {
         sleep(2)
         snap("B01_body_top")
 
-        app.swipeUp()
+        // Swipe from the lower part of the screen: a swipe from the middle
+        // starts on the chart and the scroll did not move on the first try.
+        let lower = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        let upper = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        lower.press(forDuration: 0.05, thenDragTo: upper)
+        sleep(1)
         snap("B02_body_middle")
         app.swipeUp()
         app.swipeUp()
+        sleep(1)
         snap("B03_body_bottom")
 
         logWaistSheet()

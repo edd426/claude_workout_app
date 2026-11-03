@@ -136,14 +136,35 @@ extension View {
         buttonStyle(.bordered).tint(Color.primary)
     }
 
-    /// The keyboard's Done button, which dismisses it (UI-P4).
-    func keyboardDoneButton(identifier: String, action: @escaping () -> Void) -> some View {
-        toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done", action: action)
-                    .accessibilityIdentifier(identifier)
-            }
+}
+
+extension View {
+    /// Focuses a sheet's first field once the sheet has finished presenting.
+    /// Focusing during the presentation brings up the keyboard without its
+    /// Done bar on iOS 27; a tap on the field later does show it.
+    func focusAfterPresentation(_ focus: @escaping @MainActor () -> Void) -> some View {
+        task {
+            // `try?` is deliberate: the sleep throws only when the sheet
+            // closes first, and then there is nothing to focus.
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            focus()
+        }
+    }
+}
+
+/// The keyboard's Done button, which dismisses it (UI-P4). Put it in the
+/// sheet's own `.toolbar` block, beside Cancel and Save: a keyboard item in a
+/// second `.toolbar` modifier did not appear on iOS 27.
+struct KeyboardDoneItem: ToolbarContent {
+    let identifier: String
+    let action: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done", action: action)
+                .accessibilityIdentifier(identifier)
         }
     }
 }

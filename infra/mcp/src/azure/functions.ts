@@ -68,7 +68,8 @@ async function mcp(request: HttpRequest, context: InvocationContext): Promise<Ht
       verify: (token) => verifyAccessToken(token, config),
       allowedOids,
       resourceMetadataUrl: `${baseUrl()}/.well-known/oauth-protected-resource/mcp`,
-      createServer: createWorkoutServer,
+      // Remote: never read files on the Function host (attach_exercise_photo's imagePath).
+      createServer: () => createWorkoutServer({ allowLocalFiles: false }),
       log: (message) => context.warn(message),
     });
     return toHttpResponse(res);

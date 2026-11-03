@@ -10,7 +10,10 @@
  *   6. enqueue setExercisePhoto { externalId, blobPath } (approval on the phone)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const mockApiGet = vi.fn();
 const mockApiPost = vi.fn();
@@ -335,14 +338,197 @@ describe("photo externalId grammar (same as the Functions allow-list)", () => {
   });
 });
 
+// ─── imagePath: a local JPEG, stdio server only ──────────────────────────────
+// Sending a photo as imageBase64 makes the model write out its whole base64
+// text. On the local (stdio) server the tool can read the file itself. The
+// remote claude.ai server must never read files on its host, so it refuses.
+
+describe("attachExercisePhoto — imagePath (local server only)", () => {
+  let dir: string;
+  let jpegPath: string;
+
+  const LOCAL = { allowLocalFiles: true };
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "attach-photo-"));
+    jpegPath = join(dir, "leg-extension.jpg");
+    writeFileSync(jpegPath, JPEG);
+  });
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("the local server reads the file and uploads exactly its bytes", async () => {
+    const result = await attachExercisePhoto(
+      { externalId: "Leg_Extensions", imagePath: jpegPath },
+      LOCAL
+    );
+
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(Buffer.from(init.body as Uint8Array)).toEqual(JPEG);
+    expect(mockApiPost).toHaveBeenCalledWith("inbox", {
+      op: "setExercisePhoto",
+      payload: {
+        externalId: "Leg_Extensions",
+        blobPath: "exercises/ext/Leg_Extensions.jpg",
+      },
+    });
+    expect(result.bytes).toBe(JPEG.length);
+  });
+
+  it("accepts .jpeg and upper-case extensions", async () => {
+    const upper = join(dir, "MACHINE.JPEG");
+    writeFileSync(upper, JPEG);
+
+    await attachExercisePhoto({ externalId: "Leg_Extensions", imagePath: upper }, LOCAL);
+
+    expect(mockApiPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows a symlink and reads the real JPEG it points at", async () => {
+    const link = join(dir, "link-to-photo.jpg");
+    symlinkSync(jpegPath, link);
+
+    await attachExercisePhoto({ externalId: "Leg_Extensions", imagePath: link }, LOCAL);
+
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(Buffer.from(init.body as Uint8Array)).toEqual(JPEG);
+  });
+
+  it("checks the real file, not the link: a .jpg link to a non-.jpg file is refused", async () => {
+    // Even JPEG bytes: the check is on what the link resolves to.
+    const secret = join(dir, "not-a-photo.txt");
+    writeFileSync(secret, JPEG);
+    const link = join(dir, "innocent.jpg");
+    symlinkSync(secret, link);
+
+    await expect(
+      attachExercisePhoto({ externalId: "Leg_Extensions", imagePath: link }, LOCAL)
+    ).rejects.toThrow(/\.jpg or \.jpeg/);
+    noNetwork();
+  });
+
+  it("the remote server refuses imagePath with a clear message, before any request", async () => {
+    await expect(
+      attachExercisePhoto({ externalId: "Leg_Extensions", imagePath: jpegPath })
+    ).rejects.toThrow("imagePath is only available on the local server; send imageBase64");
+    await expect(
+      attachExercisePhoto(
+        { externalId: "Leg_Extensions", imagePath: jpegPath },
+        { allowLocalFiles: false }
+      )
+    ).rejects.toThrow("imagePath is only available on the local server; send imageBase64");
+    noNetwork();
+  });
+
+  it("imageBase64 still works on the local server", async () => {
+    await attachExercisePhoto({ externalId: "Leg_Extensions", imageBase64: JPEG_B64 }, LOCAL);
+    expect(mockApiPost).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [{ allowLocalFiles: true }],
+    [{ allowLocalFiles: false }],
+  ])("both arguments together are refused (%j)", async (options) => {
+    await expect(
+      attachExercisePhoto(
+        { externalId: "Leg_Extensions", imageBase64: JPEG_B64, imagePath: jpegPath },
+        options
+      )
+    ).rejects.toThrow(/exactly one of imageBase64 or imagePath/);
+    noNetwork();
+  });
+
+  it.each([
+    [{ allowLocalFiles: true }],
+    [{ allowLocalFiles: false }],
+  ])("neither argument is refused (%j)", async (options) => {
+    await expect(
+      attachExercisePhoto({ externalId: "Leg_Extensions" }, options)
+    ).rejects.toThrow(/exactly one of imageBase64 or imagePath/);
+    noNetwork();
+  });
+
+  it("a .jpg file that is not a JPEG is refused", async () => {
+    const fake = join(dir, "really-a-png.jpg");
+    writeFileSync(fake, PNG);
+
+    await expect(
+      attachExercisePhoto({ externalId: "Leg_Extensions", imagePath: fake }, LOCAL)
+    ).rejects.toThrow(/not a JPEG/);
+    noNetwork();
+  });
+
+  it("a file one byte over 3.75 MB is refused", async () => {
+    const big = Buffer.alloc(MAX_EXERCISE_PHOTO_BYTES + 1);
+    JPEG.copy(big);
+    const path = join(dir, "huge.jpg");
+    writeFileSync(path, big);
+
+    await expect(
+      attachExercisePhoto({ externalId: "Leg_Extensions", imagePath: path }, LOCAL)
+    ).rejects.toThrow(/too large/);
+    noNetwork();
+  });
+
+  it.each([
+    ["a relative path", "photos/leg.jpg", /absolute path/],
+    ["a home-relative path", "~/leg.jpg", /absolute path/],
+    ["a non-JPEG extension", "/tmp/leg.png", /\.jpg or \.jpeg/],
+    ["an empty string", "", /imagePath/],
+  ])("%s is refused", async (_label, imagePath, message) => {
+    await expect(
+      attachExercisePhoto({ externalId: "Leg_Extensions", imagePath }, LOCAL)
+    ).rejects.toThrow(message);
+    noNetwork();
+  });
+
+  it("a missing file is refused, naming the path", async () => {
+    const missing = join(dir, "nope.jpg");
+    await expect(
+      attachExercisePhoto({ externalId: "Leg_Extensions", imagePath: missing }, LOCAL)
+    ).rejects.toThrow(/Cannot read imagePath/);
+    noNetwork();
+  });
+
+  it("a directory named like a photo is refused", async () => {
+    const folder = join(dir, "folder.jpg");
+    mkdirSync(folder);
+    await expect(
+      attachExercisePhoto({ externalId: "Leg_Extensions", imagePath: folder }, LOCAL)
+    ).rejects.toThrow(/not a regular file/);
+    noNetwork();
+  });
+
+  it("a bad externalId is refused before the file is read", async () => {
+    await expect(
+      attachExercisePhoto({ externalId: "../x", imagePath: join(dir, "nope.jpg") }, LOCAL)
+    ).rejects.toThrow(/externalId/);
+  });
+});
+
 describe("attach_exercise_photo registration", () => {
-  it("is listed with externalId and imageBase64 required", () => {
+  it("is listed with externalId required and both image arguments described", () => {
     const tool = TOOLS.find((candidate) => candidate.name === "attach_exercise_photo");
     expect(tool).toBeDefined();
-    expect(tool?.inputSchema).toEqual(
-      expect.objectContaining({ required: ["externalId", "imageBase64"] })
-    );
+    expect(tool?.inputSchema).toEqual(expect.objectContaining({ required: ["externalId"] }));
+    const properties = tool?.inputSchema.properties as Record<string, unknown>;
+    expect(properties).toHaveProperty("imageBase64");
+    expect(properties).toHaveProperty("imagePath");
     expect(tool?.description).toMatch(/approv/i);
+    expect(tool?.description).toMatch(/exactly one/i);
+  });
+
+  it("handleToolCall refuses imagePath unless the caller is the local server", async () => {
+    const remote = await handleToolCall("attach_exercise_photo", {
+      externalId: "Leg_Extensions",
+      imagePath: "/tmp/x.jpg",
+    });
+    expect(remote.isError).toBe(true);
+    expect(remote.content[0].type === "text" && remote.content[0].text).toContain(
+      "imagePath is only available on the local server; send imageBase64"
+    );
   });
 
   it("dispatches and returns the queued operation as JSON", async () => {

@@ -84,6 +84,48 @@ const createTemplateProperties = {
   },
 };
 
+const ATTACH_PHOTO_DESCRIPTION =
+  "Attach a JPEG photo (e.g. the gym's actual machine) to an exercise, " +
+  "so its card in the app shows it. Validates the exercise exists, " +
+  "uploads the image to blob storage, then queues a setExercisePhoto " +
+  "inbox operation that needs approval on the phone: nothing changes " +
+  "until it is approved there, and one batch approval covers many " +
+  "photos. Attaching again replaces the exercise's photo. JPEG only, " +
+  "at most 3.75 MB.";
+
+const ATTACH_PHOTO_EXTERNAL_ID = {
+  type: "string",
+  description: "Exact externalId from search_exercises (catalog or custom:)",
+};
+
+const ATTACH_PHOTO_BASE64 = {
+  type: "string",
+  description:
+    "The JPEG, base64-encoded (a data:image/jpeg;base64, prefix is accepted)",
+};
+
+/**
+ * attach_exercise_photo as the remote (claude.ai) server lists it: no
+ * imagePath, which it refuses anyway, so the model is not offered it.
+ */
+const REMOTE_ATTACH_PHOTO_TOOL = {
+  name: "attach_exercise_photo",
+  description: ATTACH_PHOTO_DESCRIPTION + " Send the JPEG as imageBase64.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      externalId: ATTACH_PHOTO_EXTERNAL_ID,
+      imageBase64: ATTACH_PHOTO_BASE64,
+    },
+    required: ["externalId", "imageBase64"],
+  },
+};
+
+export interface ToolCallOptions {
+  /** True only for the local (stdio) server: attach_exercise_photo may read imagePath. */
+  allowLocalFiles?: boolean;
+}
+
 export const TOOLS = [
   {
     name: "list_templates",
@@ -366,28 +408,23 @@ export const TOOLS = [
   {
     name: "attach_exercise_photo",
     description:
-      "Attach a JPEG photo (e.g. the gym's actual machine) to an exercise, " +
-      "so its card in the app shows it. Validates the exercise exists, " +
-      "uploads the image to blob storage, then queues a setExercisePhoto " +
-      "inbox operation that needs approval on the phone: nothing changes " +
-      "until it is approved there, and one batch approval covers many " +
-      "photos. Attaching again replaces the exercise's photo. JPEG only, " +
-      "at most 3.75 MB.",
+      ATTACH_PHOTO_DESCRIPTION +
+      " Pass exactly one of imagePath (an absolute path to a local .jpg or " +
+      ".jpeg file; the local server only, and the cheaper choice for many " +
+      "photos) or imageBase64.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        externalId: {
+        externalId: ATTACH_PHOTO_EXTERNAL_ID,
+        imageBase64: ATTACH_PHOTO_BASE64,
+        imagePath: {
           type: "string",
           description:
-            "Exact externalId from search_exercises (catalog or custom:)",
-        },
-        imageBase64: {
-          type: "string",
-          description:
-            "The JPEG, base64-encoded (a data:image/jpeg;base64, prefix is accepted)",
+            "Absolute path to a local .jpg/.jpeg file (symlinks are resolved). " +
+            "Local server only",
         },
       },
-      required: ["externalId", "imageBase64"],
+      required: ["externalId"],
     },
   },
   {
@@ -514,6 +551,14 @@ export const TOOLS = [
   },
 ];
 
+/** The tool list a server advertises: the remote one omits imagePath. */
+export function toolsFor(options: ToolCallOptions = {}) {
+  if (options.allowLocalFiles === true) return TOOLS;
+  return TOOLS.map((tool) =>
+    tool.name === REMOTE_ATTACH_PHOTO_TOOL.name ? REMOTE_ATTACH_PHOTO_TOOL : tool
+  );
+}
+
 function textResult(value: unknown): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
 }
@@ -569,7 +614,8 @@ function optionalString(
 
 export async function handleToolCall(
   name: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
+  options: ToolCallOptions = {}
 ): Promise<ToolResult> {
   try {
     switch (name) {
@@ -676,7 +722,11 @@ export async function handleToolCall(
         return textResult(await deleteInboxOperation(args));
 
       case "attach_exercise_photo":
-        return textResult(await attachExercisePhoto(args));
+        return textResult(
+          await attachExercisePhoto(args, {
+            allowLocalFiles: options.allowLocalFiles === true,
+          })
+        );
 
       case "list_body_measurements":
         return textResult(

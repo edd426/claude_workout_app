@@ -23,16 +23,8 @@ func orderedSetEntryFields(in workout: Workout) -> [SetEntryFieldID] {
                 .sorted(by: { $0.order < $1.order })
                 .flatMap { set in
                     [
-                        SetEntryFieldID(
-                            exerciseID: workoutExercise.id,
-                            setID: set.id,
-                            kind: .weight
-                        ),
-                        SetEntryFieldID(
-                            exerciseID: workoutExercise.id,
-                            setID: set.id,
-                            kind: .reps
-                        ),
+                        SetEntryFieldID(exerciseID: workoutExercise.id, setID: set.id, kind: .weight),
+                        SetEntryFieldID(exerciseID: workoutExercise.id, setID: set.id, kind: .reps),
                     ]
                 }
         }
@@ -40,10 +32,7 @@ func orderedSetEntryFields(in workout: Workout) -> [SetEntryFieldID] {
 
 func isSetEntryFieldAccessibilityIdentifier(_ identifier: String?) -> Bool {
     guard let identifier else { return false }
-    let components = identifier.split(
-        separator: "_",
-        omittingEmptySubsequences: false
-    )
+    let components = identifier.split(separator: "_", omittingEmptySubsequences: false)
     guard
         components.count == 3,
         components[0] == "weight" || components[0] == "reps"
@@ -65,87 +54,130 @@ struct ExerciseNoteTarget: Identifiable {
     }
 }
 
+/// Why the library picker is up: to add an exercise, or to swap one in place
+/// ("Machine taken → Other…", #169).
+enum ExercisePickerPurpose: Identifiable {
+    case add
+    case swap(WorkoutExercise)
+
+    var id: String {
+        switch self {
+        case .add: return "add"
+        case .swap(let workoutExercise): return "swap-\(workoutExercise.id)"
+        }
+    }
+}
+
+/// The active workout as an any-order screen (1.9.0, evaluation item 1).
+///
+/// One strip of chips shows what's done and what's left; one card is open at
+/// a time and the user's tap decides which. Cards are in a plain `VStack`, not
+/// a `LazyVStack`: with variable-height cards the lazy stack's size estimates
+/// kept changing at the end of the scroll range and the main thread never
+/// went idle (#172, UI-E5). A workout has a handful of cards, so laziness
+/// bought nothing.
 struct ActiveWorkoutView: View {
     @State var vm: ActiveWorkoutViewModel
     var onDismiss: (() -> Void)? = nil
 
     @State private var restSession: RestTimerSession?
-    @State private var showExercisePicker = false
+    @State private var picker: ExercisePickerPurpose?
     @State private var showCancelDialog = false
     /// Non-nil while the report sheet is up; carries the captured context.
     @State private var reportContext: ReportContext?
     /// Non-nil while the per-exercise note editor is up (#136).
     @State private var noteTarget: ExerciseNoteTarget?
+    /// Non-nil while a machine photo is full screen (#170).
+    @State private var photoTarget: ExercisePhotoTarget?
+    /// An exercise with logged sets waiting on "Remove from this workout".
+    @State private var removalTarget: WorkoutExercise?
     @FocusState private var focusedField: SetEntryFieldID?
     @Environment(AppState.self) private var appState
     @Environment(\.dependencies) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Keyboard navigation covers the open card only: collapsed cards have
+    /// no fields on screen.
     private var orderedFields: [SetEntryFieldID] {
-        guard let workout = vm.workout else { return [] }
-        return orderedSetEntryFields(in: workout)
+        guard let workout = vm.workout, let open = vm.expandedExerciseId else { return [] }
+        return orderedSetEntryFields(in: workout).filter { $0.exerciseID == open }
     }
 
     var body: some View {
         ScrollViewReader { scrollProxy in
-            workoutScreen
-                .navigationTitle(vm.workout?.name ?? "Workout")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar { toolbarContent(scrollProxy: scrollProxy) }
-                .task { await vm.startWorkout() }
-                .sheet(isPresented: $showExercisePicker) { exercisePicker }
-                .sheet(item: $reportContext) { context in
-                    reportSheet(for: context)
+            presentations(
+                workoutScreen(scrollProxy: scrollProxy)
+                    .navigationTitle(vm.workout?.name ?? "Workout")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { toolbarContent(scrollProxy: scrollProxy) }
+                    .task { await start() }
+            )
+            .onChange(of: vm.expandedExerciseId) { _, open in
+                if let focusedField, focusedField.exerciseID != open {
+                    self.focusedField = nil
                 }
-                .sheet(item: $noteTarget) { target in
-                    noteEditor(for: target)
-                }
-                .confirmationDialog(
-                    "Exit workout?",
-                    isPresented: $showCancelDialog
-                ) {
-                    exitDialogActions
-                } message: {
-                    exitDialogMessage
-                }
-                .onChange(of: orderedFields) { _, fields in
-                    guard let focusedField else { return }
-                    if !fields.contains(focusedField) {
-                        self.focusedField = nil
-                    }
-                }
-                .onChange(of: scenePhase) { _, phase in
-                    if phase == .active {
-                        restSession?.refreshFromClock()
-                        autoFinishIfIdle()
-                    } else if phase == .background {
-                        performAfterFlushingFocusedField {
-                            Task {
-                                await vm.saveDraft()
-                            }
-                        }
-                    }
-                }
-                .onDisappear {
-                    restSession?.cancel()
-                }
+            }
+            .onChange(of: scenePhase) { _, phase in handleScenePhase(phase) }
+            .onDisappear { restSession?.cancel() }
+            // UI-H2: rest finished → success, from the view (UI-H1).
+            .sensoryFeedback(.success, trigger: restSession?.restFinishedCount ?? 0)
         }
         .caretAtEndOnBeginEditing()
     }
 
-    @ViewBuilder
-    private var workoutScreen: some View {
-        if vm.workout != nil {
-            workoutContent
-        } else {
-            ProgressView("Starting workout...")
+    /// Sheets, the photo cover and the two confirmation dialogs.
+    private func presentations<Content: View>(_ content: Content) -> some View {
+        content
+            .sheet(item: $picker) { exercisePicker(for: $0) }
+            .sheet(item: $reportContext) { reportSheet(for: $0) }
+            .sheet(item: $noteTarget) { noteEditor(for: $0) }
+            .fullScreenCover(item: $photoTarget) { ExercisePhotoViewer(target: $0) }
+            .confirmationDialog("Exit workout?", isPresented: $showCancelDialog) {
+                exitDialogActions
+            } message: {
+                exitDialogMessage
+            }
+            .confirmationDialog(removalTitle, isPresented: removalBinding, titleVisibility: .visible) {
+                removalActions
+            } message: {
+                Text("Its logged sets are deleted from this workout. The template is not changed.")
+            }
+    }
+
+    private func start() async {
+        if let dependencies {
+            vm.useAlternatives(from: dependencies.exerciseAlternativeRepository)
+        }
+        await vm.startWorkout()
+        if let dependencies {
+            await vm.fetchMissingPhotos(using: dependencies.exercisePhotoFetcher)
         }
     }
 
-    private var workoutContent: some View {
-        VStack(spacing: 0) {
-            errorBanner
-            workoutScrollArea
+    private func handleScenePhase(_ phase: ScenePhase) {
+        if phase == .active {
+            restSession?.refreshFromClock()
+            autoFinishIfIdle()
+        } else if phase == .background {
+            performAfterFlushingFocusedField {
+                Task { await vm.saveDraft() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func workoutScreen(scrollProxy: ScrollViewProxy) -> some View {
+        if vm.workout != nil {
+            VStack(spacing: 0) {
+                errorBanner
+                if !vm.orderedExercises.isEmpty {
+                    ExerciseStripView(vm: vm) { open($0, scrollProxy: scrollProxy) }
+                }
+                workoutScrollArea(scrollProxy: scrollProxy)
+            }
+        } else {
+            ProgressView("Starting workout…")
         }
     }
 
@@ -157,9 +189,10 @@ struct ActiveWorkoutView: View {
         if let errorMsg = vm.errorMessage {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(BrandTheme.warning)
+                    .accessibilityHidden(true)
                 Text(errorMsg)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.primary)
                 Spacer()
                 Button {
@@ -167,26 +200,24 @@ struct ActiveWorkoutView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Dismiss error")
             }
             .padding(.horizontal)
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)
             .background(Color(.systemGray6))
             .accessibilityIdentifier("workoutErrorBanner")
         }
     }
 
-    private var workoutScrollArea: some View {
+    private func workoutScrollArea(scrollProxy: ScrollViewProxy) -> some View {
         ScrollView {
             VStack(spacing: 12) {
-                ForEach(
-                    vm.workout?.exercises.sorted(
-                        by: { $0.order < $1.order }
-                    ) ?? [],
-                    id: \.id
-                ) { workoutExercise in
-                    exerciseCard(for: workoutExercise)
+                ForEach(vm.orderedExercises, id: \.id) { workoutExercise in
+                    exerciseCard(for: workoutExercise, scrollProxy: scrollProxy)
+                        .id(workoutExercise.id)
                 }
                 addExerciseButton
             }
@@ -199,26 +230,25 @@ struct ActiveWorkoutView: View {
     }
 
     private func exerciseCard(
-        for workoutExercise: WorkoutExercise
+        for workoutExercise: WorkoutExercise,
+        scrollProxy: ScrollViewProxy
     ) -> some View {
         ExerciseCardView(
+            vm: vm,
             workoutExercise: workoutExercise,
             focusedField: $focusedField,
-            previousValue: { vm.previous(for: $0) },
+            actions: cardActions(for: workoutExercise, scrollProxy: scrollProxy)
+        )
+    }
+
+    private func cardActions(
+        for workoutExercise: WorkoutExercise,
+        scrollProxy: ScrollViewProxy
+    ) -> ExerciseCardActions {
+        ExerciseCardActions(
+            onToggle: { toggle(workoutExercise) },
             onCompleteSet: { set in
-                completeSetAfterFlushingField(
-                    set,
-                    restDuration: workoutExercise.restSeconds
-                )
-            },
-            onEditWeight: { set, weight in
-                vm.updateSetWeight(set, weight: weight)
-            },
-            onEditReps: { set, reps in
-                vm.updateSetReps(set, reps: reps)
-            },
-            onAddSet: {
-                vm.addSet(to: workoutExercise)
+                completeSetAfterFlushingField(set, restDuration: workoutExercise.restSeconds)
             },
             onRemoveSet: { set in
                 focusedField = nil
@@ -234,19 +264,83 @@ struct ActiveWorkoutView: View {
             },
             onEditTemplateNote: {
                 focusedField = nil
-                noteTarget = ExerciseNoteTarget(
-                    workoutExercise: workoutExercise,
-                    kind: .template
-                )
+                noteTarget = ExerciseNoteTarget(workoutExercise: workoutExercise, kind: .template)
             },
-            plannedTarget: vm.plannedTarget(for: workoutExercise),
-            previousDrifted: { set in
-                vm.previousDriftedFromTarget(set, in: workoutExercise)
+            onSwapOther: {
+                focusedField = nil
+                picker = .swap(workoutExercise)
             },
-            loadRecency: {
-                await vm.recency(for: workoutExercise)
-            }
+            onShowPhoto: { showPhoto(of: workoutExercise) },
+            onRemoveExercise: { requestRemoval(of: workoutExercise) }
         )
+    }
+
+    /// A strip chip: open that card and bring it to the top.
+    private func open(_ workoutExercise: WorkoutExercise, scrollProxy: ScrollViewProxy) {
+        performAfterFlushingFocusedField {
+            vm.expand(workoutExercise)
+            Task { @MainActor in
+                await Task.yield()
+                withAnimation(reduceMotion ? nil : .snappy) {
+                    scrollProxy.scrollTo(workoutExercise.id, anchor: .top)
+                }
+            }
+        }
+    }
+
+    /// A card header: open or close it. A focused field in a closing card is
+    /// flushed first, so its last keystrokes are not lost with the field.
+    private func toggle(_ workoutExercise: WorkoutExercise) {
+        performAfterFlushingFocusedField {
+            vm.toggleExpansion(workoutExercise)
+        }
+    }
+
+    private func showPhoto(of workoutExercise: WorkoutExercise) {
+        guard
+            let exercise = workoutExercise.exercise,
+            let source = ExercisePhotoSource(exercise: exercise)
+        else { return }
+        focusedField = nil
+        photoTarget = ExercisePhotoTarget(
+            id: workoutExercise.id,
+            name: exercise.name,
+            source: source,
+            note: ExerciseNotes.cleaned(exercise.notes)
+        )
+    }
+
+    /// Removing logged sets is data loss, so it is confirmed (UI-P6). An
+    /// exercise with nothing logged goes at once: there is nothing to lose.
+    private func requestRemoval(of workoutExercise: WorkoutExercise) {
+        focusedField = nil
+        if workoutExercise.sets.contains(where: \.isCompleted) {
+            removalTarget = workoutExercise
+        } else {
+            vm.removeExercise(workoutExercise)
+        }
+    }
+
+    private var removalTitle: String {
+        "Remove \(removalTarget?.exercise?.name ?? "this exercise") from this workout?"
+    }
+
+    private var removalBinding: Binding<Bool> {
+        Binding(
+            get: { removalTarget != nil },
+            set: { if !$0 { removalTarget = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var removalActions: some View {
+        Button("Remove", role: .destructive) {
+            if let removalTarget {
+                vm.removeExercise(removalTarget)
+            }
+            removalTarget = nil
+        }
+        Button("Cancel", role: .cancel) { removalTarget = nil }
     }
 
     @ViewBuilder
@@ -264,31 +358,18 @@ struct ActiveWorkoutView: View {
 
     @ViewBuilder
     private var restTimerInset: some View {
-        if let restSession,
-           restSession.isRunning,
-           focusedField == nil {
-            RestTimerBarView(
-                remainingSeconds: restSession.remainingSeconds,
-                progress: restSession.progress,
-                onSubtractTime: {
-                    restSession.subtractTime(15)
-                },
-                onAddTime: {
-                    restSession.addTime(15)
-                },
-                onSkip: {
-                    restSession.skip()
-                }
-            )
+        if let restSession, focusedField == nil {
+            RestTimerInset(session: restSession)
         }
     }
 
     private var addExerciseButton: some View {
         Button {
-            showExercisePicker = true
+            focusedField = nil
+            picker = .add
         } label: {
             Label("Add Exercise", systemImage: "plus.circle")
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(.bordered)
         .padding(.top, 8)
@@ -296,9 +377,7 @@ struct ActiveWorkoutView: View {
     }
 
     @ToolbarContentBuilder
-    private func toolbarContent(
-        scrollProxy: ScrollViewProxy
-    ) -> some ToolbarContent {
+    private func toolbarContent(scrollProxy: ScrollViewProxy) -> some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("Exit") {
                 if vm.hasCompletedSets {
@@ -319,52 +398,119 @@ struct ActiveWorkoutView: View {
             .accessibilityIdentifier("reportWorkout")
         }
         ToolbarItem(placement: .primaryAction) {
-            Button {
-                finishWorkoutAfterFlushingField()
-            } label: {
-                if vm.isFinishing {
-                    ProgressView()
-                } else {
-                    Text("Finish")
-                }
-            }
-            .disabled(!vm.hasCompletedSets || vm.isFinishing)
-            .foregroundStyle(BrandTheme.terracotta)
-            .accessibilityIdentifier("finishWorkout")
+            finishButton
         }
         ToolbarItemGroup(placement: .keyboard) {
-            Button {
-                focusAdjacentField(offset: -1, scrollProxy: scrollProxy)
-            } label: {
-                Image(systemName: "chevron.up")
-            }
-            .disabled(!canFocusAdjacentField(offset: -1))
-            .accessibilityLabel("Previous field")
+            keyboardBar(scrollProxy: scrollProxy)
+        }
+    }
 
-            Button {
-                focusAdjacentField(offset: 1, scrollProxy: scrollProxy)
-            } label: {
-                Image(systemName: "chevron.down")
+    /// The screen's one prominent action (UI-P9).
+    private var finishButton: some View {
+        Button {
+            finishWorkoutAfterFlushingField()
+        } label: {
+            if vm.isFinishing {
+                ProgressView()
+            } else {
+                Text("Finish").bold()
             }
-            .disabled(!canFocusAdjacentField(offset: 1))
-            .accessibilityLabel("Next field")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(BrandTheme.accent)
+        .disabled(!vm.hasCompletedSets || vm.isFinishing)
+        .accessibilityIdentifier("finishWorkout")
+    }
 
-            if let restSession, restSession.isRunning {
-                Text(formattedRestTime(restSession.remainingSeconds))
-                    .font(.body.monospacedDigit())
-                    .accessibilityLabel("Rest time remaining")
-            }
+    /// Up / down between fields; −2.5 / +2.5 while a weight is focused; and
+    /// "✓ Log set", so a +2.5 kg set is three taps and no keys.
+    @ViewBuilder
+    private func keyboardBar(scrollProxy: ScrollViewProxy) -> some View {
+        Button {
+            focusAdjacentField(offset: -1, scrollProxy: scrollProxy)
+        } label: {
+            Image(systemName: "chevron.up")
+        }
+        .disabled(!canFocusAdjacentField(offset: -1))
+        .accessibilityLabel("Previous field")
 
-            Spacer()
-            Button("Done") {
-                focusedField = nil
+        Button {
+            focusAdjacentField(offset: 1, scrollProxy: scrollProxy)
+        } label: {
+            Image(systemName: "chevron.down")
+        }
+        .disabled(!canFocusAdjacentField(offset: 1))
+        .accessibilityLabel("Next field")
+
+        if focusedField?.kind == .weight {
+            Button("−2.5") { adjustFocusedWeight(by: -2.5) }
+                .monospacedDigit()
+                .accessibilityLabel("Minus 2.5")
+                .accessibilityIdentifier("weightMinus")
+            Button("+2.5") { adjustFocusedWeight(by: 2.5) }
+                .monospacedDigit()
+                .accessibilityLabel("Plus 2.5")
+                .accessibilityIdentifier("weightPlus")
+        }
+
+        Spacer()
+
+        if let restSession, focusedField?.kind != .weight {
+            RestTimeLabel(session: restSession)
+        }
+
+        Button {
+            logFocusedSet()
+        } label: {
+            Label("Log set", systemImage: "checkmark")
+                .labelStyle(.titleAndIcon)
+        }
+        .bold()
+        .disabled(focusedEntry?.set.isCompleted ?? true)
+        .accessibilityIdentifier("logFocusedSet")
+
+        Button("Done") {
+            focusedField = nil
+        }
+    }
+
+    private var focusedEntry: (workoutExercise: WorkoutExercise, set: WorkoutSet)? {
+        guard let focusedField else { return nil }
+        return vm.entry(exerciseID: focusedField.exerciseID, setID: focusedField.setID)
+    }
+
+    /// Commits whatever is typed, steps the weight, and puts the caret back.
+    private func adjustFocusedWeight(by delta: Double) {
+        guard let field = focusedField, field.kind == .weight, let entry = focusedEntry else { return }
+        performAfterFlushingFocusedField {
+            vm.adjustWeight(entry.set, by: delta)
+            Task { @MainActor in
+                await Task.yield()
+                focusedField = field
             }
         }
     }
 
-    private var exercisePicker: some View {
-        ExerciseLibraryView(selectionMode: true) { exercise in
-            vm.addExercise(exercise)
+    private func logFocusedSet() {
+        guard let entry = focusedEntry, !entry.set.isCompleted else { return }
+        completeSetAfterFlushingField(entry.set, restDuration: entry.workoutExercise.restSeconds)
+    }
+
+    @ViewBuilder
+    private func exercisePicker(for purpose: ExercisePickerPurpose) -> some View {
+        switch purpose {
+        case .add:
+            ExerciseLibraryView(selectionMode: true) { exercise in
+                vm.addExercise(exercise)
+            }
+        case .swap(let workoutExercise):
+            ExerciseLibraryView(
+                selectionMode: true,
+                onSelect: { exercise in
+                    Task { await vm.swap(workoutExercise, to: exercise) }
+                },
+                initialMuscleFilter: vm.primaryMuscle(for: workoutExercise)
+            )
         }
     }
 
@@ -387,10 +533,7 @@ struct ActiveWorkoutView: View {
         )
     }
 
-    private func completeSetAfterFlushingField(
-        _ set: WorkoutSet,
-        restDuration: Int
-    ) {
+    private func completeSetAfterFlushingField(_ set: WorkoutSet, restDuration: Int) {
         performAfterFlushingFocusedField {
             if vm.completeSet(set) {
                 startOrRestartRest(duration: restDuration)
@@ -411,9 +554,7 @@ struct ActiveWorkoutView: View {
         ) { notes in
             switch target.kind {
             case .exercise:
-                Task {
-                    await vm.updateExerciseNotes(workoutExercise, notes: notes)
-                }
+                Task { await vm.updateExerciseNotes(workoutExercise, notes: notes) }
             case .template:
                 vm.updateTemplateNote(workoutExercise, notes: notes)
             }
@@ -463,9 +604,7 @@ struct ActiveWorkoutView: View {
     /// Resigning focus causes SwiftUI's formatted TextField to write through
     /// its binding asynchronously. The action must run on a later main-actor
     /// turn or completion / persistence can beat that final write.
-    private func performAfterFlushingFocusedField(
-        _ action: @escaping @MainActor () -> Void
-    ) {
+    private func performAfterFlushingFocusedField(_ action: @escaping @MainActor () -> Void) {
         guard focusedField != nil else {
             action()
             return
@@ -479,6 +618,7 @@ struct ActiveWorkoutView: View {
         )
         Task { @MainActor in
             await Task.yield()
+            // A cancelled sleep only shortens the wait; the action still runs.
             try? await Task.sleep(for: .milliseconds(10))
             action()
         }
@@ -490,10 +630,8 @@ struct ActiveWorkoutView: View {
             return
         }
         let session = RestTimerSession(
-            timerService: dependencies?.restTimerService
-                ?? RestTimerService(),
-            notificationScheduler: dependencies?.notificationScheduler
-                ?? UserNotificationScheduler()
+            timerService: dependencies?.restTimerService ?? RestTimerService(),
+            notificationScheduler: dependencies?.notificationScheduler ?? UserNotificationScheduler()
         )
         restSession = session
         session.start(duration: duration)
@@ -529,10 +667,7 @@ struct ActiveWorkoutView: View {
         return orderedFields.indices.contains(currentIndex + offset)
     }
 
-    private func focusAdjacentField(
-        offset: Int,
-        scrollProxy: ScrollViewProxy
-    ) {
+    private func focusAdjacentField(offset: Int, scrollProxy: ScrollViewProxy) {
         guard
             let focusedField,
             let currentIndex = orderedFields.firstIndex(of: focusedField),
@@ -550,6 +685,38 @@ struct ActiveWorkoutView: View {
     }
 }
 
+/// The rest bar, reading the countdown itself: the per-second tick then
+/// re-renders this view only, not the whole workout screen (UI-E5).
+private struct RestTimerInset: View {
+    let session: RestTimerSession
+
+    var body: some View {
+        if session.isRunning {
+            RestTimerBarView(
+                remainingSeconds: session.remainingSeconds,
+                progress: session.progress,
+                onSubtractTime: { session.subtractTime(15) },
+                onAddTime: { session.addTime(15) },
+                onSkip: { session.skip() }
+            )
+        }
+    }
+}
+
+/// The rest time in the keyboard bar, which takes over from the hidden rest
+/// bar while a field is focused.
+private struct RestTimeLabel: View {
+    let session: RestTimerSession
+
+    var body: some View {
+        if session.isRunning {
+            Text(formattedRestTime(session.remainingSeconds))
+                .font(.body.monospacedDigit())
+                .accessibilityLabel("Rest time remaining")
+        }
+    }
+}
+
 /// A single screen-level observer puts the caret at the end of every set
 /// field that begins editing — including fields focused by the keyboard bar's
 /// previous/next buttons, which no tap is involved in.
@@ -562,25 +729,16 @@ struct ActiveWorkoutView: View {
 private struct CaretAtEndOnBeginEditing: ViewModifier {
     func body(content: Content) -> some View {
         content.onReceive(
-            NotificationCenter.default.publisher(
-                for: UITextField.textDidBeginEditingNotification
-            )
+            NotificationCenter.default.publisher(for: UITextField.textDidBeginEditingNotification)
         ) { notification in
-            guard let textField = notification.object as? UITextField else {
-                return
-            }
-            guard isSetEntryFieldAccessibilityIdentifier(
-                textField.accessibilityIdentifier
-            ) else {
+            guard let textField = notification.object as? UITextField else { return }
+            guard isSetEntryFieldAccessibilityIdentifier(textField.accessibilityIdentifier) else {
                 return
             }
             Task { @MainActor in
                 await Task.yield()
                 let end = textField.endOfDocument
-                textField.selectedTextRange = textField.textRange(
-                    from: end,
-                    to: end
-                )
+                textField.selectedTextRange = textField.textRange(from: end, to: end)
             }
         }
     }

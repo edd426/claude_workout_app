@@ -1,36 +1,211 @@
 import SwiftUI
 
+/// What a card asks its screen to do: sheets, the rest timer and focus
+/// flushing live on `ActiveWorkoutView`, so the card only reports intent.
+struct ExerciseCardActions {
+    /// Open or close this card; the screen flushes a focused field first.
+    var onToggle: () -> Void
+    var onCompleteSet: (WorkoutSet) -> Void
+    var onRemoveSet: (WorkoutSet) -> Void
+    /// Files a report against this exercise (#135).
+    var onReport: () -> Void
+    /// Opens the per-exercise note editor (#136).
+    var onEditNotes: () -> Void
+    /// Opens this workout's copy of the template's note (31A4983B, E26BBFAA).
+    var onEditTemplateNote: () -> Void
+    /// "Machine taken → Other…": the library, to swap in place (#169).
+    var onSwapOther: () -> Void
+    /// The machine photo, full screen (#170).
+    var onShowPhoto: () -> Void
+    /// "Remove from this workout"; the screen confirms when sets are logged.
+    var onRemoveExercise: () -> Void
+}
+
+/// One exercise on the any-order workout screen.
+///
+/// Collapsed unless it is the card being worked: an untouched card is one
+/// line (name, target, last time), a finished one says "✓ 3 × 8 @ 80 kg", a
+/// skipped one is greyed. The whole header is the disclosure target (UI-P5).
 struct ExerciseCardView: View {
+    let vm: ActiveWorkoutViewModel
     let workoutExercise: WorkoutExercise
     let focusedField: FocusState<SetEntryFieldID?>.Binding
-    let previousValue: (WorkoutSet) -> AutoFillResult?
-    let onCompleteSet: (WorkoutSet) -> Void
-    let onEditWeight: (WorkoutSet, Double?) -> Void
-    let onEditReps: (WorkoutSet, Int?) -> Void
-    let onAddSet: () -> Void
-    var onRemoveSet: ((WorkoutSet) -> Void)? = nil
-    /// Files a report against this exercise (issue #135). The gym is where
-    /// the problem is noticed, so this is the entry point that matters.
-    var onReport: (() -> Void)? = nil
-    /// Opens the per-exercise note editor (issue #136). The machine settings
-    /// are needed standing at the machine, so the note is shown inline and the
-    /// editor is one tap from it.
-    var onEditNotes: (() -> Void)? = nil
-    /// Opens the editor for this workout's copy of the template's note — the
-    /// Coach's cue (reports 31A4983B, E26BBFAA), which used to be read-only.
-    var onEditTemplateNote: (() -> Void)? = nil
-    /// The template plan for this exercise (#144). Nil for ad-hoc workouts and
-    /// exercises added mid-session — both genuinely have no target, and an
-    /// invented one would be worse than none.
-    var plannedTarget: PlannedTarget? = nil
-    /// Whether last session's reps for a given set missed that target.
-    var previousDrifted: (WorkoutSet) -> Bool = { _ in false }
-    /// Loads the "last done" panel (#167). Nil hides the disclosure entirely.
-    var loadRecency: (@MainActor () async -> ExerciseRecency?)? = nil
+    let actions: ExerciseCardActions
+
+    private var columns = SetRowColumns()
+
+    init(
+        vm: ActiveWorkoutViewModel,
+        workoutExercise: WorkoutExercise,
+        focusedField: FocusState<SetEntryFieldID?>.Binding,
+        actions: ExerciseCardActions
+    ) {
+        self.vm = vm
+        self.workoutExercise = workoutExercise
+        self.focusedField = focusedField
+        self.actions = actions
+    }
+
+    private var isExpanded: Bool { vm.isExpanded(workoutExercise) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ExerciseCardHeader(
+                vm: vm,
+                workoutExercise: workoutExercise,
+                actions: actions
+            )
+            if isExpanded {
+                ExerciseCardDetail(
+                    vm: vm,
+                    workoutExercise: workoutExercise,
+                    focusedField: focusedField,
+                    columns: columns,
+                    actions: actions
+                )
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            BrandTheme.cardBackground,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        // UI-H2: exercise swapped → selection. Fires for Undo too.
+        .sensoryFeedback(.selection, trigger: workoutExercise.exercise?.id)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Photo, title (the disclosure), "Machine taken" and the card menu.
+private struct ExerciseCardHeader: View {
+    let vm: ActiveWorkoutViewModel
+    let workoutExercise: WorkoutExercise
+    let actions: ExerciseCardActions
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    /// The template note starts collapsed to one line (report 31A4983B: "They
-    /// take up a lot of space … should be clicked into, but not prominent").
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                titleButton
+                HStack(spacing: 12) {
+                    thumbnail
+                    Spacer(minLength: 0)
+                    controls
+                }
+            }
+        } else {
+            HStack(alignment: .center, spacing: 8) {
+                thumbnail
+                titleButton
+                controls
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnail: some View {
+        if let exercise = workoutExercise.exercise {
+            ExerciseThumbnail(
+                exercise: exercise,
+                generation: vm.photoGeneration,
+                onShow: actions.onShowPhoto
+            )
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 4) {
+            if vm.canSwap(workoutExercise) {
+                MachineTakenControl(
+                    options: vm.alternatives(for: workoutExercise),
+                    swappedFrom: vm.swappedFromName(for: workoutExercise),
+                    onSwap: { exercise in
+                        Task { await vm.swap(workoutExercise, to: exercise) }
+                    },
+                    onUndo: { Task { await vm.undoSwap(workoutExercise) } },
+                    onOther: actions.onSwapOther
+                )
+            }
+            ExerciseActionsMenu(
+                vm: vm,
+                workoutExercise: workoutExercise,
+                actions: actions
+            )
+        }
+    }
+
+    private var progress: ExerciseProgress { vm.progress(for: workoutExercise) }
+    private var isExpanded: Bool { vm.isExpanded(workoutExercise) }
+    private var name: String { workoutExercise.exercise?.name ?? "Unknown Exercise" }
+
+    private var titleButton: some View {
+        Button(action: actions.onToggle) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.headline)
+                        .foregroundStyle(progress.status == .skipped ? .secondary : .primary)
+                        .multilineTextAlignment(.leading)
+                    if let line = summaryLine {
+                        Text(line)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(summaryColor)
+                            .multilineTextAlignment(.leading)
+                            .accessibilityIdentifier("exerciseSummary")
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel([name, summaryLine].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityValue(isExpanded ? "expanded" : "collapsed")
+        .accessibilityHint(isExpanded ? "Collapses this exercise" : "Shows this exercise's sets")
+        .accessibilityIdentifier("exerciseHeader")
+    }
+
+    /// Expanded: the plan (#144), "3 × 8 · 90 s". Collapsed: the plan and
+    /// last time, what was done, or that it was skipped.
+    private var summaryLine: String? {
+        let target = vm.plannedTarget(for: workoutExercise).map(SetEntryText.target)
+        if isExpanded {
+            return target
+        }
+        let summary = vm.collapsedSummary(for: workoutExercise)
+        switch progress.status {
+        case .untouched:
+            return [target, summary].compactMap { $0 }.joined(separator: " · ").nilIfEmpty
+        case .inProgress:
+            let count = "\(progress.completedSets) of \(progress.totalSets)"
+            return [count, summary].compactMap { $0 }.joined(separator: " · ")
+        case .finished, .skipped:
+            return summary
+        }
+    }
+
+    private var summaryColor: Color {
+        progress.status == .finished ? BrandTheme.accentText : .secondary
+    }
+}
+
+/// The expanded part of a card: last done, notes, set rows, Add Set.
+private struct ExerciseCardDetail: View {
+    let vm: ActiveWorkoutViewModel
+    let workoutExercise: WorkoutExercise
+    let focusedField: FocusState<SetEntryFieldID?>.Binding
+    let columns: SetRowColumns
+    let actions: ExerciseCardActions
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The template note starts collapsed to one line (report 31A4983B).
     @State private var isTemplateNoteExpanded = false
     /// The "last done" panel starts collapsed and costs no height until
     /// opened (#167); its content is loaded on first expand.
@@ -39,321 +214,111 @@ struct ExerciseCardView: View {
     @State private var recencyLoadFailed = false
 
     private var sortedSets: [WorkoutSet] {
-        workoutExercise.sets.sorted(by: { $0.order < $1.order })
+        workoutExercise.sets.sorted { $0.order < $1.order }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            exerciseHeader
+            LastDoneToggle(
+                muscles: workoutExercise.exercise?.primaryMuscles ?? [],
+                isExpanded: $isLastDoneExpanded
+            )
             if isLastDoneExpanded {
                 LastDonePanel(recency: recency, loadFailed: recencyLoadFailed)
             }
-            targetRow
-            notesRow
+            ExerciseNotesSection(
+                exerciseNotes: ExerciseNotes.cleaned(workoutExercise.exercise?.notes),
+                sessionNotes: ExerciseNotes.session(of: workoutExercise),
+                isTemplateNoteExpanded: $isTemplateNoteExpanded,
+                onEditNotes: actions.onEditNotes,
+                onEditTemplateNote: actions.onEditTemplateNote
+            )
             Divider()
-            setEntryRows
+            setRows
             addSetButton
         }
-        .padding()
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
         .task(id: isLastDoneExpanded) { await loadRecencyIfNeeded() }
     }
 
     private func loadRecencyIfNeeded() async {
-        guard isLastDoneExpanded, recency == nil, let loadRecency else { return }
+        guard isLastDoneExpanded, recency == nil else { return }
         recencyLoadFailed = false
-        recency = await loadRecency()
+        recency = await vm.recency(for: workoutExercise)
         recencyLoadFailed = recency == nil
     }
 
-    /// The plan, so drift is visible while training rather than only in
-    /// hindsight (#144). Without it the screen showed what you did last time
-    /// and nothing about what was intended, so 8 → 12 → 12 → 12 each looked
-    /// locally reasonable.
     @ViewBuilder
-    private var targetRow: some View {
-        if let plannedTarget {
-            Text("Target \(plannedTarget.summary)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Target \(plannedTarget.sets) sets of \(plannedTarget.reps) reps")
-                .accessibilityIdentifier("exerciseTarget")
-        }
-    }
-
-    /// The durable note lives on the library `Exercise` — it describes the
-    /// machine, so it follows the exercise into every workout (#136). The
-    /// session note is this workout's copy of the template's cue, usually
-    /// written by the Coach; it is shown beneath, collapsed to one line.
-    private var exerciseNotes: String? {
-        Self.cleaned(workoutExercise.exercise?.notes)
-    }
-
-    private var sessionNotes: String? {
-        let session = Self.cleaned(workoutExercise.notes)
-        return session == exerciseNotes ? nil : session
-    }
-
-    private static func cleaned(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ), !value.isEmpty else { return nil }
-        return value
-    }
-
-    /// The user's own note is shown in full, unconditionally when present — a
-    /// note behind a tap is a note you do not read mid-set, which is the whole
-    /// of #136. The template note is the opposite case (report 31A4983B): long
-    /// Coach prose that crowded the card, so it gets one line until tapped.
-    @ViewBuilder
-    private var notesRow: some View {
-        if exerciseNotes != nil || sessionNotes != nil {
-            VStack(alignment: .leading, spacing: 4) {
-                if let exerciseNotes {
-                    noteLine(
-                        exerciseNotes,
-                        systemImage: "note.text",
-                        identifier: "exerciseNotes",
-                        label: "Note"
-                    )
-                }
-                if let sessionNotes {
-                    templateNoteLine(sessionNotes)
-                }
+    private var setRows: some View {
+        let layout: SetRowLayout = dynamicTypeSize.isAccessibilitySize ? .stacked : .compact
+        VStack(spacing: layout == .stacked ? 12 : 2) {
+            if layout == .compact {
+                SetRowHeader(columns: columns)
+            }
+            ForEach(sortedSets, id: \.id) { set in
+                SetRowView(
+                    workoutExerciseID: workoutExercise.id,
+                    set: set,
+                    previousText: vm.previousText(for: set, in: workoutExercise),
+                    drifted: vm.driftTarget(for: set, in: workoutExercise) != nil,
+                    layout: layout,
+                    columns: columns,
+                    focusedField: focusedField,
+                    onComplete: actions.onCompleteSet,
+                    onEditWeight: { vm.updateSetWeight($0, weight: $1) },
+                    onEditReps: { vm.updateSetReps($0, reps: $1) }
+                )
+                .id(set.id)
             }
         }
     }
 
-    @ViewBuilder
-    private func templateNoteLine(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button {
-                withAnimation(.snappy) { isTemplateNoteExpanded.toggle() }
-            } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "text.bubble")
-                    Text(text)
-                        .lineLimit(isTemplateNoteExpanded ? nil : 1)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: isTemplateNoteExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
-                }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Template note: \(text)")
-            .accessibilityHint(isTemplateNoteExpanded ? "Collapses the note" : "Shows the whole note")
-            .accessibilityIdentifier("sessionNotes")
-
-            if isTemplateNoteExpanded, let onEditTemplateNote {
-                Button("Edit template note", action: onEditTemplateNote)
-                    .font(.caption)
-                    .accessibilityIdentifier("editTemplateNote")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func noteLine(
-        _ text: String,
-        systemImage: String,
-        identifier: String,
-        label: String
-    ) -> some View {
-        let content = Label {
-            Text(text)
-                .font(.callout)
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } icon: {
-            Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(text)")
-        .accessibilityIdentifier(identifier)
-
-        if let onEditNotes, identifier == "exerciseNotes" {
-            Button(action: onEditNotes) { content }
-                .buttonStyle(.plain)
-                .accessibilityHint("Edit this note")
-        } else {
-            content
-        }
-    }
-
-    @ViewBuilder
-    private var setEntryRows: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(spacing: 12) {
-                ForEach(sortedSets, id: \.id) { set in
-                    setRow(set, layout: .stacked)
-                        .id(set.id)
-                }
-            }
-        } else {
-            Grid(horizontalSpacing: 8, verticalSpacing: 2) {
-                columnHeaders
-                ForEach(sortedSets, id: \.id) { set in
-                    setRow(set, layout: .compact)
-                        .id(set.id)
-                }
-            }
-        }
-    }
-
-    private func setRow(
-        _ set: WorkoutSet,
-        layout: SetRowLayout
-    ) -> some View {
-        SetRowView(
-            workoutExerciseID: workoutExercise.id,
-            set: set,
-            previous: previousValue(set),
-            previousDrifted: previousDrifted(set),
-            layout: layout,
-            focusedField: focusedField,
-            onComplete: onCompleteSet,
-            onEditWeight: onEditWeight,
-            onEditReps: onEditReps
-        )
-    }
-
-    private var columnHeaders: some View {
-        GridRow {
-            headerText("SET", alignment: .leading)
-            headerText("PREVIOUS", alignment: .trailing)
-            headerText("WEIGHT", alignment: .trailing)
-            headerText("REPS", alignment: .trailing)
-            Color.clear
-                .frame(width: 44, height: 1)
-                .accessibilityHidden(true)
-        }
-    }
-
-    private func headerText(
-        _ title: String,
-        alignment: HorizontalAlignment
-    ) -> some View {
-        Text(title)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .gridColumnAlignment(alignment)
-    }
-
+    /// A full-width row button, at least 44 pt tall (UI-T1).
     private var addSetButton: some View {
-        Button(action: onAddSet) {
-            Label("Add Set", systemImage: "plus.circle")
-                .font(.caption)
+        Button {
+            vm.addSet(to: workoutExercise)
+        } label: {
+            Label("Add Set", systemImage: "plus")
+                .font(.body)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.bordered)
-        .tint(.secondary)
-        .padding(.top, 4)
+        .tint(.gray)
+        .accessibilityIdentifier("addSet")
     }
+}
 
-    private var exerciseHeader: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(workoutExercise.exercise?.name ?? "Unknown Exercise")
-                    .font(.headline)
-                musclesLine
-            }
-            Spacer()
-            actionsMenu
-        }
-    }
+/// The primary muscles line, which doubles as the "last done" disclosure
+/// (#167).
+private struct LastDoneToggle: View {
+    let muscles: [String]
+    @Binding var isExpanded: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// The primary muscles, as before. With a recency loader the same line is
-    /// the "last done" disclosure (#167), so the collapsed card keeps its
-    /// height: a clock and chevron are the only additions.
-    @ViewBuilder
-    private var musclesLine: some View {
-        let muscles = workoutExercise.exercise?.primaryMuscles ?? []
+    var body: some View {
         let text = muscles.joined(separator: ", ")
-        if loadRecency != nil {
-            Button {
-                withAnimation(.snappy) { isLastDoneExpanded.toggle() }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(muscles.isEmpty ? "Last done" : text)
-                        .multilineTextAlignment(.leading)
-                    Image(systemName: "clock.arrow.circlepath")
-                    Image(systemName: isLastDoneExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                // Taller hit area than the caption line, without changing layout.
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-                .padding(.vertical, -6)
+        Button {
+            withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "clock.arrow.circlepath")
+                Text(muscles.isEmpty ? "Last done" : "Last done · \(text)")
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(muscles.isEmpty ? "Last done" : "\(text), last done")
-            .accessibilityHint(
-                isLastDoneExpanded
-                    ? "Hides when you last did this exercise"
-                    : "Shows when you last did this exercise and trained these muscles"
-            )
-            .accessibilityIdentifier("lastDoneToggle")
-        } else if !muscles.isEmpty {
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(muscles.isEmpty ? "Last done" : "Last done, \(text)")
+        .accessibilityValue(isExpanded ? "expanded" : "collapsed")
+        .accessibilityIdentifier("lastDoneToggle")
     }
+}
 
-    @ViewBuilder
-    private var actionsMenu: some View {
-        if onRemoveSet != nil || onReport != nil || onEditNotes != nil
-            || onEditTemplateNote != nil {
-            Menu {
-                if let onEditNotes {
-                    Button {
-                        onEditNotes()
-                    } label: {
-                        Label(
-                            exerciseNotes == nil ? "Add a note…" : "Edit note…",
-                            systemImage: "note.text"
-                        )
-                    }
-                    .accessibilityIdentifier("editExerciseNotes")
-                }
-                if sessionNotes != nil, let onEditTemplateNote {
-                    Button {
-                        onEditTemplateNote()
-                    } label: {
-                        Label("Edit template note…", systemImage: "text.bubble")
-                    }
-                    .accessibilityIdentifier("editTemplateNoteMenu")
-                }
-                if let onReport {
-                    Button {
-                        onReport()
-                    } label: {
-                        Label("Report a problem…", systemImage: "flag")
-                    }
-                    .accessibilityIdentifier("reportExercise")
-                }
-                if sortedSets.count > 1, let onRemoveSet {
-                    Section("Remove Set…") {
-                        ForEach(sortedSets, id: \.id) { set in
-                            Button("Set \(set.order + 1)", role: .destructive) {
-                                onRemoveSet(set)
-                            }
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("Exercise actions")
-        }
-    }
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

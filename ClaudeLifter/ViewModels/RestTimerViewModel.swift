@@ -2,7 +2,6 @@ import Foundation
 import Observation
 import Combine
 import AudioToolbox
-import UIKit
 
 /// Rest countdown driven by an absolute deadline rather than tick counting
 /// (issue #77). Foreground ticks only *recompute* `endDate - now`, so time
@@ -15,6 +14,10 @@ final class RestTimerViewModel {
     private(set) var remainingSeconds: Int
     private(set) var isRunning = false
     private(set) var isExpired = false
+    /// The countdown ran out while the app was in the foreground, so the
+    /// chime played and the screen owes a `.success` haptic (UI-H2). The
+    /// haptic itself is the view's `.sensoryFeedback` (UI-H1).
+    private(set) var expiredInForeground = false
     /// Absolute deadline the countdown is derived from. Nil until started.
     private(set) var endDate: Date?
     let totalSeconds: Int
@@ -102,7 +105,7 @@ final class RestTimerViewModel {
         notificationScheduler.cancelRestCompleteNotification()
         if playsFeedback {
             AudioServicesPlaySystemSound(1007)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            expiredInForeground = true
         }
     }
 }
@@ -119,6 +122,11 @@ final class RestTimerSession {
     private let notificationScheduler: any NotificationScheduling
     private let now: () -> Date
     private var tickSubscription: AnyCancellable?
+    /// Counts rests that ran out on screen. The workout screen keys its
+    /// `.success` haptic on it (UI-H2: "Rest finished"), so the haptic fires
+    /// once per rest even though the bar that showed it has gone.
+    private(set) var restFinishedCount = 0
+    private var countedCurrentRest = false
 
     var remainingSeconds: Int {
         countdown?.remainingSeconds ?? 0
@@ -200,6 +208,7 @@ final class RestTimerSession {
             now: now
         )
         self.countdown = countdown
+        countedCurrentRest = false
         countdown.start()
         timerService.start()
         tickSubscription = timerService.tickPublisher.sink { [weak self] in
@@ -213,7 +222,11 @@ final class RestTimerSession {
     }
 
     private func stopTickingIfExpired() {
-        guard countdown?.isExpired == true else { return }
+        guard let countdown, countdown.isExpired else { return }
+        if countdown.expiredInForeground, !countedCurrentRest {
+            countedCurrentRest = true
+            restFinishedCount += 1
+        }
         stopTicking()
     }
 

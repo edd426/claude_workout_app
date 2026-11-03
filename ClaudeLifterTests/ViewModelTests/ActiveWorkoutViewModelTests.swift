@@ -1612,13 +1612,21 @@ extension ActiveWorkoutViewModelTests {
     // specified." An exercise added mid-workout got three empty sets and the
     // ghosts were display-only, so sets reached Cosmos with no reps at all.
     //
-    // Reps only, never weight: `WorkoutSet.weight == nil` already means
-    // bodyweight, so adopting a previous weight logs 80kg for a bodyweight
-    // set. That bug was found and cut once already — see
-    // "Ghost adoption was built and deliberately cut" in HANDOFF.md. A nil
-    // rep count carries no such meaning.
+    // Reps are adopted into any undecided set. Weight is not adopted in
+    // general: `WorkoutSet.weight == nil` already means bodyweight, so the cut
+    // "adopt the ghost on empty" design (see "Ghost adoption was built and
+    // deliberately cut" in HANDOFF.md) logged 80 kg for sets that were
+    // bodyweight on purpose.
+    //
+    // #174 (1.9.0) narrows that, without reopening it: an exercise ADDED
+    // mid-workout commits last session's weight into its untouched,
+    // app-created sets, exactly as a template start does. Leaving it nil was
+    // the opposite bug: the screen showed "80" and ✓ logged bodyweight. A
+    // bodyweight history still commits nothing (GlanceableSetRowTests
+    // `addedBodyweightExerciseKeepsNilWeight`), a typed or cleared weight is
+    // never overwritten, and resume never adopts weight.
 
-    @Test("Adopting reps never adopts weight — an untouched bodyweight set stays bodyweight")
+    @Test("An added exercise commits its last weight, as a template start does (#174)")
     func adoptingRepsLeavesWeightNil() async throws {
         let (container, exercise, template) = try makeSetup()
         let workoutRepo = MockWorkoutRepository()
@@ -1640,7 +1648,7 @@ extension ActiveWorkoutViewModelTests {
         let we = try #require(vm.workout?.exercises.first)
         for set in we.sets {
             #expect(set.reps == 8, "reps should adopt the previous session")
-            #expect(set.weight == nil, "weight must stay nil — nil means bodyweight")
+            #expect(set.weight == 80, "#174: a ghost 80 that logged as bodyweight was the bug")
         }
         await vm.awaitPendingSave()
         withExtendedLifetime(container) {}

@@ -323,4 +323,64 @@ struct RestTimerViewModelTests {
         #expect(scheduler.cancelCount == 1)
         #expect(timerService.stopCallCount == 1)
     }
+    // MARK: - Rest-finished haptic (UI-H1, UI-H2)
+
+    private func makeSession() -> (RestTimerSession, MockRestTimerService, TestClock) {
+        let clock = TestClock()
+        let timerService = MockRestTimerService()
+        let session = RestTimerSession(
+            timerService: timerService,
+            notificationScheduler: MockNotificationScheduler(),
+            now: { clock.now }
+        )
+        return (session, timerService, clock)
+    }
+
+    @Test("A rest that runs out on screen counts one rest-finished event")
+    func foregroundExpiryCountsOnce() {
+        let (session, timerService, clock) = makeSession()
+        session.start(duration: 60)
+
+        clock.advance(by: 61)
+        timerService.sendTick()
+        timerService.sendTick()
+
+        #expect(session.restFinishedCount == 1)
+    }
+
+    @Test("A rest that ran out while suspended counts none: the notification already fired")
+    func suspendedExpiryCountsNone() {
+        let (session, _, clock) = makeSession()
+        session.start(duration: 60)
+
+        clock.advance(by: 300)
+        session.refreshFromClock()
+
+        #expect(session.restFinishedCount == 0)
+    }
+
+    @Test("Skipping a rest is not a finished rest")
+    func skipCountsNone() {
+        let (session, _, _) = makeSession()
+        session.start(duration: 60)
+
+        session.skip()
+
+        #expect(session.restFinishedCount == 0)
+    }
+
+    @Test("Each rest that runs out counts once")
+    func everyRestCounts() {
+        let (session, timerService, clock) = makeSession()
+        session.start(duration: 30)
+        clock.advance(by: 31)
+        timerService.sendTick()
+
+        session.start(duration: 30)
+        clock.advance(by: 31)
+        timerService.sendTick()
+
+        #expect(session.restFinishedCount == 2)
+    }
 }
+

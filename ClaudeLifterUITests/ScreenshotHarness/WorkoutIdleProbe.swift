@@ -72,10 +72,15 @@ final class WorkoutIdleProbe: XCTestCase {
 
         // On the any-order screen (1.9.0) the lower cards are collapsed;
         // open the last one from the strip so its notes and set rows render.
+        // `isHittable` throws for a chip scrolled out of the strip, so swipe
+        // the strip to its end and check the frame instead.
         let chips = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stripChip_'"))
         if chips.count > 0 {
+            let strip = app.scrollViews["exerciseStrip"]
+            if strip.exists { strip.swipeLeft() }
+            sleep(1)
             let last = chips.element(boundBy: chips.count - 1)
-            if last.isHittable { last.tap() }
+            if isOnScreen(last) { last.tap() }
             sleep(2)
         }
         app.swipeUp()
@@ -90,27 +95,33 @@ final class WorkoutIdleProbe: XCTestCase {
 
     private func logSetLikeTheEvaluation() {
         let complete = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'completeSet_'"))
-        if let first = complete.allElementsBoundByIndex.first(where: { $0.isHittable }) {
+        if let first = complete.allElementsBoundByIndex.first(where: { isOnScreen($0) }) {
             first.tap()
             sleep(1)
         }
         let weights = app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH 'weight_'"))
         if weights.count > 1 {
             let field = weights.element(boundBy: 1)
-            if field.isHittable { field.tap() }
+            if isOnScreen(field) { field.tap() }
             sleep(1)
             let done = app.buttons["Done"]
-            if done.exists, done.isHittable { done.tap() }
+            if isOnScreen(done) { done.tap() }
             sleep(1)
         }
         for label in ["Skip rest", "Skip"] {
             let skip = app.buttons[label]
-            if skip.exists, skip.isHittable {
+            if isOnScreen(skip) {
                 skip.tap()
                 break
             }
         }
         sleep(1)
+    }
+
+    private func isOnScreen(_ element: XCUIElement) -> Bool {
+        guard element.exists else { return false }
+        let frame = element.frame
+        return !frame.isEmpty && app.frame.contains(CGPoint(x: frame.midX, y: frame.midY))
     }
 
     private func mark(_ name: String) {

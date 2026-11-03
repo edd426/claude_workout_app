@@ -1093,3 +1093,106 @@ describe("POST /api/inbox — template exercise alternatives (#169)", () => {
     expect(inbox.create).not.toHaveBeenCalled();
   });
 });
+
+// ─── #170: setExercisePhoto ──────────────────────────────────────────────────
+// Enqueued by attach_exercise_photo after it has uploaded the JPEG to
+// exercises/ext/{externalId}.jpg. The phone sets the exercise's photoURL to
+// blobPath once the user approves; it fails the op with "approval flag
+// mismatch" unless the stored requiresApproval is true.
+describe("POST /api/inbox — setExercisePhoto (#170)", () => {
+  const CUSTOM = "custom:belt-squat:10000000-0000-4000-8000-000000000008";
+
+  test.each(["Leg_Extensions", "Barbell_Bench_Press_-_Medium_Grip", CUSTOM])(
+    "enqueues %s with requiresApproval true and exactly {externalId, blobPath}",
+    async (externalId) => {
+      const blobPath = `exercises/ext/${externalId}.jpg`;
+
+      const response = await enqueue({
+        op: "setExercisePhoto",
+        payload: { externalId, blobPath, extra: "dropped" },
+        requiresApproval: false,
+      });
+
+      expect(isOk(response.status)).toBe(true);
+      const operation = response.jsonBody as Doc;
+      expect(operation["op"]).toBe("setExercisePhoto");
+      expect(operation["requiresApproval"]).toBe(true);
+      expect(operation["status"]).toBe("pending");
+      expect(operation["payload"]).toEqual({ externalId, blobPath });
+      expect(inbox.docs.get(operation["id"] as string)?.["requiresApproval"]).toBe(true);
+    }
+  );
+
+  test.each([
+    ["a missing externalId", { blobPath: "exercises/ext/Leg_Extensions.jpg" }],
+    ["a blank externalId", { externalId: " ", blobPath: "exercises/ext/ .jpg" }],
+    ["a missing blobPath", { externalId: "Leg_Extensions" }],
+    [
+      "a blobPath for another exercise",
+      { externalId: "Leg_Extensions", blobPath: "exercises/ext/Leg_Press.jpg" },
+    ],
+    [
+      "the UUID exercises/ family",
+      {
+        externalId: "Leg_Extensions",
+        blobPath: "exercises/6e4b1c2a-9d3f-4e21-8a7b-0c1d2e3f4a5b.jpg",
+      },
+    ],
+    [
+      "a traversal externalId",
+      { externalId: "../reports/x", blobPath: "exercises/ext/../reports/x.jpg" },
+    ],
+    [
+      "an externalId with a slash",
+      { externalId: "Leg/Press", blobPath: "exercises/ext/Leg/Press.jpg" },
+    ],
+    [
+      "an upper-case custom uuid",
+      {
+        externalId: "custom:belt-squat:10000000-0000-4000-8000-00000000000A",
+        blobPath: "exercises/ext/custom:belt-squat:10000000-0000-4000-8000-00000000000A.jpg",
+      },
+    ],
+    [
+      "a .png path",
+      { externalId: "Leg_Extensions", blobPath: "exercises/ext/Leg_Extensions.png" },
+    ],
+  ])("rejects %s before writing", async (_label, payload) => {
+    const response = await enqueue({ op: "setExercisePhoto", payload });
+
+    expect(response.status).toBe(400);
+    expect(inbox.create).not.toHaveBeenCalled();
+  });
+
+  test("moves pending → awaitingApproval → applied like the other approval ops", async () => {
+    inbox.seed(
+      pendingOperation({
+        op: "setExercisePhoto",
+        payload: { externalId: "Leg_Extensions", blobPath: "exercises/ext/Leg_Extensions.jpg" },
+        requiresApproval: true,
+      })
+    );
+
+    await ack({ results: [{ id: "operation-1", status: "awaitingApproval" }] });
+    expect(inbox.docs.get("operation-1")?.["status"]).toBe("awaitingApproval");
+
+    await ack({ results: [{ id: "operation-1", status: "applied" }] });
+    expect(inbox.docs.get("operation-1")?.["status"]).toBe("applied");
+  });
+
+  test("cannot skip approval: pending → applied fails the op", async () => {
+    inbox.seed(
+      pendingOperation({
+        op: "setExercisePhoto",
+        payload: { externalId: "Leg_Extensions", blobPath: "exercises/ext/Leg_Extensions.jpg" },
+        requiresApproval: true,
+      })
+    );
+
+    const response = await ack({ results: [{ id: "operation-1", status: "applied" }] });
+
+    const [result] = (response.jsonBody as { results: Doc[] }).results;
+    expect(result["outcome"]).toBe("conflict");
+    expect(inbox.docs.get("operation-1")?.["status"]).toBe("failed");
+  });
+});

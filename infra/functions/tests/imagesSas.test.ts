@@ -164,7 +164,7 @@ describe("imagesSas — issue #141: reports/{reportId}.jpg path family", () => {
     expect(result.status).toBe(400);
   });
 
-  test("the 400 names both accepted path families", async () => {
+  test("the 400 names every accepted path family", async () => {
     const result = await handler(
       makeRequest({ path: `foo/${VALID_ID}.jpg`, mode: "upload" }),
       new InvocationContext()
@@ -172,5 +172,111 @@ describe("imagesSas — issue #141: reports/{reportId}.jpg path family", () => {
     const { error } = result.jsonBody as { error: string };
     expect(error).toContain("exercises/{exerciseId}.jpg");
     expect(error).toContain("reports/{reportId}.jpg");
+    expect(error).toContain("exercises/ext/{externalId}.jpg");
+  });
+});
+
+// ─── Issue #170: photos attached by externalId ────────────────────────────────
+// The MCP tool attach_exercise_photo uploads to exercises/ext/{externalId}.jpg
+// (write SAS), and the phone downloads the same path (read SAS) after the
+// setExercisePhoto inbox op is approved. The id is a catalog externalId
+// (letters, digits, _ and -) or a server-minted custom id
+// custom:{slug}:{lowercase uuid}. The character set is allow-listed exactly:
+// no "/", no ".", no "%", no whitespace, so nothing can leave the family.
+
+describe("imagesSas — issue #170: exercises/ext/{externalId}.jpg path family", () => {
+  beforeEach(() => {
+    process.env.STORAGE_CONNECTION_STRING = TEST_CONNECTION_STRING;
+  });
+
+  const CUSTOM = "custom:belt-squat:10000000-0000-4000-8000-000000000008";
+
+  const accepted = [
+    "Leg_Extensions",
+    "Barbell_Bench_Press_-_Medium_Grip",
+    "3_4_Sit-Up",
+    "Anterior_Tibialis-SMR",
+    CUSTOM,
+    `custom:${"a".repeat(64)}:10000000-0000-4000-8000-000000000008`,
+    "custom:a:10000000-0000-4000-8000-000000000008",
+  ];
+
+  test.each(accepted.flatMap((id) => [[id, "upload"], [id, "download"]]))(
+    "issues an HTTPS-only SAS for exercises/ext/%s.jpg (mode %s)",
+    async (externalId, mode) => {
+      const path = `exercises/ext/${externalId}.jpg`;
+
+      const result = await handler(makeRequest({ path, mode }), new InvocationContext());
+
+      expect(result.status ?? 200).toBe(200);
+      const body = result.jsonBody as { sasUrl: string };
+      const url = new URL(body.sasUrl);
+      // A custom id's colons are percent-encoded in the URL; the blob name
+      // (what the SAS signs) is the decoded path.
+      expect(decodeURIComponent(url.pathname)).toBe(`/workout-images/${path}`);
+      expect(url.searchParams.get("spr")).toBe("https");
+      expect(url.searchParams.get("sp")).toBe(mode === "upload" ? "cw" : "r");
+    }
+  );
+
+  const rejected = [
+    // escape attempts
+    "exercises/ext/../reports/x.jpg",
+    "exercises/ext/../../etc/passwd.jpg",
+    "exercises/ext/..jpg",
+    "exercises/ext/.jpg",
+    "exercises/ext/Leg_Press/../x.jpg",
+    "exercises/ext/Leg%2FPress.jpg",
+    "exercises/ext/Leg%2E%2E.jpg",
+    "exercises/ext/Leg\\Press.jpg",
+    "exercises/ext/nested/Leg_Press.jpg",
+    "/exercises/ext/Leg_Press.jpg",
+    "exercises/ext//Leg_Press.jpg",
+    // characters outside the allow-list
+    "exercises/ext/Leg Press.jpg",
+    "exercises/ext/Lég_Press.jpg",
+    "exercises/ext/Leg.Press.jpg",
+    "exercises/ext/Leg_Press.jpg.jpg",
+    "exercises/ext/Leg_Press?.jpg",
+    "exercises/ext/Leg_Press.jpg\n",
+    "exercises/ext/_Leading.jpg",
+    "exercises/ext/-Leading.jpg",
+    `exercises/ext/${"A".repeat(129)}.jpg`,
+    // shape
+    "exercises/ext/.jpg",
+    "exercises/ext/Leg_Press.png",
+    "exercises/ext/Leg_Press.JPG",
+    "exercises/ext/Leg_Press",
+    "exercises/EXT/Leg_Press.jpg",
+    "exercises/ext.jpg",
+    // malformed custom ids
+    "exercises/ext/custom:belt-squat:not-a-uuid.jpg",
+    "exercises/ext/custom:Belt-Squat:10000000-0000-4000-8000-000000000008.jpg",
+    "exercises/ext/custom:belt-squat:10000000-0000-4000-8000-00000000000A.jpg",
+    "exercises/ext/custom::10000000-0000-4000-8000-000000000008.jpg",
+    "exercises/ext/custom:belt--squat:10000000-0000-4000-8000-000000000008.jpg",
+    "exercises/ext/custom:belt_squat:10000000-0000-4000-8000-000000000008.jpg",
+    `exercises/ext/custom:${"a".repeat(65)}:10000000-0000-4000-8000-000000000008.jpg`,
+    `exercises/ext/${CUSTOM}:extra.jpg`,
+    "exercises/ext/other:belt-squat:10000000-0000-4000-8000-000000000008.jpg",
+    "exercises/ext/Leg:Press.jpg",
+  ];
+
+  test.each(rejected.flatMap((path) => [[path, "upload"], [path, "download"]]))(
+    "rejects %j (mode %s) with 400",
+    async (path, mode) => {
+      const result = await handler(makeRequest({ path, mode }), new InvocationContext());
+      expect(result.status).toBe(400);
+    }
+  );
+
+  test("the UUID families are unchanged by the new one", async () => {
+    for (const path of [`exercises/${VALID_ID}.jpg`, `reports/${UPPER_ID}.jpg`]) {
+      const result = await handler(
+        makeRequest({ path, mode: "download" }),
+        new InvocationContext()
+      );
+      expect(result.status ?? 200).toBe(200);
+    }
   });
 });

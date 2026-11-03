@@ -123,7 +123,8 @@ export type InboxOperationType =
   | "updateTemplate"
   | "deleteTemplate"
   | "createCustomExercise"
-  | "resolveExerciseReport";
+  | "resolveExerciseReport"
+  | "setExercisePhoto";
 
 export type InboxOperationStatus =
   | "pending"
@@ -193,12 +194,23 @@ export interface ResolveExerciseReportPayload {
   resolution?: string;
 }
 
+/**
+ * Issue #170: point an exercise's photo at a blob the MCP tool already
+ * uploaded. `blobPath` is exactly `exercises/ext/{externalId}.jpg`.
+ * Requires approval on the phone.
+ */
+export interface SetExercisePhotoPayload {
+  externalId: string;
+  blobPath: string;
+}
+
 export type InboxOperationPayload =
   | CreateTemplatePayload
   | UpdateTemplatePayload
   | DeleteTemplatePayload
   | CreateCustomExercisePayload
-  | ResolveExerciseReportPayload;
+  | ResolveExerciseReportPayload
+  | SetExercisePhotoPayload;
 
 export interface InboxOperation {
   id: string;
@@ -216,7 +228,8 @@ export type InboxEnqueueRequest =
   | { op: "updateTemplate"; payload: UpdateTemplatePayload }
   | { op: "deleteTemplate"; payload: DeleteTemplatePayload }
   | { op: "createCustomExercise"; payload: CreateCustomExercisePayload }
-  | { op: "resolveExerciseReport"; payload: ResolveExerciseReportPayload };
+  | { op: "resolveExerciseReport"; payload: ResolveExerciseReportPayload }
+  | { op: "setExercisePhoto"; payload: SetExercisePhotoPayload };
 
 export type InboxEnqueueResponse = InboxOperation;
 

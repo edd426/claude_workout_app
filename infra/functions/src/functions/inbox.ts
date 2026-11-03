@@ -34,6 +34,7 @@ import { randomUUID } from "node:crypto";
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
 import { customExerciseExternalId } from "../shared/customExerciseIdentity";
+import { exercisePhotoPath, isPhotoExternalId } from "../shared/exercisePhotoPath";
 import { readItemOrNull } from "../shared/readHelpers";
 import {
   InboxAckCounts,
@@ -60,6 +61,7 @@ const OPERATION_TYPES: readonly InboxOperationType[] = [
   "deleteTemplate",
   "createCustomExercise",
   "resolveExerciseReport",
+  "setExercisePhoto",
 ];
 
 const OPERATION_STATUSES: readonly InboxOperationStatus[] = [
@@ -335,6 +337,30 @@ function validateResolveExerciseReport(
 }
 
 /**
+ * Issue #170. The photo is already in blob storage when this is enqueued
+ * (attach_exercise_photo uploads first); the op asks the phone to point the
+ * exercise's photoURL at it. `blobPath` must be exactly the externalId's own
+ * photo path, so an op can never aim one exercise at another's photo or at a
+ * path outside the family.
+ */
+function validateSetExercisePhoto(
+  payload: Record<string, unknown>
+): HttpResponseInit | null {
+  const externalId = payload["externalId"];
+  if (!isNonEmptyString(externalId) || !isPhotoExternalId(externalId)) {
+    return badRequest(
+      "Malformed payload: externalId must be a catalog externalId or a custom:{slug}:{uuid} id"
+    );
+  }
+  if (payload["blobPath"] !== exercisePhotoPath(externalId)) {
+    return badRequest(
+      `Malformed payload: blobPath must be exactly "${exercisePhotoPath(externalId)}"`
+    );
+  }
+  return null;
+}
+
+/**
  * Validates the complete enqueue body before Cosmos is accessed. Top-level
  * id/requiresApproval fields are deliberately not read; the Function owns
  * the operation envelope.
@@ -382,12 +408,21 @@ function validateEnqueueBody(
     case "resolveExerciseReport":
       validationError = validateResolveExerciseReport(payload);
       break;
+    case "setExercisePhoto":
+      validationError = validateSetExercisePhoto(payload);
+      break;
   }
   if (validationError) return { ok: false, error: validationError };
 
+  // setExercisePhoto is stored as exactly the two keys the phone reads.
+  const stored =
+    op === "setExercisePhoto"
+      ? { externalId: payload["externalId"], blobPath: payload["blobPath"] }
+      : payload;
+
   return {
     ok: true,
-    value: { op, payload } as unknown as InboxEnqueueRequest,
+    value: { op, payload: stored } as unknown as InboxEnqueueRequest,
   };
 }
 
@@ -478,8 +513,17 @@ async function queryAllByStatus(
   );
 }
 
+/**
+ * Server-computed, never taken from the client. setExercisePhoto (#170) needs
+ * approval: it changes what an exercise card shows, and the phone fails the
+ * op with "approval flag mismatch" if this is false.
+ */
 function requiresApproval(op: InboxOperationType): boolean {
-  return op === "updateTemplate" || op === "deleteTemplate";
+  return (
+    op === "updateTemplate" ||
+    op === "deleteTemplate" ||
+    op === "setExercisePhoto"
+  );
 }
 
 function transitionError(

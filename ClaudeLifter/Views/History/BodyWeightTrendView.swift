@@ -13,7 +13,8 @@ struct BodyWeightTrendView: View {
             VStack(spacing: 16) {
                 if let errorMessage = vm.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
+                        .font(.subheadline)
+                        .foregroundStyle(BrandTheme.warning)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 WeightChartCard(vm: vm)
@@ -40,8 +41,8 @@ private struct TrendCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) { content }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .background(BrandTheme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -96,7 +97,7 @@ private struct WeightChartCard: View {
                         y: .value("Weight", point.value)
                     )
                     .symbolSize(16)
-                    .foregroundStyle(BrandTheme.terracotta.opacity(0.4))
+                    .foregroundStyle(BrandTheme.accent.opacity(0.4))
                 }
                 ForEach(vm.averageLine) { point in
                     LineMark(
@@ -106,12 +107,14 @@ private struct WeightChartCard: View {
                     )
                     .interpolationMethod(.monotone)
                     .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .foregroundStyle(BrandTheme.terracotta)
+                    .foregroundStyle(BrandTheme.accent)
                 }
             }
             .chartYScale(domain: .automatic(includesZero: false))
             .frame(height: 240)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("Body weight chart, \(vm.selectedRange.rawValue)")
+            .accessibilityValue(vm.chartAccessibilitySummary)
         }
     }
 }
@@ -145,6 +148,7 @@ private struct WeightRateCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(WeightFormat.signed(perWeek)) \(vm.displayUnit.rawValue)/wk")
                     .font(.title3.bold())
+                    .monospacedDigit()
                 Text("\(WeightFormat.signed(rate.percentPerWeek)) %/wk")
                     .foregroundStyle(.secondary)
             }
@@ -187,7 +191,7 @@ private struct GoalStatusLabel: View {
             }
         } icon: {
             Image(systemName: status == .onTrack ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(status == .onTrack ? BrandTheme.green : .orange)
+                .foregroundStyle(status == .onTrack ? BrandTheme.success : BrandTheme.warning)
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("weightGoalStatus")
@@ -222,12 +226,12 @@ private struct ProteinTargetCard: View {
             Text("Protein target").font(.headline)
             if let target = vm.proteinTarget {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(target.grams) g").font(.title3.bold())
+                    Text("\(target.grams) g").font(.title3.bold()).monospacedDigit()
                     Text("per day").foregroundStyle(.secondary)
                     if target.isStale {
-                        Text("Stale")
+                        Label("Stale", systemImage: "clock.badge.exclamationmark")
                             .font(.caption.bold())
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(BrandTheme.warning)
                     }
                 }
                 Text(basisText(target))
@@ -246,8 +250,8 @@ private struct ProteinTargetCard: View {
             }
             .accessibilityIdentifier("proteinMultiplierStepper")
             Text("Muscle gains plateau around 1.6 g/kg; higher is a buffer, not a requirement.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

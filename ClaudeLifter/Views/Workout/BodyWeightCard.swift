@@ -18,10 +18,9 @@ struct BodyWeightCard: View {
                 Label("Log", systemImage: "scalemass")
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.small)
         }
-        .padding(12)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .padding(16)
+        .background(BrandTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal)
         .padding(.top, 8)
         .task {
@@ -30,7 +29,7 @@ struct BodyWeightCard: View {
         }
         .sheet(isPresented: $showEntrySheet) {
             BodyWeightEntrySheet(vm: vm)
-                .presentationDetents([.height(220)])
+                .quickEntryDetents(height: 240)
         }
     }
 
@@ -49,7 +48,8 @@ struct BodyWeightCard: View {
                     Spacer(minLength: 4)
                     Image(systemName: "chevron.right")
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
             }
@@ -74,8 +74,8 @@ struct BodyWeightCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(entry.recordedAt, format: .relative(presentation: .named))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 trendLine
                 proteinLine
@@ -91,8 +91,8 @@ struct BodyWeightCard: View {
     private var proteinLine: some View {
         if let target = vm.proteinTarget {
             Text("Protein \(target.grams) g/day\(target.isStale ? " · stale" : "")")
-                .font(.caption2)
-                .foregroundStyle(target.isStale ? Color.orange : Color.secondary)
+                .font(.caption)
+                .foregroundStyle(target.isStale ? BrandTheme.warning : BrandTheme.secondaryText)
                 .accessibilityIdentifier("proteinTargetLine")
         }
     }
@@ -105,8 +105,9 @@ struct BodyWeightCard: View {
             HStack(spacing: 8) {
                 ForEach(available, id: \.0) { label, delta in
                     Text("\(label) \(delta >= 0 ? "+" : "")\(delta, format: .number.precision(.fractionLength(1)))")
-                        .font(.caption2)
-                        .foregroundStyle(delta >= 0 ? Color.green : Color.orange)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(BrandTheme.secondaryText)
                 }
             }
         }
@@ -126,13 +127,16 @@ struct BodyWeightEntrySheet: View {
                     TextField("Weight", text: $weightText)
                         .keyboardType(.decimalPad)
                         .focused($fieldFocused)
+                        .font(.title3)
+                        .monospacedDigit()
+                        .accessibilityIdentifier("bodyWeightField")
                     Text(vm.displayUnit.rawValue)
                         .foregroundStyle(.secondary)
                 }
                 if let errorMessage = vm.errorMessage {
                     Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                        .font(.subheadline)
+                        .foregroundStyle(BrandTheme.destructive)
                 }
             }
             .navigationTitle("Log Weight")
@@ -151,8 +155,10 @@ struct BodyWeightEntrySheet: View {
                         }
                     }
                     .disabled(parsedWeight == nil)
+                    .accessibilityIdentifier("saveBodyWeight")
                 }
             }
+            .keyboardDoneButton(identifier: "bodyWeightKeyboardDone") { fieldFocused = false }
             .task {
                 if let last = vm.latestDisplayWeight {
                     weightText = last.formatted(.number.precision(.fractionLength(1)))

@@ -14,6 +14,14 @@ struct WeightChartPoint: Equatable, Identifiable, Sendable {
     let value: Double
 }
 
+/// One day of the goal-pace band, in the display unit.
+struct WeightGoalBandPoint: Equatable, Identifiable, Sendable {
+    let id: Int
+    let date: Date
+    let lower: Double
+    let upper: Double
+}
+
 @Observable
 @MainActor
 final class BodyWeightTrendViewModel {
@@ -156,6 +164,87 @@ final class BodyWeightTrendViewModel {
     var displayGoalPerWeek: Double? {
         guard let goal = goalPercentPerWeek, let currentAverage else { return nil }
         return goal * currentAverage / 100
+    }
+
+    // MARK: - Body tab card (1.9.0)
+
+    /// When the newest reading was taken.
+    var latestReadingDate: Date? { samples.last?.date }
+
+    /// "2 days ago" (UI-E4), nil with no readings.
+    var lastWeighInAge: String? {
+        latestReadingDate.map { BodyFormat.age(of: $0, now: now(), calendar: calendar) }
+    }
+
+    /// A week without a weigh-in: the card flags the age.
+    var isWeighInStale: Bool {
+        guard let latestReadingDate else { return false }
+        return BodyFormat.daysSince(latestReadingDate, now: now(), calendar: calendar)
+            >= Self.staleWeighInDays
+    }
+
+    static let staleWeighInDays = 7
+
+    /// "+0.18 kg/wk vs goal -0.25", "+0.18 kg/wk · no goal set", or nil when
+    /// there is not enough data for a rate.
+    var rateSummary: String? {
+        guard let perWeek = displayRatePerWeek else { return nil }
+        let unit = displayUnit.rawValue
+        let rateText = "\(Self.signed(perWeek)) \(unit)/wk"
+        guard let goal = displayGoalPerWeek else { return "\(rateText) · no goal set" }
+        return "\(rateText) vs goal \(Self.signed(goal))"
+    }
+
+    /// Where the weight would be on goal pace, ± the on-track tolerance,
+    /// across the rate window: a cone from the 7-day average on the first
+    /// day of the window. Empty with no goal, or without enough data for a
+    /// rate (a band from a single reading would suggest a trend there isn't).
+    var goalBand: [WeightGoalBandPoint] {
+        guard let goal = goalPercentPerWeek, rate != nil else { return [] }
+        let today = calendar.startOfDay(for: now())
+        guard let windowStart = calendar.date(
+            byAdding: .day, value: -(BodyWeightTrend.rateWindowDays - 1), to: today
+        ), let anchor = smoothed.first(where: { $0.date >= windowStart }) else { return [] }
+        let days = calendar.dateComponents([.day], from: anchor.date, to: today).day ?? 0
+        guard days > 0 else { return [] }
+        let tolerance = BodyWeightTrend.goalTolerance
+        let unit = displayUnit
+        return (0...days).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: anchor.date) else {
+                return nil
+            }
+            let weeks = Double(offset) / 7
+            let low = anchor.kilograms * (1 + (goal - tolerance) * weeks / 100)
+            let high = anchor.kilograms * (1 + (goal + tolerance) * weeks / 100)
+            return WeightGoalBandPoint(
+                id: offset,
+                date: date,
+                lower: WeightUnit.kg.convert(min(low, high), to: unit),
+                upper: WeightUnit.kg.convert(max(low, high), to: unit)
+            )
+        }
+    }
+
+    /// VoiceOver summary of the chart (UI-A4).
+    var chartAccessibilitySummary: String {
+        let unit = displayUnit.rawValue
+        guard let average = currentAverage else { return "No weigh-ins yet" }
+        var parts = ["7-day average \(Self.plain(average)) \(unit)"]
+        if let perWeek = displayRatePerWeek {
+            parts.append("trend \(Self.signed(perWeek)) \(unit) a week")
+        }
+        if let goal = displayGoalPerWeek {
+            parts.append("goal \(Self.signed(goal)) \(unit) a week")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private static func signed(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(2)).sign(strategy: .always()))
+    }
+
+    private static func plain(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(1)))
     }
 
     // MARK: - Protein (#111)

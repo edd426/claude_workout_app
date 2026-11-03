@@ -41,9 +41,14 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Model'")).firstMatch.waitForExistence(timeout: 5))
     }
 
+    /// The server fields live in "Advanced", below the user's settings.
     func testAPIKeyFieldExists() throws {
         openSettings()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'API'")).firstMatch.waitForExistence(timeout: 5))
+        let field = app.secureTextFields["Server API Key"]
+        for _ in 0..<6 where !field.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
     }
 
     /// The AI model rows are Buttons (UI-T4): one tap selects.

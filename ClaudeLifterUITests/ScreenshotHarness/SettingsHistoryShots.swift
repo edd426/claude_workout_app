@@ -38,7 +38,10 @@ final class SettingsHistoryShots: XCTestCase {
     func testShots() throws {
         app.launch()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 30))
-        sleep(2)
+        // With no server configured, Home raises an "Approval Error" alert
+        // shortly after launch; it would cover every screenshot.
+        _ = app.alerts.firstMatch.waitForExistence(timeout: 6)
+        dismissAlerts()
         settingsAndJefit()
         workoutWithRecord()
         history()
@@ -180,7 +183,21 @@ final class SettingsHistoryShots: XCTestCase {
         _ = app.navigationBars["Settings"].waitForExistence(timeout: 5)
     }
 
+    /// Taps OK or Cancel on any app alert that is up.
+    private func dismissAlerts() {
+        for _ in 0..<3 {
+            let alert = app.alerts.firstMatch
+            guard alert.exists else { return }
+            let button = ["OK", "Cancel", "Close"].lazy
+                .map { alert.buttons[$0] }
+                .first { $0.exists } ?? alert.buttons.firstMatch
+            button.safeTap()
+            sleep(1)
+        }
+    }
+
     private func tab(_ name: String) {
+        dismissAlerts()
         let button = app.tabBars.buttons[name]
         guard button.waitForExistence(timeout: 5) else { return }
         for _ in 0..<4 {
@@ -191,6 +208,7 @@ final class SettingsHistoryShots: XCTestCase {
     }
 
     private func snap(_ name: String) {
+        dismissAlerts()
         let shot = XCUIScreen.main.screenshot()
         let file = outputDirectory.appendingPathComponent("\(name)_\(suffix).png")
         try? shot.pngRepresentation.write(to: file)

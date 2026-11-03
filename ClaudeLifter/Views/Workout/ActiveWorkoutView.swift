@@ -179,7 +179,7 @@ struct ActiveWorkoutView: View {
 
     private var workoutScrollArea: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
+            VStack(spacing: 12) {
                 ForEach(
                     vm.workout?.exercises.sorted(
                         by: { $0.order < $1.order }

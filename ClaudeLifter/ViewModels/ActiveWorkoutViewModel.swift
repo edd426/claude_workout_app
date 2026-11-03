@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import UIKit
 
 /// Where an active workout is in the process of ending.
 ///
@@ -42,7 +41,7 @@ final class ActiveWorkoutViewModel {
     }
     var lastCompletedSet: WorkoutSet? = nil
     var detectedPRs: [PersonalRecord] = []
-    private(set) var previousValues: [UUID: AutoFillResult] = [:]
+    var previousValues: [UUID: AutoFillResult] = [:]
 
     /// The planned target per workout exercise (#144), from the provenance
     /// baseline captured at start. Keyed by `WorkoutExercise.id`; an exercise
@@ -61,31 +60,65 @@ final class ActiveWorkoutViewModel {
     /// reps back — harmless, because nil reps on an unlogged set carry no
     /// meaning. The same reasoning does NOT hold for weight, which is why
     /// weight is never adopted.
-    private var repsDecidedByUser: Set<UUID> = []
+    var repsDecidedByUser: Set<UUID> = []
 
-    private let template: WorkoutTemplate?
+    let template: WorkoutTemplate?
     private let adHocName: String?
     private let workoutRepository: any WorkoutRepository
-    private let autoFillService: any AutoFillServiceProtocol
+    let autoFillService: any AutoFillServiceProtocol
     private let prDetectionService: (any PRDetectionServiceProtocol)?
     private let templateRepository: (any TemplateRepository)?
     /// Needed to persist per-exercise notes (#136). Optional so existing
     /// construction sites keep compiling; when nil the note is written to the
     /// in-memory model but not saved.
-    private let exerciseRepository: (any ExerciseRepository)?
+    let exerciseRepository: (any ExerciseRepository)?
     /// Records the template plan a workout started from (#128). Optional so
     /// existing construction sites keep compiling; when nil, provenance is
     /// simply not captured and post-workout reconciliation has nothing to
     /// offer — the workout itself is unaffected.
-    private let baselineRepository: (any TemplateBaselineRepository)?
+    let baselineRepository: (any TemplateBaselineRepository)?
     /// Global user preferences. Optional so existing construction sites keep
     /// compiling; when nil, newly created sets fall back to kg (#83).
     private let settings: SettingsManager?
+    /// The template's "machine taken" substitutes (#169). Optional, and also
+    /// settable after construction through `useAlternatives(from:)`, because
+    /// the screens that build this ViewModel predate the repository.
+    var alternativeRepository: (any ExerciseAlternativeRepository)?
+
+    // MARK: - Any-order screen state (1.9.0)
+
+    /// The one card that is open. The user's tap decides it; nothing advances
+    /// it automatically, so the target never moves under the thumb (UI-H3).
+    var expandedExerciseId: UUID?
+    /// Exercises skipped today. Held in memory only: "skipped" otherwise
+    /// derives from having no completed sets, and no model change is needed.
+    var skippedExerciseIds: Set<UUID> = []
+    /// Planned slot → its template exercise, for alternatives. Filled at start
+    /// from the template, or on resume from the provenance baseline (#128).
+    var sourceTemplateExerciseIds: [UUID: UUID] = [:]
+    /// Planned slot → the exercise the baseline recorded for it.
+    var plannedExerciseIds: [UUID: (id: UUID, externalId: String?)] = [:]
+    /// Alternatives per slot, loaded ahead so the menu opens instantly.
+    var alternativeOptions: [UUID: [AlternativeOption]] = [:]
+    var pendingAlternativesLoad: Task<Void, Never>?
+    /// What a swapped slot held before, for Undo. In memory: after a crash the
+    /// swap itself survives (it is the model), only Undo is lost.
+    var swapRecords: [UUID: SwapRecord] = [:]
+    /// Weight fields the user has typed in or cleared — never overwritten by
+    /// a late history load for an added exercise (#174).
+    var weightDecidedByUser: Set<UUID> = []
+    /// Bumped when background photo downloads land, so thumbnails reload.
+    private(set) var photoGeneration = 0
+    var didFetchPhotos = false
+
+    func notePhotosLanded() {
+        photoGeneration += 1
+    }
 
     /// The unit newly created sets default to (#83). Reads the live
     /// SettingsManager so mid-workout preference changes are respected.
     /// Per-set override remains possible — this is only the creation default.
-    private var defaultWeightUnit: WeightUnit {
+    var defaultWeightUnit: WeightUnit {
         settings?.weightUnit ?? .kg
     }
 
@@ -179,6 +212,7 @@ final class ActiveWorkoutViewModel {
                 workoutId: workout.id
             ) else { return }
             var targets: [UUID: PlannedTarget] = [:]
+            var learnedSlots = false
             for entry in entries {
                 guard let workoutExerciseId = entry.workoutExerciseId else { continue }
                 targets[workoutExerciseId] = PlannedTarget(
@@ -187,8 +221,18 @@ final class ActiveWorkoutViewModel {
                     restSeconds: entry.plannedRestSeconds,
                     notes: entry.plannedNotes
                 )
+                // A resumed workout learns its planned slots from the
+                // baseline; a fresh start already knows them.
+                if self.sourceTemplateExerciseIds[workoutExerciseId] == nil {
+                    self.sourceTemplateExerciseIds[workoutExerciseId] = entry.sourceTemplateExerciseId
+                    self.plannedExerciseIds[workoutExerciseId] = (entry.exerciseId, entry.exerciseExternalId)
+                    learnedSlots = true
+                }
             }
             self.plannedTargets = targets
+            if learnedSlots {
+                self.queueAlternativesLoad()
+            }
         }
     }
 
@@ -246,7 +290,8 @@ final class ActiveWorkoutViewModel {
         templateRepository: (any TemplateRepository)? = nil,
         baselineRepository: (any TemplateBaselineRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
-        settings: SettingsManager? = nil
+        settings: SettingsManager? = nil,
+        alternativeRepository: (any ExerciseAlternativeRepository)? = nil
     ) {
         self.template = template
         self.adHocName = nil
@@ -257,6 +302,7 @@ final class ActiveWorkoutViewModel {
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
         self.settings = settings
+        self.alternativeRepository = alternativeRepository
     }
 
     init(
@@ -290,7 +336,8 @@ final class ActiveWorkoutViewModel {
         templateRepository: (any TemplateRepository)? = nil,
         baselineRepository: (any TemplateBaselineRepository)? = nil,
         prDetectionService: (any PRDetectionServiceProtocol)? = nil,
-        settings: SettingsManager? = nil
+        settings: SettingsManager? = nil,
+        alternativeRepository: (any ExerciseAlternativeRepository)? = nil
     ) {
         self.template = nil
         self.adHocName = nil
@@ -301,6 +348,7 @@ final class ActiveWorkoutViewModel {
         self.templateRepository = templateRepository
         self.prDetectionService = prDetectionService
         self.settings = settings
+        self.alternativeRepository = alternativeRepository
         self.workout = workout
     }
 
@@ -319,6 +367,7 @@ final class ActiveWorkoutViewModel {
             // crash recovery reads back the same plan it started with (#144).
             loadPlannedTargets(for: workout)
             didLoadInitialPreviousValues = true
+            expandFirstIncomplete()
             return
         }
 
@@ -413,17 +462,23 @@ final class ActiveWorkoutViewModel {
             }
             newWorkout.exercises.append(we)
             workoutExerciseIdByTemplateExerciseId[templateExercise.id] = we.id
+            // The planned slot, for "machine taken" alternatives (#169) and
+            // for telling a swap from the plan.
+            sourceTemplateExerciseIds[we.id] = templateExercise.id
+            plannedExerciseIds[we.id] = (exercise.id, exercise.externalId)
         }
         do {
             try await saveWorkout(newWorkout)
             workout = newWorkout
             didLoadInitialPreviousValues = true
+            expandFirstIncomplete()
             loadPlannedTargets(for: newWorkout)
             await captureBaseline(
                 for: newWorkout,
                 from: template,
                 workoutExerciseIds: workoutExerciseIdByTemplateExerciseId
             )
+            queueAlternativesLoad()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -486,7 +541,7 @@ final class ActiveWorkoutViewModel {
     /// Shared tail of every mutation: sync bookkeeping + debounced save.
     /// `recordChange()` runs synchronously so sync state is correct even if
     /// the app dies before the async save lands.
-    private func persistMutation() {
+    func persistMutation() {
         // Once the workout is finished its record is authoritative. A late
         // mutation — from a Coach tool, say — must not re-open it for a draft
         // save that would re-stamp `lastModified` behind the user's back.
@@ -504,6 +559,10 @@ final class ActiveWorkoutViewModel {
     }
 
     func updateSetWeight(_ set: WorkoutSet, weight: Double?) {
+        // Recorded even when unchanged, like reps (#137): an empty field the
+        // user left empty is a decision, so a late history load for an added
+        // exercise must not fill it (#174).
+        weightDecidedByUser.insert(set.id)
         guard set.weight != weight else { return }
         if set.weight == nil,
            weight != nil,
@@ -601,7 +660,7 @@ final class ActiveWorkoutViewModel {
         set.isCompleted = true
         set.completedAt = .now
         lastCompletedSet = set
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // The haptic is the set row's `.sensoryFeedback` (ui-standards UI-H1).
         persistMutation()
         return true
     }
@@ -648,7 +707,11 @@ final class ActiveWorkoutViewModel {
             we.sets.append(WorkoutSet(order: i, weightUnit: defaultWeightUnit))
         }
         persistMutation()
-        queuePreviousValuesLoad(for: we)
+        // An exercise added mid-workout is filled from its own history the
+        // way a template start is: committed values, never ghost text (#174).
+        queuePreviousValuesLoad(for: we, commitWeights: true)
+        // He added it to do it now: open it.
+        expandedExerciseId = we.id
     }
 
     func removeExercise(_ workoutExercise: WorkoutExercise) {
@@ -656,6 +719,19 @@ final class ActiveWorkoutViewModel {
             previousValues[set.id] = nil
         }
         workout?.exercises.removeAll { $0.id == workoutExercise.id }
+        // Close the gap so Move up / Move down and the strip stay contiguous.
+        // Relative order is unchanged, so this is not a reorder (#129).
+        for (index, survivor) in (workout?.exercises ?? [])
+            .sorted(by: { $0.order < $1.order })
+            .enumerated() where survivor.order != index {
+            survivor.order = index
+        }
+        if expandedExerciseId == workoutExercise.id {
+            expandedExerciseId = nil
+        }
+        skippedExerciseIds.remove(workoutExercise.id)
+        swapRecords[workoutExercise.id] = nil
+        alternativeOptions[workoutExercise.id] = nil
         persistMutation()
     }
 
@@ -708,9 +784,14 @@ final class ActiveWorkoutViewModel {
         }
     }
 
+    /// - Parameter commitWeights: also write the previous weight into sets
+    ///   that are still untouched. Only for an exercise added this session
+    ///   (#174), whose empty sets were created by the app, not by him. Never
+    ///   on resume: there, an empty weight may be a bodyweight set he chose.
     private func populatePreviousValues(
         for workoutExercise: WorkoutExercise,
-        templateExercise: TemplateExercise? = nil
+        templateExercise: TemplateExercise? = nil,
+        commitWeights: Bool = false
     ) async {
         guard let exerciseID = workoutExercise.exercise?.id else { return }
         let sortedSets = workoutExercise.sets.sorted(by: { $0.order < $1.order })
@@ -730,6 +811,9 @@ final class ActiveWorkoutViewModel {
                 continue
             }
             previousValues[set.id] = previous
+            if commitWeights, commitPreviousWeight(into: set, from: previous) {
+                didAdopt = true
+            }
             if adoptPreviousReps(into: set, from: previous) {
                 didAdopt = true
             }
@@ -737,6 +821,26 @@ final class ActiveWorkoutViewModel {
         if didAdopt {
             persistMutation()
         }
+    }
+
+    /// Commits last session's weight into an untouched set of an exercise
+    /// added mid-workout (#174). A bodyweight history (nil weight) commits
+    /// nothing, so the field stays empty and reads "BW": the reason the old
+    /// "adopt the ghost on empty" design was rejected was logging 80 kg for a
+    /// bodyweight set.
+    private func commitPreviousWeight(
+        into set: WorkoutSet,
+        from previous: AutoFillResult
+    ) -> Bool {
+        guard
+            !set.isCompleted,
+            !weightDecidedByUser.contains(set.id),
+            set.weight == nil,
+            let weight = previous.weight
+        else { return false }
+        set.weight = weight
+        set.weightUnit = previous.weightUnit
+        return true
     }
 
     /// Writes the previous session's reps into a set the user has not decided
@@ -759,12 +863,18 @@ final class ActiveWorkoutViewModel {
         return true
     }
 
-    private func queuePreviousValuesLoad(for workoutExercise: WorkoutExercise) {
+    private func queuePreviousValuesLoad(
+        for workoutExercise: WorkoutExercise,
+        commitWeights: Bool = false
+    ) {
         let precedingLoad = pendingPreviousValuesLoad
         pendingPreviousValuesLoad = Task { [weak self] in
             await precedingLoad?.value
             guard let self else { return }
-            await self.populatePreviousValues(for: workoutExercise)
+            await self.populatePreviousValues(
+                for: workoutExercise,
+                commitWeights: commitWeights
+            )
         }
     }
 

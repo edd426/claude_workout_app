@@ -9,6 +9,10 @@ struct ExerciseLibraryView: View {
 
     var selectionMode: Bool = false
     var onSelect: ((Exercise) -> Void)? = nil
+    /// Opens pre-filtered to this primary muscle ("Machine taken → Other…",
+    /// #169), when the catalog has it as a `muscle_group` tag. The chip can be
+    /// removed like any other filter.
+    var initialMuscleFilter: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -56,6 +60,10 @@ struct ExerciseLibraryView: View {
                     exerciseRepository: deps.exerciseRepository
                 )
                 await vm?.loadFilterOptions()
+                if let muscle = initialMuscleFilter,
+                   vm?.categoryValues["muscle_group"]?.contains(muscle) == true {
+                    vm?.selectFilter(category: "muscle_group", value: muscle)
+                }
                 await vm?.loadExercises()
             }
         }

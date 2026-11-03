@@ -95,7 +95,34 @@ struct TemplateChangeSet: Equatable, Sendable {
 ///   mid-workout — `WorkoutExercise.restSeconds` is written once at
 ///   construction and never mutated — so any difference would be noise, not
 ///   intent. When such a control exists, this is where it plugs in.
+/// - **Anything about a swapped slot** (#169, "machine taken"). A swap puts a
+///   different exercise on a planned slot, which keeps its baseline link. So
+///   it is never an addition or a removal, and its set count and cue describe
+///   the substitute, not the plan. Only its position still counts: moving the
+///   card is explicit. Swapped means the slot's exercise is not the one the
+///   baseline recorded, by UUID or by `externalId` (a re-import mints new
+///   UUIDs for the same exercise).
 struct TemplateChangeDetector {
+
+    /// Whether `exercise` is the exercise a baseline entry planned.
+    static func isSameExercise(
+        _ exercise: Exercise,
+        plannedId: UUID,
+        plannedExternalId: String?
+    ) -> Bool {
+        if exercise.id == plannedId { return true }
+        guard let plannedExternalId, let externalId = exercise.externalId else { return false }
+        return externalId == plannedExternalId
+    }
+
+    private func isSwapped(_ we: WorkoutExercise, entry: WorkoutExerciseBaseline) -> Bool {
+        guard let exercise = we.exercise else { return false }
+        return !Self.isSameExercise(
+            exercise,
+            plannedId: entry.exerciseId,
+            plannedExternalId: entry.exerciseExternalId
+        )
+    }
 
     /// - Parameters:
     ///   - workout: the finished session.
@@ -174,6 +201,7 @@ struct TemplateChangeDetector {
         //    is not.
         for we in workoutExercises {
             guard let entry = entryByWorkoutExerciseId[we.id] else { continue }
+            guard !isSwapped(we, entry: entry) else { continue }
             if we.sets.count != entry.plannedSets {
                 changes.append(.setCountChanged(.init(
                     sourceTemplateExerciseId: entry.sourceTemplateExerciseId,
@@ -188,6 +216,7 @@ struct TemplateChangeDetector {
         //    it is exactly the machine-setting case from #136.
         for we in workoutExercises {
             guard let entry = entryByWorkoutExerciseId[we.id] else { continue }
+            guard !isSwapped(we, entry: entry) else { continue }
             let before = normalized(entry.plannedNotes)
             let after = normalized(we.notes)
             if before != after, after != nil {

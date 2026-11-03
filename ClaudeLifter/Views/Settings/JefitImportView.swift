@@ -108,8 +108,10 @@ private struct JefitPlanList: View {
             }
         }
         .monospacedDigit()
-        .safeAreaInset(edge: .bottom) { actionBar }
+        // On the List only: after the inset it also renamed the Import
+        // button, so UI tests couldn't find it by its own identifier.
         .accessibilityIdentifier("jefitImportPlan")
+        .safeAreaInset(edge: .bottom) { actionBar }
     }
 
     private var workoutsSection: some View {

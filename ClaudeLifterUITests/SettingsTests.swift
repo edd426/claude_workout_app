@@ -44,7 +44,9 @@ final class SettingsTests: XCTestCase {
     /// The server fields live in "Advanced", below the user's settings.
     func testAPIKeyFieldExists() throws {
         openSettings()
-        let field = app.secureTextFields["Server API Key"]
+        // The only secure field on the screen; its label comes from the
+        // prompt, so match by type rather than by title.
+        let field = app.secureTextFields.firstMatch
         for _ in 0..<6 where !field.exists {
             app.swipeUp()
         }

@@ -70,8 +70,11 @@ final class SettingsHistoryShots: XCTestCase {
             app.swipeUp()
             sleep(1)
             snap("D76_jefit_plan_scrolled")
-            app.buttons["jefitImportConfirm"].safeTap()
-            if app.descendants(matching: .any)["jefitImportFinished"].waitForExistence(timeout: 20) {
+            let confirm = app.buttons["jefitImportConfirm"].exists
+                ? app.buttons["jefitImportConfirm"]
+                : app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Import '")).firstMatch
+            confirm.safeTap()
+            if app.staticTexts["Import finished"].waitForExistence(timeout: 30) {
                 sleep(1)
                 snap("D77_jefit_finished")
             }
@@ -85,13 +88,22 @@ final class SettingsHistoryShots: XCTestCase {
 
     private func workoutWithRecord() {
         tab(app.tabBars.buttons["Today"].exists ? "Today" : "Home")
+        // Home raises its alert again each time it appears.
+        _ = app.alerts.firstMatch.waitForExistence(timeout: 4)
+        dismissAlerts()
         let template = app.staticTexts["Push Day"]
         guard template.waitForExistence(timeout: 5) else { return }
-        template.safeTap()
+        for _ in 0..<3 where !app.buttons["startWorkoutFromPreview"].exists {
+            dismissAlerts()
+            template.safeTap()
+            sleep(1)
+        }
         let start = app.buttons["startWorkoutFromPreview"]
         guard start.waitForExistence(timeout: 5) else { return }
         start.safeTap()
         sleep(2)
+        dismissAlerts()
+        snap("D29_workout_start")
 
         // Bench set 1 at 85 kg: above 80 kg, the best since 2026, and below
         // the synthetic 2019 set, the lifetime best.
@@ -142,12 +154,7 @@ final class SettingsHistoryShots: XCTestCase {
         app.buttons["calendarNextMonth"].safeTap()
         sleep(1)
 
-        let listSegment = app.buttons["List"]
-        if listSegment.exists {
-            listSegment.safeTap()
-        } else {
-            app.segmentedControls.buttons.element(boundBy: 1).safeTap()
-        }
+        app.buttons["historyViewToggle"].safeTap()
         sleep(1)
         snap("D43_history_list")
 

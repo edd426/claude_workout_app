@@ -84,17 +84,22 @@ struct HistoryListView: View {
                 }
             }
         }
+        // One labelled toggle. The segmented picker's icon segments read as
+        // "calendar" and "list.bullet" to VoiceOver whatever label they got
+        // (UI-A1).
         ToolbarItem(placement: .topBarTrailing) {
-            Picker("View", selection: $showCalendar) {
-                Image(systemName: "calendar")
-                    .accessibilityLabel("Calendar")
-                    .tag(true)
-                Image(systemName: "list.bullet")
-                    .accessibilityLabel("List")
-                    .tag(false)
+            Button {
+                showCalendar.toggle()
+            } label: {
+                Label(
+                    showCalendar ? "Show list" : "Show calendar",
+                    systemImage: showCalendar ? "list.bullet" : "calendar"
+                )
+                .labelStyle(.iconOnly)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
             }
-            .pickerStyle(.segmented)
-            .frame(minWidth: 96)
+            .accessibilityIdentifier("historyViewToggle")
         }
     }
 

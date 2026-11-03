@@ -435,9 +435,11 @@ final class ScreenshotTour: XCTestCase {
             }
         }
 
+        // 1.9.0: one labelled toggle replaced the segmented picker.
+        let toggle = app.buttons["historyViewToggle"]
         let segments = app.segmentedControls.firstMatch.buttons
-        if segments.count > 1 {
-            segments.element(boundBy: 1).safeTap()
+        if toggle.exists || segments.count > 1 {
+            if toggle.exists { toggle.safeTap() } else { segments.element(boundBy: 1).safeTap() }
             sleep(2)
             snap("43_history_list")
             let row = app.buttons.matching(

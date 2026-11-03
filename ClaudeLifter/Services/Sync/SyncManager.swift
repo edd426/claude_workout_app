@@ -57,6 +57,12 @@ struct RestoreSummary: Sendable, Equatable {
     var exerciseReports = 0
     /// Bundled exercises whose note/photo was reapplied from the mirror (#140).
     var exerciseOverlays = 0
+    /// schemaVersion 5. All four stay 0 when the mirror predates v5 — local
+    /// data for those types is then left untouched, not wiped.
+    var bodyMeasurements = 0
+    var medications = 0
+    var medicationDoses = 0
+    var exerciseAlternatives = 0
     /// Placeholder custom exercises created for exerciseIds that resolved
     /// neither by id nor by name (issue #79 fold-in). Zero on a healthy restore.
     var placeholderExercises = 0
@@ -99,12 +105,23 @@ final class SyncManager: InboxApprovalManaging {
     private let exerciseRepository: any ExerciseRepository
     private let bodyWeightRepository: any BodyWeightRepository
     private let exerciseReportRepository: any ExerciseReportRepository
+    // schemaVersion 5 collections. Required, never optional: a missing
+    // repository would push an empty array, which a v5 server reads as
+    // "wipe this collection".
+    private let bodyMeasurementRepository: any BodyMeasurementRepository
+    private let medicationRepository: any MedicationRepository
+    private let medicationDoseRepository: any MedicationDoseRepository
+    private let exerciseAlternativeRepository: any ExerciseAlternativeRepository
     private let networkService: any NetworkServiceProtocol
     private let settings: SettingsManager
     private let inboxApplier: InboxApplier
     /// Uploads report photos kept offline (#141). Optional so existing
     /// construction sites keep compiling; nil means photos never upload.
     private let reportPhotoUploader: (any ReportPhotoUploading)?
+    /// Downloads blob-path exercise photos into the local cache the exercise
+    /// screens read (#170). Optional so existing construction sites keep
+    /// compiling; nil means such photos never download.
+    private let exercisePhotoFetcher: (any ExercisePhotoFetching)?
 
     private var pathMonitor: NWPathMonitor?
     private let monitorQueue = DispatchQueue(label: "com.claudelifter.sync.monitor")
@@ -115,16 +132,26 @@ final class SyncManager: InboxApprovalManaging {
         exerciseRepository: any ExerciseRepository,
         bodyWeightRepository: any BodyWeightRepository,
         exerciseReportRepository: any ExerciseReportRepository,
+        bodyMeasurementRepository: any BodyMeasurementRepository,
+        medicationRepository: any MedicationRepository,
+        medicationDoseRepository: any MedicationDoseRepository,
+        exerciseAlternativeRepository: any ExerciseAlternativeRepository,
         networkService: any NetworkServiceProtocol,
         settings: SettingsManager,
         inboxApplier: InboxApplier,
-        reportPhotoUploader: (any ReportPhotoUploading)? = nil
+        reportPhotoUploader: (any ReportPhotoUploading)? = nil,
+        exercisePhotoFetcher: (any ExercisePhotoFetching)? = nil
     ) {
+        self.exercisePhotoFetcher = exercisePhotoFetcher
         self.workoutRepository = workoutRepository
         self.templateRepository = templateRepository
         self.exerciseRepository = exerciseRepository
         self.bodyWeightRepository = bodyWeightRepository
         self.exerciseReportRepository = exerciseReportRepository
+        self.bodyMeasurementRepository = bodyMeasurementRepository
+        self.medicationRepository = medicationRepository
+        self.medicationDoseRepository = medicationDoseRepository
+        self.exerciseAlternativeRepository = exerciseAlternativeRepository
         self.networkService = networkService
         self.settings = settings
         self.inboxApplier = inboxApplier
@@ -190,6 +217,9 @@ final class SyncManager: InboxApprovalManaging {
             // Never throws — a photo that fails waits for the next sync and
             // must not hold the rest of sync back.
             await reportPhotoUploader?.uploadPending()
+            // Never throws either. A photo the MCP attached (#170) that has
+            // not downloaded yet gets another chance on every sync.
+            await exercisePhotoFetcher?.fetchMissing()
 
             // Any record turning .pending means a snapshot push is due. The
             // snapshot itself is always FULL state — pending is only the trigger.
@@ -212,6 +242,10 @@ final class SyncManager: InboxApprovalManaging {
         if try await !templateRepository.fetchPending().isEmpty { return true }
         if try await !bodyWeightRepository.fetchPending().isEmpty { return true }
         if try await !exerciseReportRepository.fetchPending().isEmpty { return true }
+        if try await !bodyMeasurementRepository.fetchPending().isEmpty { return true }
+        if try await !medicationRepository.fetchPending().isEmpty { return true }
+        if try await !medicationDoseRepository.fetchPending().isEmpty { return true }
+        if try await !exerciseAlternativeRepository.fetchPending().isEmpty { return true }
         return false
     }
 
@@ -333,8 +367,11 @@ final class SyncManager: InboxApprovalManaging {
             }
 
             // Applied batch-mates are pushed before a failure is reported, so
-            // one bad operation never strands the others locally.
+            // one bad operation never strands the others locally. An approved
+            // photo (#170) downloads first, so the exercise card shows it
+            // without waiting for the next sync; that step never throws.
             if anyApplied {
+                await exercisePhotoFetcher?.fetchMissing()
                 try await pushSnapshot()
             }
             if let ackValidationError {
@@ -369,6 +406,10 @@ final class SyncManager: InboxApprovalManaging {
         let customExercises = try await exerciseRepository.fetchAll().filter(\.isCustom)
         let bodyWeightEntries = try await bodyWeightRepository.fetchAll()
         let exerciseReports = try await exerciseReportRepository.fetchAll()
+        let bodyMeasurements = try await bodyMeasurementRepository.fetchAll()
+        let medications = try await medicationRepository.fetchAll()
+        let medicationDoses = try await medicationDoseRepository.fetchAll()
+        let exerciseAlternatives = try await exerciseAlternativeRepository.fetchAll()
         // Bundled exercises are never mirrored — all ~800 reproduce from the
         // app bundle — but the user data attached to them is irreplaceable
         // and, before #140, was never pushed at all. An exercise with no
@@ -390,9 +431,14 @@ final class SyncManager: InboxApprovalManaging {
         let templateModified = Dictionary(uniqueKeysWithValues: templates.map { ($0.id, $0.lastModified) })
         let entryModified = Dictionary(uniqueKeysWithValues: bodyWeightEntries.map { ($0.id, $0.lastModified) })
         let reportModified = Dictionary(uniqueKeysWithValues: exerciseReports.map { ($0.id, $0.lastModified) })
+        let measurementModified = Dictionary(uniqueKeysWithValues: bodyMeasurements.map { ($0.id, $0.lastModified) })
+        let medicationModified = Dictionary(uniqueKeysWithValues: medications.map { ($0.id, $0.lastModified) })
+        let doseModified = Dictionary(uniqueKeysWithValues: medicationDoses.map { ($0.id, $0.lastModified) })
+        let alternativeModified = Dictionary(uniqueKeysWithValues: exerciseAlternatives.map { ($0.id, $0.lastModified) })
 
-        // ALWAYS all five collections, even when empty — the server rejects a
+        // ALWAYS every collection, even when empty — the server rejects a
         // missing key, and an empty array legitimately means "wipe that type".
+        // heightCm is always present too, as null when unset.
         let request = SnapshotPushRequest(
             snapshot: SyncSnapshot(
                 workouts: workouts.map { SyncMapper.toDTO($0) },
@@ -400,7 +446,12 @@ final class SyncManager: InboxApprovalManaging {
                 customExercises: customExercises.map { SyncMapper.toDTO($0) },
                 bodyWeightEntries: bodyWeightEntries.map { SyncMapper.toDTO($0) },
                 exerciseReports: exerciseReports.map { SyncMapper.toDTO($0) },
-                exerciseOverlays: exerciseOverlays
+                exerciseOverlays: exerciseOverlays,
+                bodyMeasurements: bodyMeasurements.map { SyncMapper.toDTO($0) },
+                medications: medications.map { SyncMapper.toDTO($0) },
+                medicationDoses: medicationDoses.map { SyncMapper.toDTO($0) },
+                exerciseAlternatives: exerciseAlternatives.map { SyncMapper.toDTO($0) },
+                heightCm: settings.heightCm
             )
         )
 
@@ -418,30 +469,51 @@ final class SyncManager: InboxApprovalManaging {
         for report in exerciseReports where report.lastModified == reportModified[report.id] {
             report.syncStatus = .synced
         }
+        // Marked synced even when the push degraded to v4 and the server did
+        // not store them: `syncStatus` is only the local "is a push due" bit,
+        // and every push is full state, so the first push to an upgraded
+        // server carries them regardless.
+        for measurement in bodyMeasurements where measurement.lastModified == measurementModified[measurement.id] {
+            measurement.syncStatus = .synced
+        }
+        for medication in medications where medication.lastModified == medicationModified[medication.id] {
+            medication.syncStatus = .synced
+        }
+        for dose in medicationDoses where dose.lastModified == doseModified[dose.id] {
+            dose.syncStatus = .synced
+        }
+        for alternative in exerciseAlternatives where alternative.lastModified == alternativeModified[alternative.id] {
+            alternative.syncStatus = .synced
+        }
 
         recordSuccess(revision: response.revision, serverTime: response.serverTime)
         settings.markSnapshotClean(upTo: generation)
     }
 
-    /// Sends the push, degrading to the previous wire version once if the
-    /// server rejects this one.
+    /// Sends the push, degrading one wire version at a time while the server
+    /// rejects them.
     ///
     /// The Functions app and the phone deploy independently, and there is no
     /// ordering guarantee between them. Without this, installing a build whose
     /// wire version the server has not learned yet breaks sync *entirely* —
     /// not just the new collection — until someone remembers to deploy. A 400
     /// is the server saying "I do not know this schemaVersion"; anything else
-    /// is a real failure and is rethrown untouched.
+    /// is a real failure and is rethrown untouched, as is a 400 at the oldest
+    /// version. The snapshot is sent unchanged at every version: a server only
+    /// reconciles the collections its version names and ignores other keys.
     private func push(_ request: SnapshotPushRequest) async throws -> SnapshotPushResponse {
-        do {
-            return try await networkService.pushSnapshot(request)
-        } catch SyncError.serverError(400)
-            where request.schemaVersion > SnapshotPushRequest.fallbackSchemaVersion {
-            let downgraded = SnapshotPushRequest(
-                schemaVersion: SnapshotPushRequest.fallbackSchemaVersion,
-                snapshot: request.snapshot
-            )
-            return try await networkService.pushSnapshot(downgraded)
+        var attempt = request
+        var fallbacks = SnapshotPushRequest.fallbackSchemaVersions
+            .filter { $0 < request.schemaVersion }
+        while true {
+            do {
+                return try await networkService.pushSnapshot(attempt)
+            } catch SyncError.serverError(400) where !fallbacks.isEmpty {
+                attempt = SnapshotPushRequest(
+                    schemaVersion: fallbacks.removeFirst(),
+                    snapshot: request.snapshot
+                )
+            }
         }
     }
 
@@ -468,8 +540,35 @@ final class SyncManager: InboxApprovalManaging {
             let snapshot = response.snapshot
             var summary = RestoreSummary()
             summary.revision = response.revision
+            // The v5 repositories flag deletions, and restoring the height is
+            // a settings change; both mark the snapshot dirty. Neither leaves
+            // a push due once local state equals the mirror (see the end).
+            let wasDirtyBeforeRestore = settings.isSnapshotDirty
 
-            // 1. Wipe the five mirrored types.
+            // Alternatives hang off template exercises by plain UUID, and the
+            // template wipe below cleans up orphans — so a mirror that cannot
+            // give them back (pre-v5) would silently cost the user every one.
+            // Keep them aside and re-attach any whose slot comes back.
+            let preservedAlternatives: [ExerciseAlternativeDTO] = snapshot.carriesV5Collections
+                ? []
+                : try await exerciseAlternativeRepository.fetchAll().map { SyncMapper.toDTO($0) }
+
+            // 1. Wipe the mirrored types. The v5 ones only when the mirror
+            //    actually carries them: absent means unknown, not empty.
+            if snapshot.carriesV5Collections {
+                for measurement in try await bodyMeasurementRepository.fetchAll() {
+                    try await bodyMeasurementRepository.delete(measurement)
+                }
+                for dose in try await medicationDoseRepository.fetchAll() {
+                    try await medicationDoseRepository.delete(dose)
+                }
+                for medication in try await medicationRepository.fetchAll() {
+                    try await medicationRepository.delete(medication)
+                }
+                for alternative in try await exerciseAlternativeRepository.fetchAll() {
+                    try await exerciseAlternativeRepository.delete(alternative)
+                }
+            }
             for workout in try await workoutRepository.fetchAll() {
                 try await workoutRepository.delete(workout)
             }
@@ -535,6 +634,45 @@ final class SyncManager: InboxApprovalManaging {
                 summary.exerciseReports += 1
             }
 
+            // 5b. schemaVersion 5. Alternatives go AFTER templates: a template
+            //     save cleans up alternatives whose slot is not in a template.
+            if snapshot.carriesV5Collections {
+                for dto in snapshot.bodyMeasurements {
+                    try await bodyMeasurementRepository.save(SyncMapper.createBodyMeasurement(from: dto))
+                    summary.bodyMeasurements += 1
+                }
+                var restoredMedications: [UUID: Medication] = [:]
+                for dto in snapshot.medications {
+                    let medication = SyncMapper.createMedication(from: dto)
+                    try await medicationRepository.save(medication)
+                    restoredMedications[medication.id] = medication
+                    summary.medications += 1
+                }
+                for dto in snapshot.medicationDoses {
+                    // A dose whose medication is missing from the mirror is
+                    // still restored, unattached, rather than dropped.
+                    let medication = dto.medicationId.flatMap { restoredMedications[$0] }
+                    try await medicationDoseRepository.save(
+                        SyncMapper.createMedicationDose(from: dto, medication: medication)
+                    )
+                    summary.medicationDoses += 1
+                }
+                for dto in snapshot.exerciseAlternatives {
+                    try await exerciseAlternativeRepository.save(SyncMapper.createExerciseAlternative(from: dto))
+                    summary.exerciseAlternatives += 1
+                }
+                // Never cleared by a restore: a mirror without a height is
+                // not evidence that the user has none.
+                if let heightCm = snapshot.heightCm {
+                    settings.heightCm = heightCm
+                }
+            } else if !preservedAlternatives.isEmpty {
+                let restoredSlots = Set(snapshot.templates.flatMap { $0.exercises.map(\.id) })
+                for dto in preservedAlternatives where restoredSlots.contains(dto.templateExerciseId) {
+                    try await exerciseAlternativeRepository.save(SyncMapper.createExerciseAlternative(from: dto))
+                }
+            }
+
             // 6. Overlays LAST, and by externalId — the bundled library was
             //    re-imported with fresh UUIDs, so this is the only key that
             //    still means anything (#140). An overlay for an exercise this
@@ -558,7 +696,20 @@ final class SyncManager: InboxApprovalManaging {
                 }
             }
 
+            // Local now equals the mirror, so the dirt this restore made is
+            // not a push due. Two exceptions keep it dirty: the phone was
+            // already dirty before (that change may not be mirrored), or the
+            // phone kept a height the mirror lacks.
+            let keptHeightMirrorLacks = snapshot.carriesV5Collections
+                && snapshot.heightCm == nil && settings.heightCm != nil
+            if !wasDirtyBeforeRestore && !keptHeightMirrorLacks {
+                settings.markSnapshotClean(upTo: settings.currentSnapshotGeneration())
+            }
+
             recordSuccess(revision: response.revision, serverTime: response.serverTime)
+            // Restored overlays can point at blob photos (#170) that this
+            // phone has never downloaded. Never throws.
+            await exercisePhotoFetcher?.fetchMissing()
             return summary
         } catch {
             syncError = error.localizedDescription

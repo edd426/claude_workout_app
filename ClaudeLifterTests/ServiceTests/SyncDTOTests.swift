@@ -193,7 +193,7 @@ struct SyncDTOTests {
         let json = try #require(
             try JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
-        #expect(json["schemaVersion"] as? Int == 4)
+        #expect(json["schemaVersion"] as? Int == 5)
         let snapshot = try #require(json["snapshot"] as? [String: Any])
         #expect(snapshot["workouts"] as? [Any] != nil)
         #expect(snapshot["templates"] as? [Any] != nil)

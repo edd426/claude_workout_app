@@ -64,6 +64,22 @@ struct InboxTemplateExercisePayload: Codable, Sendable, Equatable {
     let defaultWeight: Double?
     let defaultRestSeconds: Int?
     let notes: String?
+    /// Substitutes for this slot, in order. OPTIONAL and tri-state:
+    /// absent (nil) leaves the slot's existing alternatives untouched — older
+    /// MCP servers never send the key — while an empty array clears them.
+    var alternatives: [InboxAlternativePayload]? = nil
+}
+
+/// One listed substitute: `{externalId, note?}`. `externalId` is resolved
+/// exactly like a template exercise's own, and fails the operation the same way.
+struct InboxAlternativePayload: Codable, Sendable, Equatable {
+    let externalId: String
+    let note: String?
+
+    init(externalId: String, note: String? = nil) {
+        self.externalId = externalId
+        self.note = note
+    }
 }
 
 struct CreateTemplatePayload: Codable, Sendable, Equatable {
@@ -92,6 +108,19 @@ struct CreateCustomExercisePayload: Codable, Sendable, Equatable {
     let secondaryMuscles: [String]?
     let instructions: [String]?
     let notes: String?
+}
+
+/// Points an exercise's photo at a blob the MCP uploaded (#170). `blobPath` is
+/// always exactly `exercises/ext/{externalId}.jpg`; anything else is refused.
+/// Requires approval.
+struct SetExercisePhotoPayload: Codable, Sendable, Equatable {
+    let externalId: String
+    let blobPath: String
+
+    /// The only blob path a `setExercisePhoto` for `externalId` may carry.
+    static func expectedBlobPath(for externalId: String) -> String {
+        "exercises/ext/\(externalId).jpg"
+    }
 }
 
 /// Closes out a user-filed report (issue #135). `status` is the terminal

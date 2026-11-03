@@ -134,6 +134,60 @@ enum SyncMapper {
         )
     }
 
+    static func toDTO(_ measurement: BodyMeasurement) -> BodyMeasurementDTO {
+        BodyMeasurementDTO(
+            id: measurement.id,
+            site: measurement.siteRaw,
+            valueCm: measurement.valueCm,
+            recordedAt: measurement.recordedAt,
+            note: measurement.note,
+            lastModified: measurement.lastModified
+        )
+    }
+
+    static func toDTO(_ medication: Medication) -> MedicationDTO {
+        MedicationDTO(
+            id: medication.id,
+            name: medication.name,
+            doseForm: medication.doseFormRaw,
+            massUnit: medication.massUnitRaw,
+            tabletStrengthMg: medication.tabletStrengthMg,
+            concentrationMgPerMl: medication.concentrationMgPerMl,
+            vialAmountMg: medication.vialAmountMg,
+            diluentMl: medication.diluentMl,
+            allowsSyringeUnits: medication.allowsSyringeUnits,
+            isArchived: medication.isArchived,
+            createdAt: medication.createdAt,
+            lastModified: medication.lastModified
+        )
+    }
+
+    static func toDTO(_ dose: MedicationDose) -> MedicationDoseDTO {
+        MedicationDoseDTO(
+            id: dose.id,
+            medicationId: dose.medication?.id,
+            takenAt: dose.takenAt,
+            amount: dose.amount,
+            unit: dose.unitRaw,
+            computedMg: dose.computedMg,
+            concentrationMgPerMlAtLog: dose.concentrationMgPerMlAtLog,
+            tabletStrengthMgAtLog: dose.tabletStrengthMgAtLog,
+            note: dose.note,
+            lastModified: dose.lastModified
+        )
+    }
+
+    static func toDTO(_ alternative: ExerciseAlternative) -> ExerciseAlternativeDTO {
+        ExerciseAlternativeDTO(
+            id: alternative.id,
+            templateExerciseId: alternative.templateExerciseId,
+            externalId: alternative.externalId,
+            order: alternative.order,
+            note: alternative.note,
+            lastModified: alternative.lastModified
+        )
+    }
+
     static func toDTO(_ pref: TrainingPreference) -> PreferenceDTO {
         PreferenceDTO(
             id: pref.id,
@@ -297,6 +351,77 @@ enum SyncMapper {
         report.categoryRaw = dto.category
         report.statusRaw = dto.status
         return report
+    }
+
+    /// Raw site kept verbatim, so a site from a newer build survives restore.
+    static func createBodyMeasurement(from dto: BodyMeasurementDTO) -> BodyMeasurement {
+        let measurement = BodyMeasurement(
+            id: dto.id,
+            site: MeasurementSite(rawValue: dto.site) ?? .waist,
+            valueCm: dto.valueCm,
+            recordedAt: dto.recordedAt,
+            note: dto.note,
+            syncStatus: .synced,
+            lastModified: dto.lastModified
+        )
+        measurement.siteRaw = dto.site
+        return measurement
+    }
+
+    /// Raw dose form and mass unit kept verbatim (see `createExerciseReport`).
+    static func createMedication(from dto: MedicationDTO) -> Medication {
+        let medication = Medication(
+            id: dto.id,
+            name: dto.name,
+            doseForm: DoseForm(rawValue: dto.doseForm) ?? .units,
+            tabletStrengthMg: dto.tabletStrengthMg,
+            concentrationMgPerMl: dto.concentrationMgPerMl,
+            vialAmountMg: dto.vialAmountMg,
+            diluentMl: dto.diluentMl,
+            allowsSyringeUnits: dto.allowsSyringeUnits,
+            isArchived: dto.isArchived,
+            createdAt: dto.createdAt,
+            syncStatus: .synced,
+            lastModified: dto.lastModified
+        )
+        medication.doseFormRaw = dto.doseForm
+        medication.massUnitRaw = dto.massUnit
+        return medication
+    }
+
+    /// Restores the dose EXACTLY as logged: `computedMg` and the snapshotted
+    /// concentration and tablet strength are copied, never recomputed from
+    /// the medication's current settings — that is the whole point of
+    /// snapshotting them.
+    static func createMedicationDose(
+        from dto: MedicationDoseDTO,
+        medication: Medication?
+    ) -> MedicationDose {
+        MedicationDose(
+            id: dto.id,
+            medication: medication,
+            takenAt: dto.takenAt,
+            amount: dto.amount,
+            unitRaw: dto.unit,
+            computedMg: dto.computedMg,
+            concentrationMgPerMlAtLog: dto.concentrationMgPerMlAtLog,
+            tabletStrengthMgAtLog: dto.tabletStrengthMgAtLog,
+            note: dto.note,
+            syncStatus: .synced,
+            lastModified: dto.lastModified
+        )
+    }
+
+    static func createExerciseAlternative(from dto: ExerciseAlternativeDTO) -> ExerciseAlternative {
+        ExerciseAlternative(
+            id: dto.id,
+            templateExerciseId: dto.templateExerciseId,
+            externalId: dto.externalId,
+            order: dto.order,
+            note: dto.note,
+            syncStatus: .synced,
+            lastModified: dto.lastModified
+        )
     }
 
     static func createPreference(from dto: PreferenceDTO) -> TrainingPreference {

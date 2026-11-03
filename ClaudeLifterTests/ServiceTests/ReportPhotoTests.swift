@@ -204,12 +204,17 @@ struct ReportPhotoTests {
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
             exerciseReportRepository: reportRepo,
+            bodyMeasurementRepository: SwiftDataBodyMeasurementRepository(context: context),
+            medicationRepository: SwiftDataMedicationRepository(context: context),
+            medicationDoseRepository: SwiftDataMedicationDoseRepository(context: context),
+            exerciseAlternativeRepository: SwiftDataExerciseAlternativeRepository(context: context),
             networkService: network,
             settings: settings,
             inboxApplier: InboxApplier(
                 templateRepository: templateRepo,
                 exerciseRepository: exerciseRepo,
-                reportRepository: reportRepo
+                reportRepository: reportRepo,
+                alternativeRepository: SwiftDataExerciseAlternativeRepository(context: context)
             ),
             reportPhotoUploader: ReportPhotoUploader(
                 reportRepository: reportRepo,

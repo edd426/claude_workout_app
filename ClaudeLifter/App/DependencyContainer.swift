@@ -21,6 +21,18 @@ final class DependencyContainer {
     let backupService: any BackupServiceProtocol
     let bodyWeightRepository: any BodyWeightRepository
     let exerciseReportRepository: any ExerciseReportRepository
+    /// Waist and other circumferences (#165).
+    let bodyMeasurementRepository: any BodyMeasurementRepository
+    /// User-defined medications (#164). Archive, don't delete.
+    let medicationRepository: any MedicationRepository
+    /// Logged doses (#164).
+    let medicationDoseRepository: any MedicationDoseRepository
+    /// "If the machine is taken" substitutes on template exercises.
+    let exerciseAlternativeRepository: any ExerciseAlternativeRepository
+    /// Downloads exercise photos that live in blob storage (#170) into the
+    /// local cache `LocalPhotoStorage` reads. SyncManager runs it on every
+    /// sync and after an approval; a view may also call it.
+    let exercisePhotoFetcher: any ExercisePhotoFetching
     /// Report photos kept on the phone until they upload (#141).
     let reportPhotoStore: any ReportPhotoStoring
     let inboxApplier: InboxApplier
@@ -49,6 +61,26 @@ final class DependencyContainer {
         let chatRepo = SwiftDataChatMessageRepository(context: modelContext)
         let prefRepo = SwiftDataTrainingPreferenceRepository(context: modelContext)
         let insightRepo = SwiftDataInsightRepository(context: modelContext)
+        // A deletion leaves no `.pending` row behind, so these repositories
+        // set the durable snapshot trigger themselves; otherwise a deleted
+        // dose would linger in the mirror until some unrelated change.
+        let measurementRepo = SwiftDataBodyMeasurementRepository(
+            context: modelContext,
+            onDeletion: { settings.markSnapshotDirty() }
+        )
+        let medicationRepo = SwiftDataMedicationRepository(context: modelContext)
+        let doseRepo = SwiftDataMedicationDoseRepository(
+            context: modelContext,
+            onDeletion: { settings.markSnapshotDirty() }
+        )
+        let alternativeRepo = SwiftDataExerciseAlternativeRepository(
+            context: modelContext,
+            onDeletion: { settings.markSnapshotDirty() }
+        )
+        self.bodyMeasurementRepository = measurementRepo
+        self.medicationRepository = medicationRepo
+        self.medicationDoseRepository = doseRepo
+        self.exerciseAlternativeRepository = alternativeRepo
         // Custom exercises have no per-record syncStatus, so their only
         // "a push is due" signal is this callback (#104).
         let exerciseRepo = SwiftDataExerciseRepository(
@@ -73,11 +105,21 @@ final class DependencyContainer {
             workoutRepository: workoutRepo,
             templateRepository: templateRepo,
             exerciseRepository: exerciseRepo,
-            preferenceRepository: prefRepo
+            preferenceRepository: prefRepo,
+            bodyMeasurementRepository: measurementRepo,
+            medicationRepository: medicationRepo,
+            medicationDoseRepository: doseRepo,
+            exerciseAlternativeRepository: alternativeRepo,
+            settings: settings
         )
         self.networkService = network
         let imageUploadService = ImageUploadService(networkService: network)
         self.imageUploadService = imageUploadService
+        let exercisePhotoFetcher = ExercisePhotoDownloader(
+            exerciseRepository: exerciseRepo,
+            imageService: imageUploadService
+        )
+        self.exercisePhotoFetcher = exercisePhotoFetcher
         let bodyWeightRepo = SwiftDataBodyWeightRepository(context: modelContext)
         self.bodyWeightRepository = bodyWeightRepo
         let reportRepo = SwiftDataExerciseReportRepository(context: modelContext)
@@ -87,7 +129,8 @@ final class DependencyContainer {
         let inboxApplier = InboxApplier(
             templateRepository: templateRepo,
             exerciseRepository: exerciseRepo,
-            reportRepository: reportRepo
+            reportRepository: reportRepo,
+            alternativeRepository: alternativeRepo
         )
         self.inboxApplier = inboxApplier
         self.healthKitService = HealthKitService()
@@ -115,6 +158,10 @@ final class DependencyContainer {
             exerciseRepository: exerciseRepo,
             bodyWeightRepository: bodyWeightRepo,
             exerciseReportRepository: reportRepo,
+            bodyMeasurementRepository: measurementRepo,
+            medicationRepository: medicationRepo,
+            medicationDoseRepository: doseRepo,
+            exerciseAlternativeRepository: alternativeRepo,
             networkService: network,
             settings: settings,
             inboxApplier: inboxApplier,
@@ -122,7 +169,8 @@ final class DependencyContainer {
                 reportRepository: reportRepo,
                 photoStore: reportPhotoStore,
                 imageUploadService: imageUploadService
-            )
+            ),
+            exercisePhotoFetcher: exercisePhotoFetcher
         )
     }
 }

@@ -36,6 +36,7 @@
   - the **iOS 27.0** runtime is installed;
   - devices: `iPhone 13 Pro Max` (84DA6A04…, the lead's), and one per agent: (W) 63F3B129…, (T) 600B9B7F…, (B) D7EBAA16…, (D) 3F5A205A….
 - Disk is tight: about 20 GB free before the agents started. Each agent uses `scratchpad/dd-<X>` as its DerivedData.
+- **Baseline on `eacab30`, iOS 27.0: 1116/1116 unit tests pass** (718 s).
 - 9 merged agent worktrees removed. Two locked ones remain (a686…, adb7…).
 
 **Agents (each in its own worktree; shared brief at `scratchpad/brief_common_1_9_0.md`, reports at `scratchpad/agent_<X>_1_9_0_report.md`):**

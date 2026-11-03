@@ -107,6 +107,7 @@ final class ScreenshotTour: XCTestCase {
             tourActiveWorkout()
             tourWorkoutScroll()
         }
+        if requested?.contains("workoutLiveResize") == true { tourWorkoutLiveResize() }
     }
 
     // MARK: - Home
@@ -354,6 +355,35 @@ final class ScreenshotTour: XCTestCase {
         sleep(1)
         tapIfExists(app.buttons["Discard — don't save"])
         sleep(1)
+    }
+
+    /// The workout and summary at AX5. At that size Home's cards hide every
+    /// template row, so the workout is started at the default size; the
+    /// driver then flips the simulator's text size live (`simctl ui
+    /// content_size`) when it sees the marker file.
+    private func tourWorkoutLiveResize() {
+        launchToHome()
+        let lowerA = app.staticTexts["Lower A"]
+        guard lowerA.waitForExistence(timeout: 5) else { return }
+        revealInHomeList(lowerA)
+        lowerA.safeTap()
+        sleep(1)
+        app.buttons["startWorkoutFromPreview"].safeTap()
+        sleep(3)
+        setButtons("completeSet_").firstMatch.safeTap()
+        sleep(1)
+        skipRest()
+        let marker = outputDirectory.appendingPathComponent("READY_FOR_RESIZE")
+        try? Data().write(to: marker)
+        sleep(45)
+        snap("21_workout_start")
+        app.swipeUp()
+        sleep(2)
+        snap("21c_workout_stacked_rows")
+        tapIfExists(app.buttons["finishWorkout"])
+        sleep(4)
+        snap("35_summary")
+        try? FileManager.default.removeItem(at: marker)
     }
 
     /// Scroll screenshots of a full template workout. Runs last because

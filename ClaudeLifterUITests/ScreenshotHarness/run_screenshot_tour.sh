@@ -10,6 +10,8 @@
 #   light    full tour, light appearance
 #   dark     full tour, dark appearance
 #   ax       Home, library and workout at the largest accessibility text size
+#   ax_live  workout + summary at AX5, resized live (Home hides every
+#            template row at AX5, so the workout can't be started there)
 #
 # Every tour pass first copies the golden container back, so each pass sees
 # identical data (the workout test finishes a workout, which would otherwise
@@ -76,6 +78,16 @@ case "$PASS" in
         xcrun simctl ui "$SIM" appearance light
         SECTIONS=home,library,workout run_tests ax5 \
             UICTContentSizeCategoryAccessibilityXXXL test01_tour
+        ;;
+    ax_live)
+        # Workout + summary at AX5. The tour starts the workout at the
+        # default size and writes READY_FOR_RESIZE into $OUT; flip the size
+        # then with `xcrun simctl ui $SIM content_size
+        # accessibility-extra-extra-extra-large` (see the AX section of the
+        # tour), and set it back to `large` afterwards.
+        restore_golden
+        xcrun simctl ui "$SIM" appearance light
+        SECTIONS=workoutLiveResize run_tests ax5 "" test01_tour
         ;;
     *)
         echo "unknown pass: $PASS" >&2

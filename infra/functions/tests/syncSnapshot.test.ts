@@ -422,15 +422,19 @@ describe("revision assignment", () => {
     expect(body.revision).toBe(42);
   });
 
-  test("the metadata doc is stamped with the new revision and serverTime", async () => {
+  test("the metadata doc is stamped with the new revision, serverTime and push version", async () => {
     seedMeta(41);
     const res = await push(pushBody());
     const body = res.jsonBody as PushResponseBody;
     const meta = container("syncMeta").docs.get("snapshot");
+    // schemaVersion / highestSchemaVersion were added with wire v5: the GET
+    // uses the high-water mark to decide whether the v5 keys exist yet.
     expect(meta).toEqual({
       id: "snapshot",
       revision: 42,
       serverTime: body.serverTime,
+      schemaVersion: 2,
+      highestSchemaVersion: 2,
     });
   });
 
@@ -673,7 +677,7 @@ describe("schemaVersion 3 — exerciseReports", () => {
     const res = await push({ schemaVersion: 9, snapshot: emptySnapshot() });
     expect(res.status).toBe(400);
     const body = res.jsonBody as { error: string };
-    expect(body.error).toContain("2, 3, 4");
+    expect(body.error).toContain("2, 3, 4, 5");
   });
 
   test("GET returns reports so a restore can rebuild them", async () => {
@@ -807,5 +811,354 @@ describe("schemaVersion 4 — exerciseOverlays", () => {
     expect(body.snapshot["exerciseOverlays"]).toEqual([
       { id: "Leg_Curl", notes: "pin 7" },
     ]);
+  });
+});
+
+// ─── schemaVersion 5 — body measurements, medications, alternatives ─────────
+// Issues #164 (medication log), #165 (body measurements + height) and #169
+// (template alternatives). Four new collections plus a scalar `heightCm`.
+//
+// The GET rule is the one that protects data: the v5 keys appear ONLY after a
+// v5 push has succeeded at least once. Before that, an empty `medications`
+// array would tell a restoring phone "the user has no medications" and it
+// would wipe its own, never-mirrored records. Absent means unknown.
+describe("schemaVersion 5 — v5 collections and heightCm", () => {
+  const V5_FIELDS: [string, string][] = [
+    ["bodyMeasurements", "bodyMeasurements"],
+    ["medications", "medications"],
+    ["medicationDoses", "medicationDoses"],
+    ["exerciseAlternatives", "exerciseAlternatives"],
+  ];
+
+  function v5Snapshot(partial: Record<string, unknown> = {}) {
+    return {
+      ...emptySnapshot(),
+      exerciseReports: [] as Doc[],
+      exerciseOverlays: [] as Doc[],
+      bodyMeasurements: [] as Doc[],
+      medications: [] as Doc[],
+      medicationDoses: [] as Doc[],
+      exerciseAlternatives: [] as Doc[],
+      heightCm: null as unknown,
+      ...partial,
+    };
+  }
+
+  function v5Body(partial: Record<string, unknown> = {}) {
+    return { schemaVersion: 5, snapshot: v5Snapshot(partial) };
+  }
+
+  function v4Body(partial: Record<string, unknown> = {}) {
+    return {
+      schemaVersion: 4,
+      snapshot: {
+        ...emptySnapshot(),
+        exerciseReports: [] as Doc[],
+        exerciseOverlays: [] as Doc[],
+        ...partial,
+      },
+    };
+  }
+
+  const waist = {
+    id: "6F1C0000-0000-4000-8000-000000000001",
+    site: "waist",
+    valueCm: 86.5,
+    recordedAt: "2026-11-03T07:00:00.000Z",
+    note: "navel, morning",
+    lastModified: "2026-11-03T07:00:00.000Z",
+  };
+  const vial = {
+    id: "MED-1",
+    name: "Vial A",
+    doseForm: "liquid",
+    concentrationMgPerMl: 5,
+    allowsSyringeUnits: true,
+    isArchived: false,
+    createdAt: "2026-11-01T00:00:00.000Z",
+    lastModified: "2026-11-01T00:00:00.000Z",
+  };
+  const dose = {
+    id: "DOSE-1",
+    medicationId: "MED-1",
+    takenAt: "2026-11-03T08:00:00.000Z",
+    amount: 50,
+    unit: "syringeUnits",
+    computedMg: 2.5,
+    concentrationMgPerMlAtLog: 5,
+    lastModified: "2026-11-03T08:00:00.000Z",
+  };
+  const alternative = {
+    id: "ALT-1",
+    templateExerciseId: "TE-1",
+    externalId: "Leg_Press",
+    order: 0,
+    note: "if the rack is taken",
+    lastModified: "2026-11-03T08:00:00.000Z",
+  };
+
+  // ── POST ──
+
+  test.each(V5_FIELDS)(
+    "reconciles %s into the %s container like any other collection",
+    async (field, containerName) => {
+      container(containerName).seed({ id: "old" });
+
+      const res = await push(v5Body({ [field]: [{ id: "a" }, { id: "b" }] }));
+
+      expect(isOk(res.status)).toBe(true);
+      expect(container(containerName).ids()).toEqual(["a", "b"]);
+      const counts = (res.jsonBody as { counts: Record<string, unknown> }).counts;
+      expect(counts[field]).toEqual({ upserted: 2, deleted: 1 });
+    }
+  );
+
+  test("stores the phone's docs exactly as sent (raw enum strings, as-logged mg)", async () => {
+    const res = await push(
+      v5Body({
+        bodyMeasurements: [waist],
+        medications: [vial],
+        medicationDoses: [dose],
+        exerciseAlternatives: [alternative],
+      })
+    );
+
+    expect(isOk(res.status)).toBe(true);
+    expect(container("bodyMeasurements").docs.get(waist.id)).toEqual(waist);
+    expect(container("medications").docs.get(vial.id)).toEqual(vial);
+    expect(container("medicationDoses").docs.get(dose.id)).toEqual(dose);
+    expect(container("exerciseAlternatives").docs.get(alternative.id)).toEqual(
+      alternative
+    );
+  });
+
+  test("a v5 push still reconciles every earlier collection", async () => {
+    container("exerciseOverlays").seed({ id: "Leg_Curl" });
+    container("workouts").seed({ id: "w-old" });
+
+    const res = await push(v5Body({ workouts: [{ id: "w1" }] }));
+
+    expect(isOk(res.status)).toBe(true);
+    expect(container("exerciseOverlays").ids()).toEqual([]);
+    expect(container("workouts").ids()).toEqual(["w1"]);
+  });
+
+  test("an empty array wipes that v5 container", async () => {
+    container("medicationDoses").seed({ id: "d1" }, { id: "d2" });
+
+    const res = await push(v5Body());
+
+    expect(isOk(res.status)).toBe(true);
+    expect(container("medicationDoses").ids()).toEqual([]);
+  });
+
+  test.each(V5_FIELDS.map(([field]) => field))(
+    "rejects a v5 push that omits %s with 400 before writing anything",
+    async (field) => {
+      const snapshot = v5Snapshot() as Record<string, unknown>;
+      delete snapshot[field];
+
+      const res = await push({ schemaVersion: 5, snapshot });
+
+      expect(res.status).toBe(400);
+      expect(mockDatabase.container).not.toHaveBeenCalled();
+    }
+  );
+
+  test("rejects a v5 doc without a string id with 400", async () => {
+    const res = await push(v5Body({ medications: [{ name: "no id" }] }));
+    expect(res.status).toBe(400);
+    expect(mockDatabase.container).not.toHaveBeenCalled();
+  });
+
+  test("rejects a v5 push without the heightCm key with 400 (absent is not null)", async () => {
+    const snapshot = v5Snapshot() as Record<string, unknown>;
+    delete snapshot["heightCm"];
+
+    const res = await push({ schemaVersion: 5, snapshot });
+
+    expect(res.status).toBe(400);
+    expect((res.jsonBody as { error: string }).error).toContain("heightCm");
+    expect(mockDatabase.container).not.toHaveBeenCalled();
+  });
+
+  test.each([[0], [-1], ["182"], [true], [{}], [[]]])(
+    "rejects heightCm %j with 400",
+    async (heightCm) => {
+      const res = await push(v5Body({ heightCm }));
+      expect(res.status).toBe(400);
+      expect(mockDatabase.container).not.toHaveBeenCalled();
+    }
+  );
+
+  test("stores heightCm on the sync metadata doc, outside any reconciled container", async () => {
+    seedMeta(9);
+
+    const res = await push(v5Body({ heightCm: 182.88 }));
+
+    expect(isOk(res.status)).toBe(true);
+    const body = res.jsonBody as PushResponseBody;
+    expect(container("syncMeta").docs.get("snapshot")).toEqual({
+      id: "snapshot",
+      revision: 10,
+      serverTime: body.serverTime,
+      schemaVersion: 5,
+      highestSchemaVersion: 5,
+      heightCm: 182.88,
+    });
+  });
+
+  test("a v5 push with heightCm null records null over an earlier height", async () => {
+    container("syncMeta").seed({
+      id: "snapshot",
+      revision: 1,
+      serverTime: "2026-11-01T00:00:00.000Z",
+      schemaVersion: 5,
+      highestSchemaVersion: 5,
+      heightCm: 180,
+    });
+
+    await push(v5Body({ heightCm: null }));
+
+    expect(container("syncMeta").docs.get("snapshot")).toEqual(
+      expect.objectContaining({ revision: 2, heightCm: null })
+    );
+  });
+
+  test("a v4 push leaves every v5 container and the height alone", async () => {
+    container("bodyMeasurements").seed(waist);
+    container("medications").seed(vial);
+    container("syncMeta").seed({
+      id: "snapshot",
+      revision: 3,
+      serverTime: "2026-11-01T00:00:00.000Z",
+      schemaVersion: 5,
+      highestSchemaVersion: 5,
+      heightCm: 182.88,
+    });
+
+    const res = await push(v4Body());
+
+    expect(isOk(res.status)).toBe(true);
+    expect(container("bodyMeasurements").ids()).toEqual([waist.id]);
+    expect(container("medications").ids()).toEqual([vial.id]);
+    for (const [, name] of V5_FIELDS) {
+      expect(requestedContainerNames).not.toContain(name);
+    }
+    expect(container("syncMeta").docs.get("snapshot")).toEqual(
+      expect.objectContaining({
+        revision: 4,
+        schemaVersion: 4,
+        highestSchemaVersion: 5,
+        heightCm: 182.88,
+      })
+    );
+  });
+
+  test("a v4 retry that still carries the v5 keys (the phone's fallback) ignores them", async () => {
+    // SyncManager steps 5 → 4 on a 400 and resends the SAME snapshot, v5 keys
+    // included. Those keys are outside the v4 contract and must not be read.
+    container("medications").seed(vial);
+
+    const res = await push({
+      schemaVersion: 4,
+      snapshot: v5Snapshot({ medications: [], heightCm: 170 }),
+    });
+
+    expect(isOk(res.status)).toBe(true);
+    expect(container("medications").ids()).toEqual([vial.id]);
+    expect(container("syncMeta").docs.get("snapshot")).not.toHaveProperty(
+      "heightCm"
+    );
+  });
+
+  test("a failed v5 push advances nothing: no revision, no height, no v5 high-water mark", async () => {
+    seedMeta(7);
+    container("medications").failUpsertIds.add(vial.id);
+
+    const res = await push(v5Body({ medications: [vial], heightCm: 182.88 }));
+
+    expect(res.status).toBe(500);
+    expect(container("syncMeta").docs.get("snapshot")).toEqual({
+      id: "snapshot",
+      revision: 7,
+      serverTime: "2026-07-01T00:00:00.000Z",
+    });
+  });
+
+  // ── GET ──
+
+  function snapshotOf(res: { jsonBody?: unknown }): Record<string, unknown> {
+    return (res.jsonBody as { snapshot: Record<string, unknown> }).snapshot;
+  }
+
+  test("GET on a fresh mirror omits every v5 key — not empty arrays", async () => {
+    const res = await read();
+
+    expect(isOk(res.status)).toBe(true);
+    const keys = Object.keys(snapshotOf(res));
+    for (const [field] of V5_FIELDS) expect(keys).not.toContain(field);
+    expect(keys).not.toContain("heightCm");
+  });
+
+  test("GET after only v4 pushes omits the v5 keys even if the containers hold docs", async () => {
+    // e.g. a v5 push that failed half-way left docs behind: they were never
+    // confirmed, so they must not be served as the user's data.
+    seedMeta(12);
+    container("medications").seed(vial);
+    await push(v4Body());
+
+    const res = await read();
+
+    const keys = Object.keys(snapshotOf(res));
+    for (const [field] of V5_FIELDS) expect(keys).not.toContain(field);
+    expect(keys).not.toContain("heightCm");
+    // The v5 containers are not even read.
+    for (const [, name] of V5_FIELDS) {
+      expect(requestedContainerNames).not.toContain(name);
+    }
+  });
+
+  test("GET after a v5 push returns all four arrays, even empty, and heightCm", async () => {
+    await push(
+      v5Body({ bodyMeasurements: [waist], medicationDoses: [dose], heightCm: 182.88 })
+    );
+
+    const res = await read();
+
+    const snapshot = snapshotOf(res);
+    expect(snapshot["bodyMeasurements"]).toEqual([waist]);
+    expect(snapshot["medications"]).toEqual([]);
+    expect(snapshot["medicationDoses"]).toEqual([dose]);
+    expect(snapshot["exerciseAlternatives"]).toEqual([]);
+    expect(snapshot["heightCm"]).toBe(182.88);
+  });
+
+  test("GET after a v5 push with no height returns heightCm: null (present, not absent)", async () => {
+    await push(v5Body({ heightCm: null }));
+
+    const res = await read();
+
+    expect(snapshotOf(res)).toHaveProperty("heightCm", null);
+  });
+
+  test("once a v5 push has succeeded, a later v4 push does not hide the v5 keys again", async () => {
+    await push(v5Body({ medications: [vial], heightCm: 175 }));
+    await push(v4Body());
+
+    const res = await read();
+
+    const snapshot = snapshotOf(res);
+    expect(snapshot["medications"]).toEqual([vial]);
+    expect(snapshot["heightCm"]).toBe(175);
+  });
+
+  test("GET strips Cosmos system properties from v5 docs too", async () => {
+    await push(v5Body());
+    container("bodyMeasurements").seed({ ...waist, _rid: "x", _etag: '"e"', _ts: 1 });
+
+    const res = await read();
+
+    expect(snapshotOf(res)["bodyMeasurements"]).toEqual([waist]);
   });
 });

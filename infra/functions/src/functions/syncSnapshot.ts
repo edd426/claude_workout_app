@@ -23,9 +23,18 @@
  *   stamped by the last successful push.
  *
  * Revision metadata lives in the `syncMeta` container as the single doc
- * { id: "snapshot", revision, serverTime }. Chat, insights, and preferences
- * containers are NOT touched by snapshot sync (they remain on the legacy
- * push/pull path until removed).
+ * { id: "snapshot", revision, serverTime, schemaVersion, highestSchemaVersion,
+ * heightCm? }. Chat, insights, and preferences containers are NOT touched by
+ * snapshot sync (they remain on the legacy push/pull path until removed).
+ *
+ * Wire v5 (#164, #165, #169) adds four collections and the scalar `heightCm`.
+ * The GET serves those five keys only once a v5 push has succeeded at least
+ * once (`highestSchemaVersion >= 5`). Until then they are OMITTED, never sent
+ * as empty: the phone reads an absent key as "unknown" and keeps its own data,
+ * but would read `medications: []` as "the user has none" and wipe them.
+ *
+ * Health data (medications, doses, measurements) passes through this endpoint;
+ * nothing here logs a document body, only container names, ids and errors.
  */
 
 import {
@@ -37,9 +46,10 @@ import {
 import { Container } from "@azure/cosmos";
 import { authenticate } from "../shared/auth";
 import { getDatabase } from "../shared/cosmos";
-import { readItemOrNull } from "../shared/readHelpers";
+import { hasV5Mirror, readSyncMeta, SYNC_META_CONTAINER, SYNC_META_ID } from "../shared/syncMeta";
 import {
   SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS,
+  SnapshotCollectionField,
   SnapshotCollections,
   SnapshotContainerCounts,
   SnapshotCounts,
@@ -47,11 +57,12 @@ import {
   SnapshotPushResponse,
   SnapshotReadResponse,
   SyncMetaDoc,
+  V5_SCHEMA_VERSION,
 } from "../shared/types";
 
 /** Snapshot collection → Cosmos container mapping. */
 interface SnapshotCollectionMapping {
-  field: keyof SnapshotCollections;
+  field: SnapshotCollectionField;
   container: string;
 }
 
@@ -72,6 +83,19 @@ const V4_COLLECTIONS: SnapshotCollectionMapping[] = [
   { field: "exerciseOverlays", container: "exerciseOverlays" },
 ];
 
+/** The collections wire v5 adds. Each is its own container, partition /id. */
+const V5_ONLY_COLLECTIONS: SnapshotCollectionMapping[] = [
+  { field: "bodyMeasurements", container: "bodyMeasurements" },
+  { field: "medications", container: "medications" },
+  { field: "medicationDoses", container: "medicationDoses" },
+  { field: "exerciseAlternatives", container: "exerciseAlternatives" },
+];
+
+const V5_COLLECTIONS: SnapshotCollectionMapping[] = [
+  ...V4_COLLECTIONS,
+  ...V5_ONLY_COLLECTIONS,
+];
+
 /**
  * Which collections a push of a given schemaVersion reconciles.
  *
@@ -84,13 +108,17 @@ const SNAPSHOT_COLLECTIONS_BY_VERSION: Record<number, SnapshotCollectionMapping[
   2: V2_COLLECTIONS,
   3: V3_COLLECTIONS,
   4: V4_COLLECTIONS,
+  5: V5_COLLECTIONS,
 };
 
-/** Every container a read/restore should return, regardless of push version. */
-const SNAPSHOT_COLLECTIONS = V4_COLLECTIONS;
-
-const SYNC_META_CONTAINER = "syncMeta";
-const SYNC_META_ID = "snapshot";
+/**
+ * What a read/restore returns, regardless of push version: every v2–v4
+ * collection always, and the v5 collections only once a v5 push has landed
+ * (see the file comment).
+ */
+function collectionsToRead(meta: SyncMetaDoc | null): SnapshotCollectionMapping[] {
+  return hasV5Mirror(meta) ? V5_COLLECTIONS : V4_COLLECTIONS;
+}
 
 /** Cosmos query page size. Pages are looped until exhausted — never a cap. */
 const PAGE_SIZE = 100;
@@ -154,7 +182,52 @@ function validateBody(body: SnapshotPushRequest): HttpResponseInit | null {
       }
     }
   }
+  if (body.schemaVersion >= V5_SCHEMA_VERSION) {
+    // Required, like the arrays: the phone always sends the key, as a number
+    // or an explicit null. A missing key is a client bug, not "no height".
+    if (!Object.prototype.hasOwnProperty.call(snapshot, "heightCm")) {
+      return badRequest(
+        "Malformed snapshot: heightCm is required from schemaVersion 5 (a number, or null when unset)"
+      );
+    }
+    const heightCm = snapshot.heightCm;
+    if (
+      heightCm !== null &&
+      (typeof heightCm !== "number" || !Number.isFinite(heightCm) || heightCm <= 0)
+    ) {
+      return badRequest(
+        "Malformed snapshot: heightCm must be a positive finite number or null"
+      );
+    }
+  }
   return null;
+}
+
+/**
+ * The metadata doc a successful push writes. `heightCm` comes from a v5 push
+ * and is carried over unchanged by an older one: a v2–v4 client does not know
+ * height exists, so its silence is not "no height".
+ */
+function nextMeta(
+  existing: SyncMetaDoc | null,
+  body: SnapshotPushRequest
+): SyncMetaDoc {
+  const meta: SyncMetaDoc = {
+    id: SYNC_META_ID,
+    revision: (existing?.revision ?? 0) + 1,
+    serverTime: new Date().toISOString(),
+    schemaVersion: body.schemaVersion,
+    highestSchemaVersion: Math.max(
+      existing?.highestSchemaVersion ?? 0,
+      body.schemaVersion
+    ),
+  };
+  if (body.schemaVersion >= V5_SCHEMA_VERSION) {
+    meta.heightCm = body.snapshot.heightCm ?? null;
+  } else if (existing && existing.heightCm !== undefined) {
+    meta.heightCm = existing.heightCm;
+  }
+  return meta;
 }
 
 /**
@@ -309,17 +382,17 @@ app.http("syncSnapshotPush", {
 
       // Single-writer by design (one phone); a plain read-increment-write of
       // the metadata doc is sufficient — no optimistic concurrency needed.
-      const metaContainer = getDatabase().container(SYNC_META_CONTAINER);
-      const existingMeta = await readItemOrNull<SyncMetaDoc>(
-        metaContainer,
-        SYNC_META_ID
-      );
-      const revision = (existingMeta?.revision ?? 0) + 1;
-      const serverTime = new Date().toISOString();
-      const meta: SyncMetaDoc = { id: SYNC_META_ID, revision, serverTime };
-      await metaContainer.items.upsert(meta);
+      // Written only after every collection reconciled: a failed push leaves
+      // the revision, the height and the v5 high-water mark where they were.
+      const existingMeta = await readSyncMeta();
+      const meta = nextMeta(existingMeta, body);
+      await getDatabase().container(SYNC_META_CONTAINER).items.upsert(meta);
 
-      const response: SnapshotPushResponse = { revision, serverTime, counts };
+      const response: SnapshotPushResponse = {
+        revision: meta.revision,
+        serverTime: meta.serverTime,
+        counts,
+      };
       return { jsonBody: response };
     } catch (error) {
       context.error("Snapshot push failed:", error);
@@ -343,13 +416,16 @@ app.http("syncSnapshotGet", {
     if (authError) return authError;
 
     try {
-      const metaContainer = getDatabase().container(SYNC_META_CONTAINER);
-      const meta = await readItemOrNull<SyncMetaDoc>(metaContainer, SYNC_META_ID);
+      const meta = await readSyncMeta();
 
       const snapshot = {} as SnapshotCollections;
-      for (const { field, container } of SNAPSHOT_COLLECTIONS) {
+      for (const { field, container } of collectionsToRead(meta)) {
         const docs = await queryAllDocs(getDatabase().container(container));
         snapshot[field] = docs.map(stripSystemProps);
+      }
+      if (hasV5Mirror(meta)) {
+        // Present (possibly null) exactly when the v5 arrays are.
+        snapshot.heightCm = meta?.heightCm ?? null;
       }
 
       const response: SnapshotReadResponse = {

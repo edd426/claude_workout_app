@@ -1,7 +1,9 @@
-// ─── Snapshot sync (issue #78, wire contract v2/v3) ──────────────────────────
+// ─── Snapshot sync (issue #78, wire contract v2–v5) ──────────────────────────
 // The phone is authoritative; Azure is a read-mostly mirror. A push is always
 // the complete state of each collection — full-state replace, not deltas.
 //
+// v5 (issues #164, #165, #169) adds `bodyMeasurements`, `medications`,
+// `medicationDoses`, `exerciseAlternatives` and the scalar `heightCm`.
 // v4 (issue #140) adds `exerciseOverlays`. v3 (issue #135) adds
 // `exerciseReports`. Every earlier version is still ACCEPTED: the server is
 // deployed independently of the app, so a v2 push from a phone that has not
@@ -9,8 +11,11 @@
 // and reconciliation therefore leaves that container alone rather than
 // wiping it — see SNAPSHOT_COLLECTIONS_BY_VERSION in syncSnapshot.ts.
 
-export const SNAPSHOT_SCHEMA_VERSION = 4;
-export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = [2, 3, 4] as const;
+export const SNAPSHOT_SCHEMA_VERSION = 5;
+export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = [2, 3, 4, 5] as const;
+
+/** The first wire version that carries the v5 collections and heightCm. */
+export const V5_SCHEMA_VERSION = 5;
 
 export interface SnapshotCollections {
   workouts: Record<string, unknown>[];
@@ -26,7 +31,27 @@ export interface SnapshotCollections {
    * same exercise, so a UUID key would strand every overlay (#140).
    */
   exerciseOverlays?: Record<string, unknown>[];
+  /** v5 (#165): circumference log; `site` is a raw string, cm only. */
+  bodyMeasurements?: Record<string, unknown>[];
+  /** v5 (#164): user-defined medications. Health data — never logged. */
+  medications?: Record<string, unknown>[];
+  /**
+   * v5 (#164): logged doses. `computedMg` and `concentrationMgPerMlAtLog` are
+   * as logged and must never be recomputed from the medication's current
+   * concentration. Health data — never logged.
+   */
+  medicationDoses?: Record<string, unknown>[];
+  /** v5 (#169): substitutes for a template exercise, by `templateExerciseId`. */
+  exerciseAlternatives?: Record<string, unknown>[];
+  /**
+   * v5 (#165): the profile height. Required on a v5 push (a number or null);
+   * NOT a collection, so it is stored on the sync metadata doc, not reconciled.
+   */
+  heightCm?: number | null;
 }
+
+/** The array-valued collection fields — every field except `heightCm`. */
+export type SnapshotCollectionField = Exclude<keyof SnapshotCollections, "heightCm">;
 
 export interface SnapshotPushRequest {
   schemaVersion: number;
@@ -45,6 +70,10 @@ export interface SnapshotCounts {
   bodyWeightEntries: SnapshotContainerCounts;
   exerciseReports?: SnapshotContainerCounts;
   exerciseOverlays?: SnapshotContainerCounts;
+  bodyMeasurements?: SnapshotContainerCounts;
+  medications?: SnapshotContainerCounts;
+  medicationDoses?: SnapshotContainerCounts;
+  exerciseAlternatives?: SnapshotContainerCounts;
 }
 
 export interface SnapshotPushResponse {
@@ -64,11 +93,25 @@ export interface SnapshotReadResponse {
  * `syncMeta` container. `revision` counts successful pushes (monotonically
  * increasing, server-assigned); `serverTime` is when the last successful
  * push was applied.
+ *
+ * Every field below `serverTime` was added with wire v5 and is absent on a doc
+ * written before it. Writing them into this one doc, in the same upsert as the
+ * revision, keeps "the v5 push succeeded" and "here is its height" atomic.
  */
 export interface SyncMetaDoc {
   id: string;
   revision: number;
   serverTime: string;
+  /** schemaVersion of the last successful push. */
+  schemaVersion?: number;
+  /**
+   * Highest schemaVersion that has ever pushed successfully (sticky). The GET
+   * serves the v5 keys only once this reaches 5: before that, empty v5 arrays
+   * would read to a restoring phone as "the user has none" and wipe its data.
+   */
+  highestSchemaVersion?: number;
+  /** Height from the last v5 push; null = not set. Untouched by v2–v4 pushes. */
+  heightCm?: number | null;
 }
 
 // ─── MCP write inbox (issue #88) ────────────────────────────────────────────

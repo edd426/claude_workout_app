@@ -85,6 +85,8 @@ See `.claude/rules/tdd.md` for the full workflow.
 - **Simulator**: match the real device — Evan carries an **iPhone 13 Pro Max on iOS 27.0.1** (read from his report metadata on 2026-11-03; it was 26.6.2 in October). 27.0.1 is not downloadable, so use the **iOS 27.0** runtime (`xcodebuild -downloadPlatform iOS -buildVersion 27.0`). Each report records `iosVersion`: check it before trusting this line. Do not substitute whatever simulator ships newest; on 2026-07-27 an iPhone 17 run produced a false `ChatCoachTests` failure that did not reproduce on the real hardware. The previously documented `iPhone 16e` no longer exists in Xcode. If the destination is missing, **create it** rather than substituting:
   `xcrun simctl create "iPhone 13 Pro Max" com.apple.CoreSimulator.SimDeviceType.iPhone-13-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-0`
 
+- **One build at a time.** This Mac has 8 GB of RAM. Run one `xcodebuild` (build or test) and keep one simulator booted at a time, even with several agents: on 2026-11-03 four parallel simulators drove it into swap (load ~60), tests never started, and swap filled the disk. Parallel agents may write code concurrently; their builds must queue behind a lock.
+
 - **Typechecking is not testing.** A clean `tsc`/`swiftc` parse says nothing about behavior — on 2026-07-27 two rounds of write-path work typechecked cleanly and still failed the simulator suite. Run `xcodebuild test` before claiming a change works, and beware piping it through `tail` without `set -o pipefail`, which masks the real exit code.
 
 - **Versioning**: three-part semver, bumped on **every device install** (patch

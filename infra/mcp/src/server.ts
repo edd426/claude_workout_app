@@ -12,10 +12,11 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { createWorkoutServer } from "./serverFactory.js";
+import { createLocalServer } from "./serverFactory.js";
 import { buildFreshness } from "./shared/build-info.js";
 
-const server = createWorkoutServer();
+// The local server: attach_exercise_photo may read imagePath from this machine.
+const server = createLocalServer();
 
 async function main() {
   // #138: warn on stderr before serving a single request. This is the only

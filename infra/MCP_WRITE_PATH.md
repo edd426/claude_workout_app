@@ -261,7 +261,7 @@ Re-enabled / new:
 | `list_exercise_reports` | Reads the complaint backlog mirrored by snapshot sync (`GET /api/reports`). Not an inbox operation. |
 | `get_report_photo` | Reads a report's photo (#141): validates `photoURL` as `reports/{reportId}.jpg`, then downloads it with a read SAS from `GET /api/images/sas`. Read-only, not an inbox operation. |
 | `resolve_exercise_report` | Enqueues `resolveExerciseReport`. Auto-applies. |
-| `attach_exercise_photo` | #170. Validates the externalId (photo-path grammar, then catalog/custom resolution) and the image (JPEG, ≤ 3.75 MB) before any request; gets a **write** SAS for `exercises/ext/{externalId}.jpg` from `GET /api/images/sas`; uploads straight to Blob Storage (the SAS is the only credential sent there, never the API key); only then enqueues `setExercisePhoto`. Requires approval. |
+| `attach_exercise_photo` | #170. Takes exactly one of `imagePath` (a local `.jpg`/`.jpeg`, read with symlinks resolved; local stdio server only, refused by the remote server) or `imageBase64`. Validates the externalId (photo-path grammar, then catalog/custom resolution) and the image (JPEG, ≤ 3.75 MB) before any request; gets a **write** SAS for `exercises/ext/{externalId}.jpg` from `GET /api/images/sas`; uploads straight to Blob Storage (the SAS is the only credential sent there, never the API key); only then enqueues `setExercisePhoto`. Requires approval. |
 | `list_pending_writes` | Reads back queued/applied/failed operations — closes the loop so a write can be *verified*, not assumed. |
 
 ### Photo blobs are written before the operation exists
@@ -270,12 +270,15 @@ Re-enabled / new:
 inbox: the JPEG is already in `workout-images` when the operation is queued.
 Two consequences:
 
-- **The path is deterministic per exercise**, as the issue specified, so
-  attaching again overwrites the blob. A *declined* re-attach therefore still
-  replaces the bytes an earlier *approved* op points at, and a phone that
-  cached the earlier image keeps showing it until it re-downloads. If that
-  matters, the fix is a per-upload path (`exercises/ext/{externalId}/{opId}.jpg`)
-  with the same grammar for the id segment.
+- **Known limitation, accepted (2026-11-03): declining a re-attach does not
+  restore the old photo.** The path is deterministic per exercise, as the
+  issue specified, so attaching again overwrites the blob before anyone
+  approves anything. A *declined* re-attach therefore still replaces the bytes
+  an earlier *approved* op points at. A phone that cached the earlier image
+  keeps showing it until it re-downloads. Evan's call: acceptable for now. If
+  it ever matters, the fix is a per-upload path
+  (`exercises/ext/{externalId}/{opId}.jpg`) with the same grammar for the id
+  segment.
 - **A phone build without `setExercisePhoto` support** acks the op `failed`
   ("Unknown inbox operation"); it is isolated to that op. The blob stays, so
   re-running the tool after the phone update is enough.

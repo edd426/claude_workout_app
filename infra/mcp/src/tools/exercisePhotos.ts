@@ -17,7 +17,19 @@
  *
  * Uploading before enqueueing means an op never points at a missing blob. The
  * blob path is deterministic per exercise, so attaching again replaces it.
+ *
+ * The image comes from exactly one of:
+ *   - imageBase64: works on both servers, but the model has to write out the
+ *     whole base64 text (~270,000 characters for a 200 KB photo);
+ *   - imagePath: an absolute path to a local .jpg/.jpeg, read by this process.
+ *     Only the local (stdio) server allows it. The remote claude.ai server runs
+ *     on Azure, where a readable path would be a file on the Function host, so
+ *     it refuses before touching the filesystem.
  */
+
+import { constants } from "node:fs";
+import { open, realpath, stat } from "node:fs/promises";
+import { extname, isAbsolute } from "node:path";
 
 import { ApiError, apiGet, apiPost } from "../shared/http.js";
 import { exercisePhotoPath, isPhotoExternalId } from "../shared/exercisePhotoPath.js";
@@ -34,6 +46,15 @@ const BLOB_UPLOAD_TIMEOUT_MS = 60_000;
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const JPEG_DATA_URL = /^data:image\/jpe?g;base64,/i;
+const JPEG_EXTENSIONS = new Set([".jpg", ".jpeg"]);
+
+export const LOCAL_FILES_ONLY_MESSAGE =
+  "imagePath is only available on the local server; send imageBase64";
+
+export interface AttachExercisePhotoOptions {
+  /** True only on the local (stdio) server: lets imagePath read a local file. */
+  allowLocalFiles?: boolean;
+}
 
 export interface InboxOperation {
   id: string;
@@ -84,7 +105,11 @@ function decodedJpeg(value: unknown): Buffer {
     throw new Error("imageBase64 is not valid base64");
   }
 
-  const bytes = Buffer.from(text, "base64");
+  return checkedJpeg(Buffer.from(text, "base64"));
+}
+
+/** The same size and JPEG checks for both sources. */
+function checkedJpeg(bytes: Buffer): Buffer {
   if (bytes.length > MAX_EXERCISE_PHOTO_BYTES) throw tooLarge(bytes.length);
   if (!isJpeg(bytes)) {
     throw new Error(
@@ -93,6 +118,94 @@ function decodedJpeg(value: unknown): Buffer {
     );
   }
   return bytes;
+}
+
+function hasJpegExtension(path: string): boolean {
+  return JPEG_EXTENSIONS.has(extname(path).toLowerCase());
+}
+
+function errnoCode(err: unknown): string {
+  const code = (err as NodeJS.ErrnoException).code;
+  return typeof code === "string" ? code : err instanceof Error ? err.name : "error";
+}
+
+/**
+ * Reads a local JPEG for imagePath, with fs calls only (no shell). Symlinks
+ * are resolved first and every check applies to the real file: a `.jpg` link
+ * to some other file is refused. The size is checked before reading and the
+ * bytes again after, and the real path is opened with O_NOFOLLOW so it cannot
+ * be swapped for a link in between.
+ */
+async function readLocalJpeg(value: unknown): Promise<Buffer> {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error("imagePath must be an absolute path to a .jpg or .jpeg file");
+  }
+  if (!isAbsolute(value)) {
+    throw new Error(
+      `imagePath must be an absolute path (got ${JSON.stringify(value)}; "~" is not expanded)`
+    );
+  }
+  if (!hasJpegExtension(value)) {
+    throw new Error(`imagePath must name a .jpg or .jpeg file: ${value}`);
+  }
+
+  let real: string;
+  try {
+    real = await realpath(value);
+  } catch (err) {
+    throw new Error(`Cannot read imagePath ${value} (${errnoCode(err)})`);
+  }
+  if (!hasJpegExtension(real)) {
+    throw new Error(
+      `imagePath ${value} resolves to ${real}, which is not a .jpg or .jpeg file`
+    );
+  }
+
+  let info;
+  try {
+    info = await stat(real);
+  } catch (err) {
+    throw new Error(`Cannot read imagePath ${value} (${errnoCode(err)})`);
+  }
+  if (!info.isFile()) throw new Error(`imagePath ${value} is not a regular file`);
+  if (info.size > MAX_EXERCISE_PHOTO_BYTES) throw tooLarge(info.size);
+
+  let bytes: Buffer;
+  try {
+    const handle = await open(real, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile()) throw new Error(`imagePath ${value} is not a regular file`);
+      if (opened.size > MAX_EXERCISE_PHOTO_BYTES) throw tooLarge(opened.size);
+      bytes = await handle.readFile();
+    } finally {
+      await handle.close();
+    }
+  } catch (err) {
+    if (err instanceof Error && /^(imagePath|The image)/.test(err.message)) throw err;
+    throw new Error(`Cannot read imagePath ${value} (${errnoCode(err)})`);
+  }
+  return checkedJpeg(bytes);
+}
+
+/** Exactly one source; imagePath only where local files are allowed. */
+async function imageFrom(
+  input: Record<string, unknown>,
+  options: AttachExercisePhotoOptions
+): Promise<Buffer> {
+  const hasBase64 = input["imageBase64"] !== undefined;
+  const hasPath = input["imagePath"] !== undefined;
+  if (hasBase64 === hasPath) {
+    throw new Error(
+      "Pass exactly one of imageBase64 or imagePath" +
+        (options.allowLocalFiles ? "" : " (imagePath is only available on the local server)")
+    );
+  }
+  if (hasPath) {
+    if (options.allowLocalFiles !== true) throw new Error(LOCAL_FILES_ONLY_MESSAGE);
+    return readLocalJpeg(input["imagePath"]);
+  }
+  return decodedJpeg(input["imageBase64"]);
 }
 
 function tooLarge(bytes: number): Error {
@@ -162,14 +275,17 @@ async function uploadPhoto(sasUrl: string, path: string, bytes: Buffer): Promise
   await discardBody(response);
 }
 
-export async function attachExercisePhoto(args: unknown): Promise<AttachExercisePhotoResult> {
+export async function attachExercisePhoto(
+  args: unknown,
+  options: AttachExercisePhotoOptions = {}
+): Promise<AttachExercisePhotoResult> {
   if (args === null || typeof args !== "object" || Array.isArray(args)) {
     throw new Error("Arguments must be an object");
   }
   const input = args as Record<string, unknown>;
 
   const externalId = validatedExternalId(input["externalId"]);
-  const bytes = decodedJpeg(input["imageBase64"]);
+  const bytes = await imageFrom(input, options);
 
   const exercise = await resolveExerciseByExternalId(externalId);
   if (!exercise) throw unknownExternalIdError(externalId);

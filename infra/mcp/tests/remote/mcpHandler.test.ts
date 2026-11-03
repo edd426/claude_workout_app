@@ -111,6 +111,15 @@ describe("authorized requests", () => {
       expect(names).toContain(name);
     }
   });
+
+  it("does not offer attach_exercise_photo's local-only imagePath over /mcp", async () => {
+    const res = await handleMcpRequest(rpc("tools/list", 6, {}, "Bearer ok"), deps());
+    const body = await res.json();
+    const attach = body.result.tools.find(
+      (t: { name: string }) => t.name === "attach_exercise_photo"
+    );
+    expect(Object.keys(attach.inputSchema.properties)).toEqual(["externalId", "imageBase64"]);
+  });
 });
 
 describe("request size (#170)", () => {

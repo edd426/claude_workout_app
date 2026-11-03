@@ -44,7 +44,7 @@ slim build-time catalog before any write request is sent.
 | `delete_template` | Enqueue a template deletion for approval |
 | `create_program` | Validate all templates, then enqueue each |
 | `create_custom_exercise` | Enqueue a custom exercise |
-| `attach_exercise_photo` | Attach a JPEG (`externalId`, `imageBase64`, ≤ 3.75 MB) to an exercise: uploads it, then enqueues `setExercisePhoto` for approval on the phone (#170) |
+| `attach_exercise_photo` | Attach a JPEG (≤ 3.75 MB) to an exercise: uploads it, then enqueues `setExercisePhoto` for approval on the phone (#170). Takes `externalId` plus exactly one of `imagePath` (absolute path to a local `.jpg`/`.jpeg`; **local stdio server only**, symlinks resolved) or `imageBase64` (both servers) |
 | `list_body_measurements` | Circumference log (`site`, `startDate`, `endDate`, `limit`), the stored height, and the current waist-to-height ratio with its NICE NG246 band (#165) |
 | `list_medications` | The medication log's medications (`includeArchived`), with each one's current concentration (#164) |
 | `list_medication_logs` | Logged doses (`medicationId`, `startDate`, `endDate`, `limit`) with medication names; `computedMg` and the `…AtLog` values exactly as logged (#164) |
@@ -230,8 +230,9 @@ Functions log errors only, never documents.
 1. The externalId must match the photo-path grammar exactly: a catalog id
    (`[A-Za-z0-9][A-Za-z0-9_-]{0,127}`) or a custom id
    (`custom:{slug}:{lowercase uuid}`). No `/`, `.`, `%` or whitespace, so it
-   cannot leave `exercises/ext/`. The image must be base64 of a JPEG of at
-   most 3.75 MB. Both are checked before any request.
+   cannot leave `exercises/ext/`. The image, from `imagePath` or
+   `imageBase64`, must be a JPEG of at most 3.75 MB. Both are checked before
+   any request.
 2. The exercise must exist: the bundled catalog, or a synced or queued
    custom exercise.
 3. A **write** SAS for `exercises/ext/{externalId}.jpg` comes from
@@ -246,12 +247,22 @@ A 400 from `/api/images/sas` or from the enqueue usually means the deployed
 Functions app predates #170. The claude.ai transport accepts request bodies up
 to 6 MiB (the SDK default is 4 MiB) so a photo at the limit fits.
 
-**Known limit.** The image travels as a tool argument, so the model has to
-write out its whole base64 text: a typical 200 KB photo is ~270,000
-characters of output. That suits a few photos per conversation, not a bulk
-import of a whole gym, and claude.ai has no way to hand an uploaded image's
-bytes to a tool at all. A bulk path needs a different input, for example a
-local-file argument served only by the stdio server.
+**Two ways to send the image** (exactly one per call):
+
+- `imagePath`, the bulk path: an absolute path to a local `.jpg`/`.jpeg`.
+  The server reads it with filesystem calls only (no shell). It resolves
+  symlinks and applies every check to the real file: it must be a regular
+  file with a `.jpg`/`.jpeg` name, at most 3.75 MB, starting with the JPEG
+  magic bytes. **Only the local stdio server accepts it** (`createLocalServer`
+  in `src/serverFactory.ts`). The claude.ai server runs on Azure, where a path
+  would name a file on the Function host. It does not list `imagePath` and
+  refuses it with "imagePath is only available on the local server; send
+  imageBase64". For a gym's worth of photos, run the stdio server locally (see
+  Claude Code above) and pass paths.
+- `imageBase64`, on both servers: the model has to write out the whole base64
+  text (a typical 200 KB photo is ~270,000 characters of output), so it suits
+  a few photos at most. claude.ai has no way to hand an uploaded image's bytes
+  to a tool.
 
 ### Report photos (`get_report_photo`, #141)
 

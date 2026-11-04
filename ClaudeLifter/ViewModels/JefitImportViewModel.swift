@@ -113,7 +113,9 @@ struct JefitImportResult: Equatable, Sendable {
         let workouts = importedWorkouts == 1 ? "1 workout" : "\(importedWorkouts) workouts"
         let customs = importedCustomExercises == 1
             ? "1 custom exercise" : "\(importedCustomExercises) custom exercises"
-        var text = "Imported \(workouts) and \(customs)."
+        var text = importedCustomExercises == 0
+            ? "Imported \(workouts)."
+            : "Imported \(workouts) and \(customs)."
         if skippedWorkouts > 0 {
             text += " \(skippedWorkouts) were already on this phone."
         }

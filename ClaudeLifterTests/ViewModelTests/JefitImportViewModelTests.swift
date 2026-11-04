@@ -160,6 +160,14 @@ struct JefitImportViewModelTests {
         #expect(result.message == "Nothing new: all 5 workouts were already on this phone.")
     }
 
+    @Test("No new custom exercises leaves them out of the message")
+    func noCustomExercisesMessage() {
+        var summary = BackupImportSummary()
+        summary.workouts = .init(imported: 3, skipped: 0)
+
+        #expect(JefitImportResult(summary).message == "Imported 3 workouts.")
+    }
+
     @Test("A partial overlap reports both counts")
     func partialOverlapMessage() {
         var summary = BackupImportSummary()

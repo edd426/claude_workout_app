@@ -135,7 +135,6 @@ private struct ReportRow: View {
     let report: ExerciseReport
     let onAction: (ReportRowAction) -> Void
 
-
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             content

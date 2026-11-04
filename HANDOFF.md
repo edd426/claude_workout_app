@@ -12,11 +12,21 @@
 - Labels on gray buttons use the primary colour.
 - The app tint is `accentText`.
 
-**Verification still to do** (none of it run yet on the merged tree):
-1. The full unit suite on `release/1.9.0`.
-2. Gear → Settings from a fresh launch (agent T could not confirm it opens).
-3. SettingsTests, including the one-tap Export test.
-4. A WorkoutFlow test.
+**Verified on the merged tree (2026-11-04, iOS 27.0 simulator):**
+- **Unit suite: 1341/1341** on `5bf8152` (TEST SUCCEEDED, 0 ✘).
+- **UI suite:** 72 tests, run without the screenshot harness. 68 passed on the first run, including all 7 SettingsTests, so gear → Settings works and one tap on Export opens the share sheet. The 4 that failed are all fixed and re-run green:
+  - History rows carried the identifier twice: once on the link, once on the row.
+  - Library search dropped keystrokes. The result line sat above the List; it is now inside it.
+  - The weight field overrode its own accessibility value with "", which hid the typed number from VoiceOver.
+- **Functions:** jest 447/447. **MCP:** vitest 306/306.
+- **Version:** bumped to **1.9.0 (11)** in `generate_project.py`.
+
+**Waiting on Evan's go-ahead:**
+1. Push `release/1.9.0`.
+2. Create the 4 Cosmos containers.
+3. Deploy the Functions code.
+4. Deploy the MCP remote, code only.
+5. Install on the phone.
 
 **Known follow-ups, not blocking 1.9.0:**
 - **UI tests to update:**

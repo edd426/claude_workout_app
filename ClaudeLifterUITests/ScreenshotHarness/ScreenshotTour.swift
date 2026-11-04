@@ -80,12 +80,12 @@ final class ScreenshotTour: XCTestCase {
             throw XCTSkip("First-launch setup runs only with SCREENSHOT_RESTORE=1")
         }
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 600))
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 600))
         // The catalog import and the first sync (insights) run after launch.
         sleep(20)
         tab("Exercises")
         sleep(5)
-        tab("Home")
+        tab("Today")
         sleep(5)
     }
 
@@ -570,7 +570,8 @@ final class ScreenshotTour: XCTestCase {
 
     private func tourSettings() {
         launchToHome()
-        tab("Settings")
+        // 1.9.0: Settings is a sheet from the gear in Today's toolbar.
+        tapIfExists(app.buttons["settingsButton"])
         sleep(2)
         snap("70_settings")
         app.swipeUp()
@@ -597,9 +598,9 @@ final class ScreenshotTour: XCTestCase {
 
     private func launchToHome() {
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 15))
         sleep(4)
-        tab("Home")
+        tab("Today")
         sleep(1)
     }
 

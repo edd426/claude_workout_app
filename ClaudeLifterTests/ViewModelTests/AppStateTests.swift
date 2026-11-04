@@ -46,4 +46,24 @@ struct AppStateTests {
         #expect(state.activeWorkoutId == nil)
         #expect(state.activeWorkoutVM == nil)
     }
+
+    @Test("The app opens on the Today tab")
+    func opensOnToday() {
+        #expect(AppState().selectedTab == .today)
+    }
+
+    @Test("A Today row can switch to the Body tab")
+    func switchesTab() {
+        let state = AppState()
+
+        state.show(.body)
+
+        #expect(state.selectedTab == .body)
+    }
+
+    @Test("There are five tabs and Settings is not one of them")
+    func fiveTabs() {
+        #expect(AppTab.allCases == [.today, .history, .body, .exercises, .coach])
+        #expect(AppTab.allCases.map(\.title) == ["Today", "History", "Body", "Exercises", "Coach"])
+    }
 }

@@ -8,28 +8,34 @@ struct ContentView: View {
     @State private var chatViewModel: ChatViewModel?
 
     var body: some View {
-        TabView {
+        @Bindable var appState = appState
+        // Five tabs, the iPhone limit. Settings is a sheet from the gear in
+        // Today's toolbar (1.9.0 IA).
+        TabView(selection: $appState.selectedTab) {
             HomeView()
-                .tabItem { Label("Home", systemImage: "house") }
+                .tabItem { tabLabel(.today) }
+                .tag(AppTab.today)
 
             HistoryListView()
-                .tabItem { Label("History", systemImage: "calendar") }
+                .tabItem { tabLabel(.history) }
+                .tag(AppTab.history)
+
+            BodyView()
+                .tabItem { tabLabel(.body) }
+                .tag(AppTab.body)
 
             ExerciseLibraryView()
-                .tabItem { Label("Exercises", systemImage: "dumbbell") }
+                .tabItem { tabLabel(.exercises) }
+                .tag(AppTab.exercises)
 
-            NavigationStack {
-                if let chatViewModel {
-                    ChatView(viewModel: chatViewModel)
-                } else {
-                    ProgressView()
-                }
-            }
-            .tabItem { Label("Coach", systemImage: "bubble.left.and.bubble.right") }
-
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gear") }
+            coachTab
+                .tabItem { tabLabel(.coach) }
+                .tag(AppTab.coach)
         }
+        // The app tint is the brand accent. Destructive controls set
+        // `BrandTheme.destructive` themselves where the tint would otherwise
+        // win (swipe actions, bordered buttons), so they stay system red
+        // (UI-P6).
         .tint(BrandTheme.accent)
         .task {
             if chatViewModel == nil {
@@ -61,6 +67,20 @@ struct ContentView: View {
         .onChange(of: appState.isWorkoutActive) { _, isActive in
             if !isActive {
                 chatViewModel?.activeWorkout = nil
+            }
+        }
+    }
+
+    private func tabLabel(_ tab: AppTab) -> some View {
+        Label(tab.title, systemImage: tab.systemImage)
+    }
+
+    private var coachTab: some View {
+        NavigationStack {
+            if let chatViewModel {
+                ChatView(viewModel: chatViewModel)
+            } else {
+                ProgressView()
             }
         }
     }

@@ -120,6 +120,6 @@ final class KeyboardDismissalTests: XCTestCase {
         app.textFields["chatMessageInput"].tap()
         app.swipeDown()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["Home"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Today"].exists)
     }
 }

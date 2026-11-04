@@ -23,38 +23,23 @@ struct TemplatePreviewView: View {
 
             Section("Exercises") {
                 ForEach(sortedExercises, id: \.id) { te in
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(te.exercise?.name ?? "Unknown")
                             .font(.body)
                         Text("\(te.defaultSets) sets × \(te.defaultReps) reps")
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 4)
+                    .accessibilityElement(children: .combine)
                 }
             }
-
-            Section {
-                Button {
-                    // Pop back to the template list BEFORE starting the
-                    // workout so the root-level swap to ActiveWorkoutView
-                    // is actually visible (otherwise this pushed preview
-                    // shadows the swap and the button appears dead).
-                    dismiss()
-                    onStartWorkout()
-                } label: {
-                    Text("Start Workout")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityIdentifier("startWorkoutFromPreview")
-            }
-            .listRowBackground(Color.clear)
-            .listRowInsets(.init())
         }
+        // Start lives in a bottom bar, in the thumb zone (UI-G5), so a long
+        // note or a nine-exercise template never pushes it off-screen.
+        .safeAreaInset(edge: .bottom) { startBar }
         .navigationTitle(template.name)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit") { showEditor = true }
@@ -70,5 +55,26 @@ struct TemplatePreviewView: View {
                 )
             }
         }
+    }
+
+    private var startBar: some View {
+        Button {
+            // Pop back to Today BEFORE starting the workout so the root-level
+            // swap to ActiveWorkoutView is actually visible (otherwise this
+            // pushed preview shadows the swap and the button appears dead).
+            dismiss()
+            onStartWorkout()
+        } label: {
+            Label("Start Workout", systemImage: "play.fill")
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .buttonBorderShape(.roundedRectangle(radius: 12))
+        .accessibilityIdentifier("startWorkoutFromPreview")
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 }

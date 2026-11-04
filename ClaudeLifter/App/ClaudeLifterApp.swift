@@ -69,6 +69,12 @@ struct ClaudeLifterApp: App {
                         if shouldSeedTestData {
                             await seedTestData(context: modelContainer.mainContext)
                         }
+                        if ProcessInfo.processInfo.arguments.contains("-seedTodayDemo") {
+                            TodayDemoSeed.seed(
+                                context: modelContainer.mainContext,
+                                settings: dependencies.settings
+                            )
+                        }
                     } else {
                         await importExercisesIfNeeded()
                     }

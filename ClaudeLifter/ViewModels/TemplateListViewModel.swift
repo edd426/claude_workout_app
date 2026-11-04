@@ -7,11 +7,18 @@ final class TemplateListViewModel {
     var templates: [WorkoutTemplate] = []
     var isLoading = false
     var errorMessage: String? = nil
+    /// Start date of the latest finished workout per template (#176).
+    private(set) var lastDone: [UUID: Date] = [:]
 
     private let templateRepository: any TemplateRepository
+    private let workoutRepository: (any WorkoutRepository)?
 
-    init(templateRepository: any TemplateRepository) {
+    init(
+        templateRepository: any TemplateRepository,
+        workoutRepository: (any WorkoutRepository)? = nil
+    ) {
         self.templateRepository = templateRepository
+        self.workoutRepository = workoutRepository
     }
 
     func loadTemplates() async {
@@ -20,9 +27,16 @@ final class TemplateListViewModel {
         defer { isLoading = false }
         do {
             templates = try await templateRepository.fetchAll()
+            if let workoutRepository {
+                lastDone = TemplateLastDone.dates(from: try await workoutRepository.fetchAll())
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func lastDoneDate(for template: WorkoutTemplate) -> Date? {
+        TemplateLastDone.date(for: template, in: lastDone)
     }
 
     func deleteTemplate(_ template: WorkoutTemplate) async {

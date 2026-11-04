@@ -72,7 +72,7 @@ final class HistoryCalendarTests: XCTestCase {
         let rowsBefore = historyRows.count
 
         // Log and finish a workout.
-        app.tabBars.buttons["Home"].tap()
+        app.tabBars.buttons["Today"].tap()
         app.startWorkoutFromTemplate("Push Day")
         let completeButton = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH 'completeSet_'")

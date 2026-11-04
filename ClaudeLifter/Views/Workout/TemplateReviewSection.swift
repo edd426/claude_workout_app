@@ -84,7 +84,7 @@ struct TemplateReviewSection: View {
                     systemImage: "exclamationmark.triangle"
                 )
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(BrandTheme.warning)
             }
 
             ForEach(changeSet.changes) { change in
@@ -100,7 +100,7 @@ struct TemplateReviewSection: View {
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(BrandTheme.destructive)
             }
 
             HStack {

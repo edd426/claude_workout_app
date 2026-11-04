@@ -340,6 +340,114 @@ struct TemplateChangeDetectorTests {
 
     // MARK: - Conflict
 
+    // MARK: - Machine taken (#169) and skip (1.9.0)
+    //
+    // A swap replaces the exercise on the planned slot, so the slot keeps its
+    // baseline link (`workoutExerciseId`) but now holds a different exercise
+    // from the one the baseline recorded. That is a decision about today's
+    // gym, never about the plan.
+
+    private func swapSlot(_ s: Scenario, order: Int, to name: String) throws -> WorkoutExercise {
+        let slot = try #require(s.workout.exercises.first { $0.order == order })
+        let alternative = TestFixtures.makeExercise(name: name)
+        s.container.mainContext.insert(alternative)
+        slot.exercise = alternative
+        return slot
+    }
+
+    @Test("A swapped exercise is neither an addition nor a removal")
+    func swapIsNeitherAdditionNorRemoval() throws {
+        let s = try makeScenario()
+        _ = try swapSlot(s, order: 0, to: "Leg Press")
+
+        let result = detect(s)
+
+        #expect(result.isEmpty, "changes: \(result.changes.map(\.id))")
+        withExtendedLifetime(s.container) {}
+    }
+
+    @Test("A swapped exercise's set count is not offered to the template")
+    func swappedSetCountIsNotOffered() throws {
+        let s = try makeScenario()
+        let slot = try swapSlot(s, order: 0, to: "Leg Press")
+        let extra = WorkoutSet(order: 3, weight: 140, reps: 10, isCompleted: true, completedAt: .now)
+        s.container.mainContext.insert(extra)
+        slot.sets.append(extra)
+
+        let result = detect(s)
+
+        #expect(result.isEmpty, "four leg-press sets say nothing about the deadlift plan")
+        withExtendedLifetime(s.container) {}
+    }
+
+    @Test("A cue written on a swapped exercise is not offered to the planned one")
+    func swappedCueIsNotOffered() throws {
+        let s = try makeScenario()
+        let slot = try swapSlot(s, order: 1, to: "Leg Press")
+        slot.notes = "Feet high on the plate"
+
+        let result = detect(s)
+
+        #expect(result.isEmpty, "changes: \(result.changes.map(\.id))")
+        withExtendedLifetime(s.container) {}
+    }
+
+    @Test("The same exercise under a new UUID is not a swap")
+    func sameExternalIdIsNotASwap() throws {
+        let s = try makeScenario()
+        // A catalog re-import mints new UUIDs; the externalId is the identity.
+        let slot = try #require(s.workout.exercises.first { $0.order == 0 })
+        let reimported = TestFixtures.makeExercise(
+            name: "Trap Bar Deadlift",
+            externalId: slot.exercise?.externalId
+        )
+        s.container.mainContext.insert(reimported)
+        slot.exercise = reimported
+        let extra = WorkoutSet(order: 3, weight: 50, reps: 5, isCompleted: true, completedAt: .now)
+        s.container.mainContext.insert(extra)
+        slot.sets.append(extra)
+
+        let result = detect(s)
+
+        let offersSetCount = result.changes.contains { change in
+            if case .setCountChanged = change { return true }
+            return false
+        }
+        #expect(offersSetCount, "a re-imported exercise is still the planned one")
+        withExtendedLifetime(s.container) {}
+    }
+
+    @Test("Swapping and skipping in one workout prompts nothing")
+    func swapPlusSkipPromptsNothing() throws {
+        let s = try makeScenario()
+        _ = try swapSlot(s, order: 0, to: "Leg Press")
+        let skipped = try #require(s.workout.exercises.first { $0.order == 2 })
+        for set in skipped.sets {
+            set.isCompleted = false
+            set.completedAt = nil
+        }
+
+        let result = detect(s)
+
+        #expect(result.isEmpty, "changes: \(result.changes.map(\.id))")
+        withExtendedLifetime(s.container) {}
+    }
+
+    @Test("Moving a swapped slot still counts as a reorder")
+    func movedSwapStillReorders() throws {
+        let s = try makeScenario()
+        let slot = try swapSlot(s, order: 0, to: "Leg Press")
+        let second = try #require(s.workout.exercises.first { $0.order == 1 })
+        slot.order = 1
+        second.order = 0
+
+        let result = detect(s)
+
+        // Moving a card is an explicit act (#129); the swap does not hide it.
+        #expect(result.changes.map(\.id) == ["reordered"])
+        withExtendedLifetime(s.container) {}
+    }
+
     @Test("A template edited since the workout started raises a conflict")
     func templateEditedSinceStartConflicts() throws {
         let s = try makeScenario()

@@ -16,15 +16,14 @@ struct LastDonePanel: View {
                 Text("Couldn't load your history.")
                     .foregroundStyle(.secondary)
             } else {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ProgressView("Loading history…")
             }
         }
-        .font(.caption)
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+        // Last time is information needed between sets: at least
+        // .subheadline (UI-Y3). No nested card background (UI-S2): the panel
+        // sits under its toggle inside the exercise card.
+        .font(.subheadline)
+        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("lastDonePanel")
     }

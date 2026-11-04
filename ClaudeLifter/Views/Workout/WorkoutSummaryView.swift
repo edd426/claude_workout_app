@@ -15,12 +15,19 @@ struct WorkoutSummaryView: View {
     var finishedAutomatically: Bool = false
 
     @Environment(\.dependencies) private var deps
+    @Environment(\.dynamicTypeSize) private var typeSize
     /// Records since `PREra.start` with the lifetime best beside each (#173).
     /// Read after the sheet appears; until then, or if it can't be read, the
     /// plain `personalRecords` show instead.
     @State private var report: PRReport?
 
     private var unit: WeightUnit { deps?.settings.weightUnit ?? .kg }
+
+    /// Cards on this sheet. In dark mode a sheet's own background is
+    /// #1C1C1E, the same as `BrandTheme.cardBackground`, so those cards
+    /// vanished; the system's secondary background is one step lighter on
+    /// an elevated sheet (#2C2C2E) and a light gray in light mode.
+    static let sheetCard = Color(uiColor: .secondarySystemBackground)
 
     private var stats: WorkoutHistorySummary { WorkoutHistorySummary(workout) }
 
@@ -118,7 +125,7 @@ struct WorkoutSummaryView: View {
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                BrandTheme.cardBackground,
+                Self.sheetCard,
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
             .accessibilityElement(children: .combine)
@@ -126,8 +133,13 @@ struct WorkoutSummaryView: View {
         }
     }
 
+    /// Three tiles in a row; stacked at accessibility sizes, where the row
+    /// hyphenated the labels and truncated the volume (UI-A3).
     private var statsGrid: some View {
-        HStack(spacing: 12) {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
             StatTileView(label: "Duration", value: stats.durationText)
             StatTileView(label: "Sets", value: "\(stats.completedSets)")
             StatTileView(label: "Volume", value: stats.volumeText(in: unit))
@@ -187,7 +199,7 @@ private struct StatTileView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 8)
-        .background(BrandTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(WorkoutSummaryView.sheetCard, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }
@@ -227,7 +239,7 @@ private struct PRReportCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(BrandTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(WorkoutSummaryView.sheetCard, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityIdentifier("summaryPersonalRecords")
     }
 }
@@ -281,7 +293,7 @@ private struct LifetimeBestsCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(BrandTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(WorkoutSummaryView.sheetCard, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityIdentifier("summaryLifetimeBests")
     }
 }

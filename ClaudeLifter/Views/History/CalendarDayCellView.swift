@@ -13,6 +13,10 @@ struct CalendarDayCellView: View {
         Text("\(day)")
             .font(.subheadline.weight(isToday || isSelected ? .semibold : .regular))
             .monospacedDigit()
+            // Seven columns can't hold AX5 digits: "10" wrapped to "1 / 0".
+            // Shrink to fit the cell rather than break the number (UI-A3).
+            .lineLimit(1)
+            .minimumScaleFactor(0.4)
             .foregroundStyle(labelColor)
             .frame(maxWidth: .infinity, minHeight: 44)
             .background {

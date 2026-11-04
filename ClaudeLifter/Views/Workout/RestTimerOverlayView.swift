@@ -58,6 +58,8 @@ struct RestTimerBarView: View {
         Button(action: action) {
             Text(title)
                 .font(.body.monospacedDigit())
+                // Gray tint alone draws gray text on a gray fill (UI-C3).
+                .foregroundStyle(.primary)
                 .frame(minWidth: 56, minHeight: 56)
                 .contentShape(Rectangle())
         }

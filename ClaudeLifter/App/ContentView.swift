@@ -36,7 +36,10 @@ struct ContentView: View {
         // `BrandTheme.destructive` themselves where the tint would otherwise
         // win (swipe actions, bordered buttons), so they stay system red
         // (UI-P6).
-        .tint(BrandTheme.accent)
+        // accentText, not accent: the tint colours toolbar and link text at
+        // body size, where brand terracotta is 3.1:1 on white (UI-C3). Fills
+        // that need the brand colour set BrandTheme.accent themselves.
+        .tint(BrandTheme.accentText)
         .task {
             if chatViewModel == nil {
                 chatViewModel = ChatViewModel(

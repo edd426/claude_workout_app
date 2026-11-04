@@ -279,6 +279,8 @@ private struct ExerciseCardDetail: View {
         } label: {
             Label("Add Set", systemImage: "plus")
                 .font(.body)
+                // Gray tint alone draws gray text on a gray fill (UI-C3).
+                .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .contentShape(Rectangle())
         }

@@ -338,10 +338,9 @@ struct SettingsView: View {
                 Label("Restore from Cloud", systemImage: "icloud.and.arrow.down")
             }
             .disabled(isRestoring || syncManager.state == .disabled)
-            .confirmationDialog(
+            .alert(
                 "Replace local data with the cloud snapshot?",
-                isPresented: $isConfirmingRestore,
-                titleVisibility: .visible
+                isPresented: $isConfirmingRestore
             ) {
                 Button("Replace Local Data", role: .destructive) {
                     Task { await restoreFromCloud(syncManager: syncManager) }

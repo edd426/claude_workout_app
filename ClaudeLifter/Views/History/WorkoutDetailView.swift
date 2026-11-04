@@ -43,10 +43,9 @@ struct WorkoutDetailView: View {
         .navigationBarBackButtonHidden(isEditing)
         .scrollDismissesKeyboard(.interactively)
         .toolbar { editToolbar }
-        .confirmationDialog(
+        .alert(
             "Delete \(workout.name)?",
-            isPresented: $isConfirmingDelete,
-            titleVisibility: .visible
+            isPresented: $isConfirmingDelete
         ) {
             Button("Delete Workout", role: .destructive) { delete() }
             Button("Cancel", role: .cancel) {}

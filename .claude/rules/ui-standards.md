@@ -134,7 +134,9 @@ when time runs out. Design for that. Nothing here is generic polish.
     recolour it.
   - In menus it goes last. In confirmation dialogs it goes first, with Cancel
     last (HIG Action Sheets).
-  - Irreversible data loss needs a `confirmationDialog`.
+  - Irreversible data loss needs a confirmation. Use `.alert` with a Cancel
+    button: on iOS 27 at AX5 a `confirmationDialog` can fill the screen and
+    show no Cancel (seen 2026-11-04).
   - **[check]** Destructive swipe actions set `allowsFullSwipe: false`.
   - A reversible action prefers undo (a toast or the same menu) over a
     confirmation.

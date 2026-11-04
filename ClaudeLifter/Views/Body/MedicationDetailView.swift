@@ -68,10 +68,9 @@ struct MedicationDetailView: View {
                     await vm.update(dose, with: draft)
                 }
             }
-            .confirmationDialog(
+            .alert(
                 "Delete this dose?",
                 isPresented: deleteDialogBinding,
-                titleVisibility: .visible,
                 presenting: pendingDeleteID.flatMap { id in vm.rows.first { $0.id == id } }
             ) { row in
                 Button("Delete Dose", role: .destructive) {

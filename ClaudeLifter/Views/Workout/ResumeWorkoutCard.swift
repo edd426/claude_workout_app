@@ -30,10 +30,9 @@ struct ResumeWorkoutCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("resumeWorkoutCard")
         .sensoryFeedback(.warning, trigger: discardConfirmed)
-        .confirmationDialog(
+        .alert(
             "Discard this workout?",
-            isPresented: $showDiscardConfirmation,
-            titleVisibility: .visible
+            isPresented: $showDiscardConfirmation
         ) {
             Button("Discard \"\(workout.name)\"", role: .destructive) {
                 discardConfirmed += 1

@@ -22,13 +22,12 @@ struct HistoryListView: View {
             .toolbar { viewToggleToolbar }
         }
         // A confirmation dialog, destructive first and Cancel last (UI-P6).
-        .confirmationDialog(
+        .alert(
             "Delete \(workoutToDelete?.name ?? "workout")?",
             isPresented: Binding(
                 get: { workoutToDelete != nil },
                 set: { if !$0 { workoutToDelete = nil } }
             ),
-            titleVisibility: .visible,
             presenting: workoutToDelete
         ) { workout in
             Button("Delete Workout", role: .destructive) {

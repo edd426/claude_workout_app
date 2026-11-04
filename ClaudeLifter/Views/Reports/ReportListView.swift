@@ -31,13 +31,14 @@ struct ReportListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar(filter: $vm.statusFilter) }
         .sensoryFeedback(.warning, trigger: deleteConfirmed)
-        .confirmationDialog(
+        // An alert, not a confirmation dialog: at AX5 on iOS 27 the dialog
+        // filled the screen and showed no Cancel (UI-P6, UI-A3).
+        .alert(
             "Delete this report?",
             isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }
             ),
-            titleVisibility: .visible,
             presenting: pendingDelete
         ) { report in
             Button("Delete Report", role: .destructive) {
@@ -134,7 +135,6 @@ private struct ReportRow: View {
     let report: ExerciseReport
     let onAction: (ReportRowAction) -> Void
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -163,7 +163,6 @@ private struct ReportRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 ReportStatusBadge(status: report.status)
-                    .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
                 // Set only once the photo is in blob storage, i.e. readable
                 // over MCP with get_report_photo (#141).
                 if report.photoURL != nil {

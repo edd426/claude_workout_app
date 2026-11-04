@@ -51,13 +51,14 @@ struct TemplateListView: View {
             }
         }
         .sensoryFeedback(.warning, trigger: deleteConfirmed)
-        .confirmationDialog(
+        // An alert, not a confirmation dialog: at AX5 on iOS 27 the dialog
+        // filled the screen and showed no Cancel (UI-P6, UI-A3).
+        .alert(
             "Delete this template?",
             isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }
             ),
-            titleVisibility: .visible,
             presenting: pendingDelete
         ) { template in
             Button("Delete \"\(template.name)\"", role: .destructive) {

@@ -22,6 +22,5 @@ struct WorkoutHistoryRowView: View {
         // VoiceOver the whole row as a single announcement instead of five
         // disconnected fragments.
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("historyRow_\(workout.id)")
     }
 }

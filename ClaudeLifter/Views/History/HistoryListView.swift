@@ -167,6 +167,9 @@ struct HistoryListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // On the link, not the row inside it: with the chevron beside the
+        // row, both carried the identifier and every row was found twice.
+        .accessibilityIdentifier("historyRow_\(workout.id)")
         .padding(.horizontal)
         .contextMenu {
             Button("Delete Workout", systemImage: "trash", role: .destructive) {
@@ -228,6 +231,7 @@ struct HistoryListView: View {
                     } label: {
                         WorkoutHistoryRowView(workout: workout)
                     }
+                    .accessibilityIdentifier("historyRow_\(workout.id)")
                     // Also in the detail screen's menu, so never swipe-only
                     // (UI-P7); never on a full swipe (UI-P6).
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {

@@ -148,8 +148,13 @@ struct SetRowView: View {
                 .font(.title3.monospacedDigit())
                 .frame(minWidth: 52, maxWidth: layout == .stacked ? .infinity : nil, minHeight: 44)
                 .focused(focusedField, equals: weightFieldID)
-                .accessibilityLabel("Weight for set \(set.order + 1)")
-                .accessibilityValue(set.weight == nil ? "bodyweight" : "")
+                // "Bodyweight" goes in the label, not the value: overriding the
+                // value hid the typed number from VoiceOver and UI tests.
+                .accessibilityLabel(
+                    set.weight == nil
+                        ? "Weight for set \(set.order + 1), bodyweight"
+                        : "Weight for set \(set.order + 1)"
+                )
                 .accessibilityIdentifier("weight_\(workoutExerciseID.uuidString)_\(set.id.uuidString)")
                 .modifier(FocusWithCaretAtEnd(isFocused: focusedField.wrappedValue == weightFieldID) {
                     focusedField.wrappedValue = weightFieldID

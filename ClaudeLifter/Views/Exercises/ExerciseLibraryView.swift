@@ -92,25 +92,28 @@ struct ExerciseLibraryView: View {
             if let message = vm.errorMessage {
                 libraryErrorBanner(message, vm: vm)
             }
-            if vm.isNarrowed {
-                // Says what applies: the query and the chips together (#155).
-                Text(resultLine(vm))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.vertical, 4)
-                    .accessibilityIdentifier("libraryResultCount")
-            }
-            List(vm.exercises, id: \.id) { exercise in
-                exerciseRow(exercise, vm: vm)
-                    .onAppear {
-                        // The unfiltered library loads 50 at a time; fetch
-                        // the next page as the last row appears.
-                        if exercise.id == vm.exercises.last?.id {
-                            Task { await vm.loadMore() }
+            List {
+                // Inside the List: as a view above it, the line appeared on
+                // the first keystroke and the search field dropped the rest
+                // of the typing ("Bench" arrived as "Be" in UI tests).
+                if vm.isNarrowed {
+                    // Says what applies: the query and the chips together (#155).
+                    Text(resultLine(vm))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .listRowSeparator(.hidden)
+                        .accessibilityIdentifier("libraryResultCount")
+                }
+                ForEach(vm.exercises, id: \.id) { exercise in
+                    exerciseRow(exercise, vm: vm)
+                        .onAppear {
+                            // The unfiltered library loads 50 at a time; fetch
+                            // the next page as the last row appears.
+                            if exercise.id == vm.exercises.last?.id {
+                                Task { await vm.loadMore() }
+                            }
                         }
-                    }
+                }
             }
             .listStyle(.plain)
             .overlay { emptyState(vm) }

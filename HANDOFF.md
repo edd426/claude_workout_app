@@ -1,4 +1,4 @@
-# ▶ 2026-11-04 (night): all four 1.9.0 agents merged into `release/1.9.0`; verification pending
+# ▶ 2026-11-04 (night): 1.9.0 (11) deployed and installed on the phone
 
 **Merged.** Each agent's full unit suite passed on its own branch:
 - **B** (Body tab: weight, protein, waist/height, medications): 1180 tests.
@@ -21,12 +21,14 @@
 - **Functions:** jest 447/447. **MCP:** vitest 306/306.
 - **Version:** bumped to **1.9.0 (11)** in `generate_project.py`.
 
-**Waiting on Evan's go-ahead:**
-1. Push `release/1.9.0`.
-2. Create the 4 Cosmos containers.
-3. Deploy the Functions code.
-4. Deploy the MCP remote, code only.
-5. Install on the phone.
+**Deployed 2026-11-04 on Evan's go-ahead (all verified this session):**
+1. `release/1.9.0` pushed at `66985c1`. Not merged to `main` yet.
+2. Cosmos containers `bodyMeasurements`, `medications`, `medicationDoses`, `exerciseAlternatives` created (`/id`, no throughput); `workout-db` lists 15.
+3. Functions published and restarted. Probes: health 200; `/api/medications` → `{"mirrored":false,"medications":[]}`; SAS `exercises/ext/Leg_Extensions.jpg` 200; `exercises/../x.jpg` 400; no key 401.
+4. MCP remote, `--code`: build stamp `66985c1`, deploy-script tests and smoke pass (health ok, metadata ok, `/mcp` without a token 401). `tools/list` behind OAuth not checked from here.
+5. Installed on the phone; `devicectl device info apps` shows **1.9.0 (11)**. The phone had lost its pairing ("device must be paired"); `xcrun devicectl manage pair` fixed it.
+
+**Still to check after first launch:** the v5 snapshot push succeeds (`/api/medications` turns `mirrored:true`) and a workout doc carries `mirrorContentHash`.
 
 **Known follow-ups, not blocking 1.9.0:**
 - **UI tests to update:**

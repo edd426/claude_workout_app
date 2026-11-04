@@ -14,25 +14,31 @@ struct WorkoutSummaryView: View {
     /// This sheet is then the only word the user gets about it, so it says so.
     var finishedAutomatically: Bool = false
 
-    var totalSets: Int {
-        workout.exercises.flatMap(\.sets).filter(\.isCompleted).count
-    }
+    @Environment(\.dependencies) private var deps
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// Records since `PREra.start` with the lifetime best beside each (#173).
+    /// Read after the sheet appears; until then, or if it can't be read, the
+    /// plain `personalRecords` show instead.
+    @State private var report: PRReport?
 
-    var totalVolume: Double {
-        workout.exercises.flatMap(\.sets)
-            .filter(\.isCompleted)
-            .compactMap { set -> Double? in
-                guard let w = set.weightInKilograms, let r = set.reps else { return nil }
-                return w * Double(r)
-            }
-            .reduce(0, +)
-    }
+    private var unit: WeightUnit { deps?.settings.weightUnit ?? .kg }
 
-    var duration: String {
-        guard let completed = workout.completedAt else { return "—" }
-        let interval = completed.timeIntervalSince(workout.startedAt)
-        let minutes = Int(interval) / 60
-        return "\(minutes) min"
+    /// Cards on this sheet. In dark mode a sheet's own background is
+    /// #1C1C1E, the same as `BrandTheme.cardBackground`, so those cards
+    /// vanished; the system's secondary background is one step lighter on
+    /// an elevated sheet (#2C2C2E) and a light gray in light mode.
+    static let sheetCard = Color(uiColor: .secondarySystemBackground)
+
+    private var stats: WorkoutHistorySummary { WorkoutHistorySummary(workout) }
+
+    /// Completed sets only.
+    var totalSets: Int { stats.completedSets }
+
+    /// Kilograms, each set converted from its own unit.
+    var totalVolume: Double { stats.volumeKg }
+
+    private var hasRecords: Bool {
+        !(report?.records.isEmpty ?? personalRecords.isEmpty)
     }
 
     var body: some View {
@@ -42,39 +48,58 @@ struct WorkoutSummaryView: View {
         // gesture-dismiss weirdness and occasional crashes on back taps.
         ScrollView {
             VStack(spacing: 24) {
-                Text(workout.name)
-                    .font(.title3.bold())
-                    .foregroundStyle(.secondary)
-
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 64))
-                    .foregroundStyle(BrandTheme.terracotta)
-
-                Text("Workout Complete!")
-                    .font(.title.bold())
-
+                header
                 autoFinishNotice
-
                 statsGrid
-
-                if !personalRecords.isEmpty {
-                    prSection
-                }
-
+                recordsSection
                 if let templateChangeSet, let onApplyTemplateChanges {
                     TemplateReviewSection(
                         changeSet: templateChangeSet,
                         onApply: onApplyTemplateChanges
                     )
                 }
-
-                Button("Done") { onDismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .padding(.bottom)
-                    .accessibilityIdentifier("summaryDone")
+                doneButton
             }
             .padding()
+        }
+        // Rerun when post-commit detection lands, so the report is read
+        // after the records it describes are saved (#125).
+        .task(id: personalRecords.count) { await loadReport() }
+        .sensoryFeedback(.success, trigger: hasRecords) { _, now in now }
+    }
+
+    private var header: some View {
+        VStack(spacing: 12) {
+            Text(workout.name)
+                .font(.title3.bold())
+                .foregroundStyle(.secondary)
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 64))
+                .foregroundStyle(BrandTheme.completed)
+                .accessibilityHidden(true)
+            Text("Workout Complete!")
+                .font(.title.bold())
+        }
+    }
+
+    private var doneButton: some View {
+        Button {
+            onDismiss()
+        } label: {
+            Text("Done").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .padding(.bottom)
+        .accessibilityIdentifier("summaryDone")
+    }
+
+    /// A failed read keeps the plain records on screen: the workout is saved
+    /// either way, and the records were already detected (UI-E2).
+    private func loadReport() async {
+        guard let service = deps?.prDetectionService else { return }
+        if let loaded = try? await service.prReport(for: workout) {
+            report = loaded
         }
     }
 
@@ -100,36 +125,59 @@ struct WorkoutSummaryView: View {
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                Color(uiColor: .secondarySystemBackground),
-                in: RoundedRectangle(cornerRadius: 12)
+                Self.sheetCard,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("autoFinishedNotice")
         }
     }
 
+    /// Three tiles in a row; stacked at accessibility sizes, where the row
+    /// hyphenated the labels and truncated the volume (UI-A3).
     private var statsGrid: some View {
-        HStack(spacing: 20) {
-            StatTileView(label: "Duration", value: duration)
-            StatTileView(label: "Sets", value: "\(totalSets)")
-            StatTileView(label: "Volume", value: String(format: "%.0f kg", totalVolume))
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
+            StatTileView(label: "Duration", value: stats.durationText)
+            StatTileView(label: "Sets", value: "\(stats.completedSets)")
+            StatTileView(label: "Volume", value: stats.volumeText(in: unit))
         }
     }
 
-    private var prSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Personal Records", systemImage: "trophy.fill")
-                .font(.headline)
-                .foregroundStyle(BrandTheme.terracotta)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            ForEach(personalRecords, id: \.id) { pr in
-                PRCardView(record: pr)
+    @ViewBuilder
+    private var recordsSection: some View {
+        if let report {
+            if !report.records.isEmpty {
+                PRReportCard(records: report.records, unit: unit)
             }
+            if !report.lifetimeReferences.isEmpty {
+                LifetimeBestsCard(references: report.lifetimeReferences, unit: unit)
+            }
+        } else if !personalRecords.isEmpty {
+            PRReportCard(records: fallbackRecords, unit: unit)
         }
-        .padding()
-        .background(BrandTheme.terracotta.opacity(0.1))
-        .cornerRadius(12)
+    }
+
+    /// The saved records as report records without a lifetime comparison,
+    /// for a detector that can't build a report.
+    private var fallbackRecords: [PRReport.Record] {
+        personalRecords.map { record in
+            let exercise = workout.exercises.first { $0.exercise?.id == record.exerciseId }?.exercise
+            return PRReport.Record(
+                exerciseId: record.exerciseId,
+                exerciseName: exercise?.name ?? "Exercise",
+                type: record.prType,
+                value: record.value,
+                set: PRSetRef(
+                    weightKg: record.weight ?? record.value,
+                    reps: record.reps ?? 1,
+                    date: record.achievedAt
+                ),
+                lifetimeBest: nil
+            )
+        }
     }
 }
 
@@ -140,54 +188,112 @@ private struct StatTileView: View {
     var body: some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.title2.bold())
+                .font(.title3.bold())
+                .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
             Text(label)
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color(uiColor: .secondarySystemBackground))
-        .cornerRadius(12)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 8)
+        .background(WorkoutSummaryView.sheetCard, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
-private struct PRCardView: View {
-    let record: PersonalRecord
+/// Records since 2026, grouped by exercise, each with its lifetime best
+/// beside it (#173).
+private struct PRReportCard: View {
+    let records: [PRReport.Record]
+    let unit: WeightUnit
 
-    private var typeLabel: String {
-        switch record.prType {
-        case .heaviestWeight: return "Heaviest Weight"
-        case .mostRepsAtWeight: return "Most Reps at Weight"
-        case .highest1RM: return "Estimated 1RM"
+    private var exercises: [(id: UUID, name: String, records: [PRReport.Record])] {
+        var order: [UUID] = []
+        var grouped: [UUID: [PRReport.Record]] = [:]
+        for record in records {
+            if grouped[record.exerciseId] == nil { order.append(record.exerciseId) }
+            grouped[record.exerciseId, default: []].append(record)
         }
-    }
-
-    private var valueLabel: String {
-        switch record.prType {
-        case .heaviestWeight: return String(format: "%.1f kg", record.value)
-        case .mostRepsAtWeight:
-            if let w = record.weight {
-                return String(format: "%d reps @ %.1f kg", record.reps ?? Int(record.value), w)
-            }
-            return "\(record.reps ?? Int(record.value)) reps"
-        case .highest1RM: return String(format: "%.1f kg", record.value)
+        return order.map { id in
+            (id, grouped[id]?.first?.exerciseName ?? "", grouped[id] ?? [])
         }
     }
 
     var body: some View {
-        HStack {
-            Image(systemName: "star.fill")
-                .foregroundStyle(BrandTheme.terracotta)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(typeLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(valueLabel)
-                    .font(.subheadline.bold())
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Personal records \(PREra.label)", systemImage: "trophy.fill")
+                .font(.headline)
+                .foregroundStyle(BrandTheme.accentText)
+            ForEach(exercises, id: \.id) { exercise in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(exercise.name)
+                        .font(.headline)
+                    ForEach(exercise.records) { record in
+                        PRRecordRow(record: record, unit: unit)
+                    }
+                }
             }
-            Spacer()
         }
-        .padding(.vertical, 4)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WorkoutSummaryView.sheetCard, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityIdentifier("summaryPersonalRecords")
+    }
+}
+
+private struct PRRecordRow: View {
+    let record: PRReport.Record
+    let unit: WeightUnit
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "star.fill")
+                .foregroundStyle(BrandTheme.accent)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(PRDisplay.title(for: record.type))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(PRDisplay.value(of: record, in: unit))
+                    .font(.body.bold())
+                    .monospacedDigit()
+                Text(PRDisplay.comparison(for: record, in: unit, now: .now))
+                    .font(.subheadline)
+                    .foregroundStyle(record.isNewLifetimeBest ? BrandTheme.accentText : .secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Exercises done today without a record since 2026, with their best ever
+/// set, for comparison only.
+private struct LifetimeBestsCard: View {
+    let references: [PRReport.LifetimeReference]
+    let unit: WeightUnit
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Lifetime bests")
+                .font(.headline)
+            ForEach(references) { reference in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(reference.exerciseName)
+                        .font(.body)
+                    Text(PRDisplay.lifetimeBest(reference.heaviest, in: unit, now: .now))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WorkoutSummaryView.sheetCard, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityIdentifier("summaryLifetimeBests")
     }
 }

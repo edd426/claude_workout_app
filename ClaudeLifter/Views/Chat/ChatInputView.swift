@@ -34,7 +34,7 @@ struct ChatInputView: View {
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(isSendDisabled ? Color(.systemGray3) : BrandTheme.terracotta)
+                    .foregroundStyle(isSendDisabled ? Color(.systemGray3) : BrandTheme.accent)
             }
             .disabled(isSendDisabled)
             .accessibilityIdentifier("sendMessage")

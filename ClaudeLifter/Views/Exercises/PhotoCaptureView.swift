@@ -17,7 +17,7 @@ struct PhotoCaptureView: View {
             if let error {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(BrandTheme.destructive)
                     .multilineTextAlignment(.center)
             }
         }

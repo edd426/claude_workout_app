@@ -18,7 +18,7 @@ struct ChatMessageBubbleView: View {
         }
     }
 
-    // MARK: - User Bubble (right-aligned, terracotta)
+    // MARK: - User Bubble (right-aligned, accent fill; near-black text is 5.9:1 on it, white was 3.1:1)
 
     private var userBubble: some View {
         Group {
@@ -29,8 +29,8 @@ struct ChatMessageBubbleView: View {
                     Text(str)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .background(BrandTheme.terracotta)
-                        .foregroundStyle(.white)
+                        .background(BrandTheme.accent)
+                        .foregroundStyle(BrandTheme.dark)
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                         .frame(maxWidth: 280, alignment: .trailing)
                 }
@@ -42,7 +42,7 @@ struct ChatMessageBubbleView: View {
         }
     }
 
-    // MARK: - Assistant Bubble (left-aligned, lightGray)
+    // MARK: - Assistant Bubble (left-aligned, card background)
 
     private var assistantBubble: some View {
         Group {
@@ -52,7 +52,7 @@ struct ChatMessageBubbleView: View {
                     markdownText(str)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .background(BrandTheme.lightGray)
+                        .background(BrandTheme.cardBackground)
                         .foregroundStyle(.primary)
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                         .frame(maxWidth: 280, alignment: .leading)
@@ -181,7 +181,7 @@ private struct CollapsibleToolUseView: View {
                 .frame(maxHeight: 120)
             }
         }
-        .background(BrandTheme.lightGray)
+        .background(BrandTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .frame(maxWidth: 280, alignment: .leading)
     }
@@ -240,7 +240,7 @@ private struct CollapsibleToolResultView: View {
                 .frame(maxHeight: 200)
             }
         }
-        .background(BrandTheme.lightGray)
+        .background(BrandTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .frame(maxWidth: 280, alignment: .leading)
     }

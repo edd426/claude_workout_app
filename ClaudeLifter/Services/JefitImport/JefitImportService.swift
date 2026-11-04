@@ -18,6 +18,16 @@ extension JefitImportServiceProtocol {
     func prepare(csv: String) async throws -> JefitImportPlan {
         try await prepare(csv: csv, options: JefitImportOptions())
     }
+
+    /// Reads a file the user picked (security-scoped URLs from
+    /// `fileImporter` are handled) and prepares it.
+    func prepare(fileAt url: URL, options: JefitImportOptions = JefitImportOptions()) async throws -> JefitImportPlan {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        let data = try Data(contentsOf: url)
+        let text = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        return try await prepare(csv: text, options: options)
+    }
 }
 
 @MainActor
@@ -49,16 +59,6 @@ final class JefitImportService: JefitImportServiceProtocol {
             let mapper = JefitExerciseMapper(table: table, localExercises: localExercises)
             return JefitConverter.convert(export, mapper: mapper, options: options)
         }.value
-    }
-
-    /// Reads a file the user picked (security-scoped URLs from
-    /// `fileImporter` are handled) and prepares it.
-    func prepare(fileAt url: URL, options: JefitImportOptions = JefitImportOptions()) async throws -> JefitImportPlan {
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        let data = try Data(contentsOf: url)
-        let text = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
-        return try await prepare(csv: text, options: options)
     }
 
     func commit(_ plan: JefitImportPlan) async throws -> BackupImportSummary {

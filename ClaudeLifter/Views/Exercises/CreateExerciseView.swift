@@ -87,7 +87,7 @@ struct CreateExerciseView: View {
         if let errorMessage = vm.errorMessage {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(BrandTheme.warning)
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.primary)
@@ -122,7 +122,7 @@ struct CreateExerciseView: View {
                     Spacer()
                     if vm.primaryMuscles.contains(muscle) {
                         Image(systemName: "checkmark")
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(BrandTheme.accent)
                     }
                 }
             }

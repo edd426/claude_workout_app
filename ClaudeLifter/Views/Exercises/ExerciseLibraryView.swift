@@ -43,7 +43,7 @@ struct ExerciseLibraryView: View {
                         Button {
                             showCreateExercise = true
                         } label: {
-                            Image(systemName: "plus")
+                            Label("New exercise", systemImage: "plus")
                         }
                     }
                 }
@@ -89,19 +89,87 @@ struct ExerciseLibraryView: View {
                 }
             )
 
+            if let message = vm.errorMessage {
+                libraryErrorBanner(message, vm: vm)
+            }
+            if vm.isNarrowed {
+                // Says what applies: the query and the chips together (#155).
+                Text(resultLine(vm))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+                    .accessibilityIdentifier("libraryResultCount")
+            }
             List(vm.exercises, id: \.id) { exercise in
                 exerciseRow(exercise, vm: vm)
+                    .onAppear {
+                        // The unfiltered library loads 50 at a time; fetch
+                        // the next page as the last row appears.
+                        if exercise.id == vm.exercises.last?.id {
+                            Task { await vm.loadMore() }
+                        }
+                    }
             }
             .listStyle(.plain)
+            .overlay { emptyState(vm) }
             .onChange(of: vm.searchQuery) { _, _ in
                 searchTask?.cancel()
                 searchTask = Task {
+                    // A cancelled sleep is the debounce working, not a failure.
                     try? await Task.sleep(nanoseconds: 300_000_000)
                     guard !Task.isCancelled else { return }
                     await vm.performSearch()
                 }
             }
         }
+    }
+
+    private func resultLine(_ vm: ExerciseLibraryViewModel) -> String {
+        let count = vm.exercises.count == 1 ? "1 exercise" : "\(vm.exercises.count) exercises"
+        return "\(count) · \(vm.criteriaDescription)"
+    }
+
+    @ViewBuilder
+    private func emptyState(_ vm: ExerciseLibraryViewModel) -> some View {
+        if vm.exercises.isEmpty, !vm.isLoading, vm.isNarrowed {
+            ContentUnavailableView {
+                Label("No matches", systemImage: "magnifyingglass")
+            } description: {
+                Text("Nothing matches \(vm.criteriaDescription).")
+            } actions: {
+                if !vm.activeFilters.isEmpty {
+                    Button("Clear Filters") {
+                        vm.clearFilters()
+                        Task { await vm.loadExercises() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+    }
+
+    private func libraryErrorBanner(_ message: String, vm: ExerciseLibraryViewModel) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(BrandTheme.warning)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Retry") {
+                Task {
+                    await vm.loadFilterOptions()
+                    await vm.loadExercises()
+                }
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(16)
+        .background(BrandTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal)
+        .padding(.vertical, 4)
     }
 
     private func exerciseRow(_ exercise: Exercise, vm: ExerciseLibraryViewModel) -> some View {

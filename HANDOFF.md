@@ -1,3 +1,48 @@
+# ▶ 2026-11-04 (night): all four 1.9.0 agents merged into `release/1.9.0`; verification pending
+
+**Merged.** Each agent's full unit suite passed on its own branch:
+- **B** (Body tab: weight, protein, waist/height, medications): 1180 tests.
+- **T** (Today, five tabs, #168, #176 last-done, #154 report menus): 1172.
+- **W** (any-order workout, Machine taken, photos, set rows, #144, #174, #175): 1177.
+- **D** (Settings #171, Jefit import UI #166, PRs since 2026 #173, History counts, #155): 1160.
+
+**Lead fixes since the merges:**
+- The report badge text renders.
+- Every data-loss confirmation is an alert, because a dialog at AX5 on iOS 27 shows no Cancel. UI-P6 is updated to match.
+- Labels on gray buttons use the primary colour.
+- The app tint is `accentText`.
+
+**Verification still to do** (none of it run yet on the merged tree):
+1. The full unit suite on `release/1.9.0`.
+2. Gear → Settings from a fresh launch (agent T could not confirm it opens).
+3. SettingsTests, including the one-tap Export test.
+4. A WorkoutFlow test.
+
+**Known follow-ups, not blocking 1.9.0:**
+- **UI tests to update:**
+  - `WorkoutFlowTests` and `ScreenshotTour` assume every card is expanded (W).
+  - The strip chip tap is not UI-automated (W).
+  - Remove D's shots-test alert dismissal now that T's inline banner is merged.
+- **#172:** does not reproduce on iOS 27.0, measured at 0% CPU idle. Not probed on 26.5; the phone runs 27.0.1, so check on the device before closing.
+- **Medication "usual dose":** stored per device in UserDefaults, because V5 `Medication` has no field for it. After a restore it falls back to the last dose logged (B).
+- **Weekly volume (#168):**
+  - It excludes drafts.
+  - The #167 panel's Sunday-first weekly count can disagree with it (T).
+- **PR semantics** (D's call, one function each to change):
+  - "most reps" means more reps than any 2026 set at that weight or heavier;
+  - the first 2026 session of an exercise counts as a record.
+- **Minor:**
+  - The keyboard bar's "Log set" renders icon-only on iOS 27 (W).
+  - AX5 calendar digits run together (D).
+  - The workout exit and remove dialogs are still confirmationDialogs.
+
+**Environment:**
+- Builds are serialized through `scratchpad/simlockq.sh` (FIFO lock), because the 8 GB Mac thrashed with four simulators. See CLAUDE.md "One build at a time".
+- Agent worktrees are removed.
+- The Listening Point session (`projects-8a`) paused its renders for us. **Message it when the Xcode work is done.**
+
+---
+
 # ▶ 2026-11-03 (evening): 1.9.0 scope approved; 4 build agents running
 
 **Evan's decisions (2026-11-03):**
